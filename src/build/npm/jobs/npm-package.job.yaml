@@ -25,16 +25,19 @@ jobs:
           workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
           customCommand: 'ci --prefer-offline --no-audit'
 
-      - template: /src/security/dependency-check/tasks/npm-dependency-check.yaml
+      - template: /src/security/dependency-check/steps/npm-dependency-check.steps.yaml
         parameters:
           path: ${{parameters.path}}
           skip: ${{parameters.skipDependencyChecks}}
           continueIfVulnerabilities: true
 
-      - template: /src/build/npm/tasks/test.yaml
-        parameters:
-          path: ${{parameters.path}}
-          test: ${{parameters.test}}
+      - task: Npm@1
+        displayName: NPM Test
+        condition: and(succeeded(), eq('${{parameters.test}}', 'true'))
+        inputs:
+          command: custom
+          workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+          customCommand: 'test'
 
       - task: Npm@1
         displayName: NPM Pack

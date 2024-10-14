@@ -22,7 +22,7 @@ parameters:
 
 steps:
   - ${{ each variable in parameters.terraformInputVariables }}:
-    - template: ../tasks/set-variable.yaml
+    - template: /src/provision/terraform/tasks/set-variable.yaml
       parameters:
         terraformDirectory: ${{ parameters.terraformDirectory }}
         variableName: ${{ variable.variableName }}

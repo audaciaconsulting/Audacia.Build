@@ -32,19 +32,23 @@ jobs:
       - group: Code Signing
 
     steps:
-      - template: /src/security/dependency-check/tasks/nuget-dependency-check.yaml
+      - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
         parameters:
           skip: ${{parameters.skipDependencyChecks}}
 
-      - template: /src/build/dotnet/tasks/netcore/version.yaml
-        parameters:
-          releaseBranchNames: ${{parameters.releaseBranchName}}
-          ExcludePreReleasePostfix: ${{parameters.excludePreReleasePostfix}}
-          workingDirectory: ${{parameters.workingDirectory}}
-          includeCsproj: ${{parameters.includeCsproj}}
-          includeNuspec: ${{parameters.includeNuspec}}
-          packageSource: ${{parameters.packageSource}}
-          excludePaths: ${{parameters.excludePaths}}
+      - ${{ if eq(parameters.applyVersioning, true) }}:
+        - task: UpdateDotNetVersions@12
+          displayName: .NET Versioning
+          inputs:
+            releaseBranchNames: ${{parameters.releaseBranchName}}
+            ExcludePreReleasePostfix: ${{parameters.excludePreReleasePostfix}}
+            workingDirectory: ${{parameters.workingDirectory}}
+            includeCsproj: ${{parameters.includeCsproj}}
+            includeNuspec: ${{parameters.includeNuspec}}
+            packageSource: ${{parameters.packageSource}}
+            excludePaths: ${{parameters.excludePaths}}
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
       - task: DotNetCoreCLI@2
         displayName: .NET Restore

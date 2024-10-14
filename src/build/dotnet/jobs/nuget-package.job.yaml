@@ -43,7 +43,7 @@ jobs:
       - group: Code Signing
 
     steps:
-      - template: /src/security/dependency-check/tasks/nuget-dependency-check.yaml
+      - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
         parameters:
           skip: ${{parameters.skipDependencyChecks}}
           continueIfVulnerabilities: true

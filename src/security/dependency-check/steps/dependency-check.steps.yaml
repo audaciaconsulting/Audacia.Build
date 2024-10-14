@@ -9,7 +9,7 @@ parameters:
 
 steps:
   - ${{ each project in parameters.npmProjects }}:
-    - template: /src/security/dependency-check/tasks/npm-dependency-check.yaml
+    - template: /src/security/dependency-check/steps/npm-dependency-check.steps.yaml
       parameters:
         path: ${{ project.path }}
         projectName: ${{ project.name }}
@@ -18,7 +18,7 @@ steps:
         publishAs: Dependency Check Result (${{ project.name }})
         runEvenIfError: true
 
-  - template: /src/security/dependency-check/tasks/nuget-dependency-check.yaml
+  - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
     parameters:
       displayName: .NET Dependency Check
       publishAs: Dependency Check Result (.NET)
