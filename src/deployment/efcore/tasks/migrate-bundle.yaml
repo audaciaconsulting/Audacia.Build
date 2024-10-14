@@ -1,0 +1,37 @@
+parameters:
+  - name: connectionString
+    type: string
+  - name: serviceConnectionName
+    type: string
+  - name: workingDirectory
+    type: string
+    default: '$(Pipeline.Workspace)\EFMigrationBundle'
+
+steps:
+  - task: AzureCLI@2
+    displayName: Run EF Core Migrations
+    env:
+      CONNECTION_STRING: ${{parameters.connectionString}}
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}}
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        # Set working directory to be the folder containing the EF bundle
+        Set-Location "${{parameters.workingDirectory}}";
+
+        # Replace double quote with single quote
+        $connectionString = "$env:CONNECTION_STRING" -replace '"', "'"
+
+        # Run EF migration bundle depending on Agent OS
+        if ("$(Agent.OS)" -eq "Windows_NT") {
+          Write-Host "Running on Windows"
+
+          ./efbundle.exe --connection "$connectionString"
+        }
+        elseif ("$(Agent.OS)" -eq "Linux") {
+          Write-Host "Running on Linux"
+
+          chmod 777 ./efbundle
+          ./efbundle --connection "$connectionString"
+        }
