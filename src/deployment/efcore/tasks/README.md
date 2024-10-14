@@ -21,14 +21,10 @@ Runs the EF Core migrations bundle.
 #### Usage
 
 ```yaml
-  - template: /src/deployment/efcore/migrate-idempotent-script.yaml@templates
+  - template: /src/deployment/efcore/migrate-bundle.yaml@templates
     parameters:
-      dbContext: DatabaseContext
-      azureSubscription: 'Audacia Dev/Test'
-      sqlHostname: audacia-template.database.windows.net
-      sqlDatabase: Audacia.Template.Api
-      sqlUser: adminuser
-      sqlPassword: adminpassword
+      serviceConnectionName: 'QA Service Connection'
+      connectionString: $(ConnectionStrings.DatabaseContext)
 ```
 
 ### migrate-idempotent-script.yaml
