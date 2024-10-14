@@ -2,7 +2,7 @@
 parameters:
   - name: path
     default: ''
-  - name: test
+  - name: runTests
     default: true
   - name: artifactName
     default: '$(Build.DefinitionName)'
@@ -29,7 +29,7 @@ steps:
 
   - task: Npm@1
     displayName: NPM Test
-    condition: and(succeeded(), eq('${{parameters.test}}', 'true'))
+    condition: and(succeeded(), eq('${{parameters.runTests}}', 'true'))
     inputs:
       command: custom
       workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'

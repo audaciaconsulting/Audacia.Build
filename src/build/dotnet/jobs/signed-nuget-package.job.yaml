@@ -72,7 +72,7 @@ jobs:
 
       - task: DotNetCoreCLI@2
         displayName: .NET Test
-        condition: and(succeeded(), eq('${{parameters.shouldRunTests}}', true))
+        condition: and(succeeded(), eq('${{parameters.runTests}}', true))
         inputs:
           command: test
           projects: ${{parameters.testPath}}
