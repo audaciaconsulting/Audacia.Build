@@ -24,6 +24,8 @@ parameters:
     default: 'public'
   - name: excludePaths # Comma-delimited paths to exclude from versioning
     default: '*.Tests.csproj'
+  - name: artifactName
+    default: '$(Build.DefinitionName)'
 
 jobs:
   - job:
@@ -32,9 +34,10 @@ jobs:
       - group: Code Signing
 
     steps:
-      - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
-        parameters:
-          skip: ${{parameters.skipDependencyChecks}}
+      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
+        - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
+          parameters:
+            continueIfVulnerabilities: true
 
       - ${{ if eq(parameters.applyVersioning, true) }}:
         - task: UpdateDotNetVersions@12
@@ -107,4 +110,4 @@ jobs:
       - template: /src/build/common/tasks/publish.yaml
         parameters:
           path: ''
-          artifactName: '$(Build.DefinitionName)'
+          artifactName: ${{parameters.artifactName}}

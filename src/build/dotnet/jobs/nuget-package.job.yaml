@@ -43,10 +43,10 @@ jobs:
       - group: Code Signing
 
     steps:
-      - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
-        parameters:
-          skip: ${{parameters.skipDependencyChecks}}
-          continueIfVulnerabilities: true
+      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
+        - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
+          parameters:
+            continueIfVulnerabilities: true
 
       - ${{ if eq(parameters.applyVersioning, true) }}:
         - task: UpdateDotNetVersions@12

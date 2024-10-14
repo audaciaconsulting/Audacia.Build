@@ -13,4 +13,4 @@ steps:
     inputs:
       PathtoPublish: '$(build.ArtifactStagingDirectory)/${{parameters.path}}'
       ArtifactName: ${{parameters.artifactName}}
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+    condition: and(succeeded(), not(eq(variables['Build.Reason'], 'PullRequest')))

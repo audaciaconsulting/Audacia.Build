@@ -6,17 +6,21 @@ parameters:
     default: '**/*.Tests.csproj'
   - name: runTests
     default: true
+  - name: configuration
+    default: 'Release'
   - name: applyVersioning
     default: true
   - name: artifactName
     default: '$(Build.DefinitionName)'
+  - name: releaseBranchName
+    default: 'master,main'
 
 steps:
   - ${{ if eq(parameters.applyVersioning, true) }}:
     - task: UpdateDotNetVersions@12
       displayName: .NET Versioning
       inputs:
-        releaseBranchNames: 'master,main'
+        releaseBranchNames: ${{parameters.releaseBranchName}}
         ExcludePreReleasePostfix: false
         workingDirectory: ''
         includeCsproj: true
@@ -40,7 +44,7 @@ steps:
       projects: ${{parameters.projects}}
       publishWebProjects: false
       arguments: >
-        --configuration Release
+        --configuration ${{parameters.configuration}}
         --no-restore
 
   - task: DotNetCoreCLI@2
@@ -60,7 +64,7 @@ steps:
       publishWebProjects: false
       projects: ${{parameters.projects}}
       arguments: >
-        --configuration Release
+        --configuration ${{parameters.configuration}}
         --output $(Build.ArtifactStagingDirectory)
         --no-restore
         --no-build

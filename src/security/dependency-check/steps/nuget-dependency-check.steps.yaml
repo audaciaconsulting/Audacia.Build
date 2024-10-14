@@ -4,8 +4,6 @@ parameters:
     default: 'Build .NET'
   - name: publishAs
     default: ''
-  - name: skip
-    default: false
   - name: runEvenIfError
     default: false
   - name: continueIfVulnerabilities # Should the pipeline continue if vulnerabilities are found?
@@ -16,8 +14,7 @@ parameters:
 steps:
   - task: PowerShell@2
     displayName: Find Suppressions File
-    # Run if: (('success thus far' OR 'parameters.runEvenIfError == true') AND 'parameters.skip == false')
-    condition: and(or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed())), eq('${{parameters.skip}}', false))
+    condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     inputs:
       targetType: inline
       pwsh: true
@@ -35,8 +32,7 @@ steps:
 
   - task: dependency-check-build-task@6
     displayName: .NET Dependency Check
-    # Run if: (('success thus far' OR 'parameters.runEvenIfError == true') AND 'parameters.skip == false')
-    condition: and(or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed())), eq('${{parameters.skip}}', false))
+    condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
       suppressionPath: $(suppressionsPath)
@@ -52,7 +48,7 @@ steps:
         echo "##vso[task.setVariable variable=ReportExists]true"
       }
     displayName: Check for Dependency Check Report
-    condition: and(succeededOrFailed(), eq('${{parameters.skip}}', false), ne('${{parameters.publishAs}}', ''))
+    condition: and(succeededOrFailed(), ne('${{parameters.publishAs}}', ''))
 
     # Republish report to unique artifact
   - publish: $(Common.TestResultsDirectory)\dependency-check
@@ -62,7 +58,7 @@ steps:
 
   - task: PublishTestResults@2
     displayName: "Publish JUnit Results"
-    condition: and(succeededOrFailed(), eq('${{parameters.skip}}', false))
+    condition: succeededOrFailed()
     inputs:
       testResultsFormat: 'JUnit'
       testResultsFiles: '**/dependency-check-junit.xml'
