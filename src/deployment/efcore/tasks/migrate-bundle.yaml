@@ -1,7 +1,7 @@
 parameters:
   - name: connectionString
     type: string
-  - name: serviceConnectionName
+  - name: serviceConnectionName # To support managed identity, we always require this parameter
     type: string
   - name: workingDirectory
     type: string

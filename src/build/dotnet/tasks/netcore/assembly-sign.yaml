@@ -17,7 +17,7 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-        $project = "${{parameters.projects}}"; # todo: what about multi-line values here
+        $project = "${{parameters.projects}}";
         $folderPath = [System.IO.Directory]::GetParent($project)
         $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project)
         $files = Get-ChildItem -Path $folderPath -Filter "$projectName.dll" -Recurse
