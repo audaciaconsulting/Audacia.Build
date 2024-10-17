@@ -1,0 +1,42 @@
+# Job to deploy an NPM Package to the Internal Public Feed
+jobs:
+  - deployment: Deploy
+    displayName: Deploy
+    environment: NPM Internal
+    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: ExtractFiles@1
+              displayName: Extract Package
+              inputs:
+                archiveFilePatterns: '$(Pipeline.Workspace)/$(Build.DefinitionName)/*.tgz'
+                destinationFolder: 'dist'
+                cleanDestinationFolder: true
+
+            - task: CopyFiles@2
+              displayName: Copy Config
+              inputs:
+                SourceFolder: $(Pipeline.Workspace)/npmrc
+                Contents: '.npmrc'
+                TargetFolder: 'dist/package'
+
+            - task: npmAuthenticate@0
+              displayName: NPM Authenticate
+              inputs:
+                workingFile: dist/package/.npmrc
+
+            - task: UpdateNpmVersions@1
+              displayName: NPM Versioning
+              inputs:
+                workingDirectory: 'dist/package'
+
+            - task: Npm@1
+              displayName: NPM Publish
+              inputs:
+                command: publish
+                workingDir: 'dist/package'
+                verbose: false
+                publishRegistry: useFeed
+                publishFeed: 'Audacia.Public/AudaciaPublic'

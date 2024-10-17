@@ -1,13 +1,20 @@
-parameters:
-  environment: NuGet Internal (Gated)
-
+# Job to deploy a NuGet Package to the Internal Public Feed
 jobs:
-- deployment: Deploy
-  displayName: Deploy to NuGet (Internal Public)
-  environment: ${{ parameters.environment }}
-  condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
-  strategy:
-    runOnce:
-      deploy:
-        steps:
-        - template: /src/deployment/nuget/steps/internal-public-nuget-package.steps.yaml
+  - deployment: Deploy
+    displayName: Deploy to NuGet (Internal Public)
+    environment: NuGet Internal (Gated)
+    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: NuGetToolInstaller@1
+              displayName: Get NuGet
+
+            - task: NuGetCommand@2
+              displayName: NuGet Push
+              inputs:
+                command: 'push'
+                packagesToPush: '$(Pipeline.Workspace)\**\*.nupkg'
+                nuGetFeedType: 'internal'
+                publishVstsFeed: 'Audacia.Public/AudaciaPublic'

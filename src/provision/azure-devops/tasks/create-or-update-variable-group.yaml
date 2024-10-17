@@ -1,0 +1,87 @@
+# Task to create a new Azure DevOps Library Variable Group if it does not exists, and adds/updates variables in the group
+parameters:
+  - name: variableGroupName # The name of the variable group to create
+    type: string
+    default: ''
+  - name: variables # Array of objects with variableName, variableValue, and isSecret
+    type: object
+    default: []
+  - name: organisationUri # The URI of the DevOps organisation to create the variables in. Defaults to the current organisation.
+    type: string
+    default: '$(System.TeamFoundationCollectionUri)'
+  - name: projectName # The name of the DevOps project to create the variables in. Defaults to the current project.
+    type: string
+    default: '$(System.TeamProject)'
+
+steps:
+  - task: PowerShell@2
+    displayName: 'Save ${{parameters.variableGroupName}} variables'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $organization = "${{parameters.organisationUri}}";
+        $project = "${{parameters.projectName}}";
+        $groupName = "${{parameters.variableGroupName}}";
+
+        # Check if the variable group exists using az cli
+        $variableGroupId = az pipelines variable-group list `
+          --organization $organization `
+          --project $project `
+          --group-name $groupName `
+          --query '[0].id';
+
+        if ($variableGroupId -eq $null) {
+          Write-Host "Variable group '$groupName' does not exist. Creating it...";
+          $variableGroupId = az pipelines variable-group create `
+            --organization $organization `
+            --project $project `
+            --name $groupName `
+            --variables CreatedAt=$(Get-Date) `
+            --query "id";
+        } else {
+          Write-Host "Variable group '$groupName' already exists.";
+        }
+
+        # Convert variables array passed from the parameters to a powershell object
+        $variables = '${{convertToJson(parameters.variables)}}' | ConvertFrom-Json;
+
+        # Fetch the list of existing variables in the variable group
+        $existingVariables = $(az pipelines variable-group variable list `
+            --organization $organization `
+            --project $project `
+            --group-id $variableGroupId `
+            --query '"keys(@)"'
+          ) | ConvertFrom-Json;
+
+        # Iterate over each variable and add it to the group
+        foreach ($var in $variables) {
+          $varName = $var.variableName;
+          $varValue = '"{0}"' -f $($var.variableValue -replace '"', '""');
+          $isSecret = $var.isSecret;
+
+          # If isSecret is not set, ensure it is set to false
+          if ($isSecret -ne $true) {
+            $isSecret = $false;
+          }
+
+          # Work out what command to run based on if the variable already exists or not
+          $command = '';
+          $commandDescription = '';
+          if ($existingVariables -contains $varName) {
+            $command = 'update';
+            $commandDescription = 'Updating';
+          } else {
+            $command = 'create';
+            $commandDescription = 'Adding';
+          }
+
+          Write-Host "$commandDescription variable '$varName'. Secret: $isSecret";
+
+          $res = az pipelines variable-group variable $command `
+            --organization $organization `
+            --project $project `
+            --group-id $variableGroupId `
+            --name $varName `
+            --value $varValue `
+            --secret $isSecret;
+        }

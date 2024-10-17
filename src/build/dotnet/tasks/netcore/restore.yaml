@@ -1,9 +1,0 @@
-parameters:
-  projects: '**/*.csproj;'
-steps:
-- task: DotNetCoreCLI@2
-  displayName: .NET Restore
-  inputs:
-    command: restore
-    projects: '${{parameters.projects}}'
-    vstsFeed: 'Audacia.Public/AudaciaPublic'

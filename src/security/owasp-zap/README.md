@@ -102,7 +102,7 @@ You can specify a context file location using the `zapContextLocation` parameter
 
 `.context` files can either be configured manually be editing XML, or can be configured in, and exported from, the OWASP ZAP GUI.
 
-**Note that the ZAP GUI will not encrypt secrets (e.g. passwords) and instead just base64 encodes them. For obvious reasons we must avoid storing hard coded secrets in source control**. There are some ways around this using placeholders, which are already in use in the example `.context` files provided. If you would like to use an exported ZAP context - you must **speak Philip Rashleigh about this first.**.
+**Note that the ZAP GUI will not encrypt secrets (e.g. passwords) and instead just base64 encodes them. For obvious reasons we must avoid storing hard coded secrets in source control**. There are some ways around this using placeholders, which are already in use in the example `.context` files provided. If you would like to use an exported ZAP context - you must **speak to Security about this first.**.
 
 ### Sections
 
@@ -110,9 +110,9 @@ Some brief highlights are given below - for further information please consult t
 
 | Name | Description |
 | --- | --- |
-| incregexes | Entires are used to specify URLs to explicitly target. You must include the main application/API url here if using a context file - in the format `<incregexes>https://example.com.*</incregexes>`. Multiple entries can be added to include multiple sites/subsets of sites in the same scan. Regular expressions can be used to help specify where to scan based on patterns. |
-| exregexes  | The inverse of the above - entires can be added to specify excluding particular URLs (with regex patterns) from a scan. |
-| tech\include  | Entires can be used to specify which technologies to include in the scan. |
+| incregexes | Entries are used to specify URLs to explicitly target. You must include the main application/API url here if using a context file - in the format `<incregexes>https://example.com.*</incregexes>`. Multiple entries can be added to include multiple sites/subsets of sites in the same scan. Regular expressions can be used to help specify where to scan based on patterns. |
+| exregexes  | The inverse of the above - entries can be added to specify excluding particular URLs (with regex patterns) from a scan. |
+| tech\include  | Entries can be used to specify which technologies to include in the scan. |
 | authentication\type | This section is used to configure the authentication for the application. `2` for forms based auth. `4` for script based. |
 | alertfilters\filter | This section can be used to configure false positives. If an alert is configured here it will not show up as a failed test in AzureDevOps (instead showing under `Others`). See [https://www.zaproxy.org/docs/desktop/addons/alert-filters/alertfilterdialog](https://www.zaproxy.org/docs/desktop/addons/alert-filters/alertfilterdialog). |
 
@@ -120,13 +120,13 @@ Some brief highlights are given below - for further information please consult t
 
 ### initialize.yaml
 
-**Description**
+#### Description
 
 This must be run before any scan steps. It downloads down the latest zap2docker image, creates a temporary working folder and performs some other initialization steps.
 
 ### scan.yaml
 
-**Description**
+#### Description
 
 This is the main script that is used to facilitate an OWASP ZAP scan. There are various parameter configurations for different scan types. In order to facilitate an understanding it may be useful to refer to the examples before diffing in to the documentation.
 
@@ -134,7 +134,7 @@ Multiple scan.yaml steps can be run from within the same pipeline. Combining mul
 
 The first scan.yaml step in a pipeline must be preceded by an initialize.yaml step and the last scan.yaml in a pipeline must be followed by a finalize.yaml step.
 
-**Parameters**
+#### Parameters
 
 | Name                |            | Description |
 |---                  |---         | ---         |
@@ -152,31 +152,31 @@ The first scan.yaml step in a pipeline must be preceded by an initialize.yaml st
 | maxPassiveScanTime | (optional) | Max time in minutes to wait for ZAP to start and the passive scan to run (minutes). |
 | maxSpiderCrawlTime | (optional) | The number of minutes to spider for (minutes) - `Baseline` and `Full` scan types only. |
 
-**With Context Files**
+#### With Context Files
 
 If you are using a `.context` file, you must ensure there is an `incregexes` entry in the context file referencing the mail application/API url, e.g.: `<incregexes>https://example.com.*</incregexes>` or `<incregexes>https://api.example.com.*</incregexes>`. Please see [context files](#context-files) for more information.
 
-**Output**
+#### Output**
 
 This step will emit scan results as failed tests and publish scan HTML and XML reports as build artifacts.
 
-**Example**
+#### Example**
 
 See examples under `examples/security/owasp-zap` in the `Audacia.Build` repository. `examples/security/owasp-zap/unauthenticated-baseline-multi-scan` gives an example of performing multiple scans within the same pipeline.
 
 ### finalize.yaml
 
-**Description**
+#### Description
 
 This must be run before after the scan steps. It deliberately fails the pipeline if there are any alerts (failed tests) from the scans and performs some cleanup steps.
 
 ### authenticate-jwtbearer.yaml
 
-**Description**
+#### Description
 
 This optional step should be run before a scan if the user would like to obtain a JWT token for use in bearer token authentication, for example in an API scan using OpenIddict or IdentityServer. Please note that this step will not handle token expiry and renewal, and if a token expires before a scan has completed this will affect test outcomes.
 
-**Parameters**
+#### Parameters
 
 | Name                |            | Description |
 |---                  |---         | ---         |
@@ -187,10 +187,10 @@ This optional step should be run before a scan if the user would like to obtain 
 | username    | (required) | The username for the user. |
 | password    | (required) | The password for the user (please make sure this is stored as a secret). |
 
-**Output**
+#### Output
 
 This step will emit a yaml variable of `access_token` which can then be made use of in other steps (i.e. using `$(access_token)`).
 
-**Example**
+#### Example
 
 See `examples/security/owasp-zap/header-authenticated-api-scan` in the `Audacia.Build` repository for a usage example.

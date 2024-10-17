@@ -1,17 +1,66 @@
+# Job to build an NPM Package
 parameters:
-  path: ''
-  test: true
-  displayName: 'Build NPM'
-  skipDependencyChecks: false
+  - name: displayName
+    default: 'Build NPM'
+  - name: path
+    default: ''
+  - name: runTests
+    default: true
+  - name: skipDependencyChecks
+    default: false
 
 jobs:
+  - job:
+    displayName: ${{ parameters.displayName }}
+    steps:
+      - task: npmAuthenticate@0
+        displayName: NPM Authenticate
+        inputs:
+          workingFile: $(Build.SourcesDirectory)/${{parameters.path}}/.npmrc
 
-- job:
-  displayName: ${{ parameters.displayName }}
-  steps:
+      - task: Npm@1
+        displayName: NPM Install
+        inputs:
+          command: custom
+          workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+          customCommand: 'ci --prefer-offline --no-audit'
 
-  - template: /src/build/npm/steps/npm-package.steps.yaml
-    parameters:
-      path: ${{ parameters.path }}
-      test: ${{ parameters.test }}
-      skipDependencyChecks: ${{ parameters.skipDependencyChecks }}
+      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
+        - template: /src/security/dependency-check/steps/npm-dependency-check.steps.yaml
+          parameters:
+            path: ${{parameters.path}}
+            continueIfVulnerabilities: true
+
+      - task: Npm@1
+        displayName: NPM Test
+        condition: and(succeeded(), eq('${{parameters.runTests}}', 'true'))
+        inputs:
+          command: custom
+          workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+          customCommand: 'test'
+
+      - task: Npm@1
+        displayName: NPM Pack
+        inputs:
+          command: 'custom'
+          workingDir: ${{parameters.path}}
+          customCommand: 'pack'
+
+      - task: CopyFiles@2
+        displayName: Copy Package
+        inputs:
+          SourceFolder: ${{parameters.path}}
+          Contents: '*.tgz'
+          TargetFolder: $(Build.ArtifactStagingDirectory)
+
+      - task: PublishBuildArtifacts@1
+        displayName: Publish Config
+        inputs:
+          PathtoPublish: ${{parameters.path}}/.npmrc
+          ArtifactName: npmrc
+
+      - task: PublishBuildArtifacts@1
+        displayName: Publish Package
+        inputs:
+          PathtoPublish: $(Build.ArtifactStagingDirectory)
+          ArtifactName: $(Build.DefinitionName)

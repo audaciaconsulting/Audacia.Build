@@ -1,62 +1,63 @@
 # Find and replaces placeholders in a text file at run time
 parameters:
-- name: inputFilePath           # REQUIRED: The input file on which to operate
-  type: string
-  default: ''
-- name: outputFilePath          # OPTIONAL: The file path to write the resultant file to. If left blank inputFilePath will be overwritten
-  type: string
-  default: ''
-- name: data                    # REQUIRED: Object array of key value pairs for find and replace; objects should have 'key' and 'value' properties
-  type: object
-  default: []
-- name: base64EncodeValues      # OPTIONAL: Base64 encode replaced values. For use in OWAZP ZAP .context files where user authenticiation details are stored Base64 encoded
-  type: boolean
-  default: false
+  - name: displayName
+    default: 'Replace Placeholders With Runtime Values'
+  - name: inputFilePath           # REQUIRED: The input file on which to operate
+    type: string
+    default: ''
+  - name: outputFilePath          # OPTIONAL: The file path to write the resultant file to. If left blank inputFilePath will be overwritten
+    type: string
+    default: ''
+  - name: data                    # REQUIRED: Object array of key value pairs for find and replace; objects should have 'key' and 'value' properties
+    type: object
+    default: []
+  - name: base64EncodeValues      # OPTIONAL: Base64 encode replaced values. For use in OWAZP ZAP .context files where user authenticiation details are stored Base64 encoded
+    type: boolean
+    default: false
 
 steps:
-    
-# Find and Replace
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # Assign parameters to PowerShell variables for ease of use and re-use
-      $inputFilePath = "${{ parameters.inputFilePath }}"
-      $outputFilePath = "${{ parameters.outputFilePath }}"
+  # Find and Replace
+  - task: PowerShell@2
+    displayName: ${{parameters.displayName}}
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Assign parameters to PowerShell variables for ease of use and re-use
+        $inputFilePath = "${{parameters.inputFilePath}}"
+        $outputFilePath = "${{parameters.outputFilePath}}"
 
-      # Set the outputFilePath to inputFilePath if not configured (which will cause an overwrite)
-      if([string]::IsNullOrWhitespace($outputFilePath)) {
-        $outputFilePath = $inputFilePath
-      }
-            
-      # Convert "data" object from YAML into a JSON object which PowerShell can understand
-      # NOTE: Single quotes here are deliberate as resultant JSON will have double quotes within it
-      $dataArray = '${{ convertToJson(parameters.data) }}' | ConvertFrom-Json
-
-      Write-Host "Reading source file content"
-
-      # Load the content of the source file into memory
-      $content = Get-Content $inputFilePath -Raw 
-
-      # Convert the JSON to a hash table of fully realised placeholders and values 
-      foreach ($pair in $dataArray) {
-        $key = $pair.key      
-        $value = $pair.value
-
-        # Optionally Base64 encode value (e.g. for user authentication information in OWASP ZAP .context files)
-        if ([bool]::Parse("${{ parameters.base64EncodeValues }}")) {
-          $bytes = [System.Text.Encoding]::UTF8.GetBytes($value)
-          
-          $value = [Convert]::ToBase64String($bytes)
+        # Set the outputFilePath to inputFilePath if not configured (which will cause an overwrite)
+        if([string]::IsNullOrWhitespace($outputFilePath)) {
+          $outputFilePath = $inputFilePath
         }
 
-        Write-Host "Replacing $key"
+        # Convert "data" object from YAML into a JSON object which PowerShell can understand
+        # NOTE: Single quotes here are deliberate as resultant JSON will have double quotes within it
+        $dataArray = '${{ convertToJson(parameters.data) }}' | ConvertFrom-Json
 
-        # Find placeholder in content and replace with value (e.g. "{{password}}" with "mySecretPassword")
-        $content = $content.replace($key, $value)
-      }
-      
-      Write-Host "Writing output file content"
+        Write-Host "Reading source file content"
 
-      Set-Content -Path $outputFilePath -Value $content
-  displayName: 'Replace Placeholders With Runtime Values'
+        # Load the content of the source file into memory
+        $content = Get-Content $inputFilePath -Raw
+
+        # Convert the JSON to a hash table of fully realised placeholders and values
+        foreach ($pair in $dataArray) {
+          $key = $pair.key
+          $value = $pair.value
+
+          # Optionally Base64 encode value (e.g. for user authentication information in OWASP ZAP .context files)
+          if ([bool]::Parse("${{parameters.base64EncodeValues}}")) {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($value)
+
+            $value = [Convert]::ToBase64String($bytes)
+          }
+
+          Write-Host "Replacing $key"
+
+          # Find placeholder in content and replace with value (e.g. "{{password}}" with "mySecretPassword")
+          $content = $content.replace($key, $value)
+        }
+
+        Write-Host "Writing output file content"
+
+        Set-Content -Path $outputFilePath -Value $content

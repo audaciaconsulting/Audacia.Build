@@ -1,0 +1,77 @@
+# Steps to build .NET Core Projects
+parameters:
+  - name: projects
+    default: '**/*.csproj'
+  - name: tests
+    default: '**/*.Tests.csproj'
+  - name: runTests
+    default: true
+  - name: configuration
+    default: 'Release'
+  - name: applyVersioning
+    default: true
+  - name: artifactName
+    default: '$(Build.DefinitionName)'
+  - name: releaseBranchName
+    default: 'master,main'
+
+steps:
+  - ${{ if eq(parameters.applyVersioning, true) }}:
+    - task: UpdateDotNetVersions@12
+      displayName: .NET Versioning
+      inputs:
+        releaseBranchNames: ${{parameters.releaseBranchName}}
+        ExcludePreReleasePostfix: false
+        workingDirectory: ''
+        includeCsproj: true
+        includeNuspec: false
+        packageSource: 'internalPublic'
+        excludePaths: ${{parameters.tests}}
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - task: DotNetCoreCLI@2
+    displayName: .NET Restore
+    inputs:
+      command: restore
+      projects: ${{parameters.projects}}
+      vstsFeed: 'Audacia.Public/AudaciaPublic'
+
+  - task: DotNetCoreCLI@2
+    displayName: .NET Build
+    inputs:
+      command: build
+      projects: ${{parameters.projects}}
+      publishWebProjects: false
+      arguments: >
+        --configuration ${{parameters.configuration}}
+        --no-restore
+
+  - task: DotNetCoreCLI@2
+    displayName: .NET Test
+    condition: and(succeeded(), eq('${{parameters.runTests}}', true))
+    inputs:
+      command: test
+      projects: ${{parameters.tests}}
+      arguments: >
+        --collect "Code coverage"
+      configuration: 'Release'
+
+  - task: DotNetCoreCLI@2
+    displayName: '.NET Publish'
+    inputs:
+      command: publish
+      publishWebProjects: false
+      projects: ${{parameters.projects}}
+      arguments: >
+        --configuration ${{parameters.configuration}}
+        --output $(Build.ArtifactStagingDirectory)
+        --no-restore
+        --no-build
+      zipAfterPublish: false
+      modifyOutputPath: true
+
+  - template: /src/build/common/tasks/publish.yaml
+    parameters:
+      path: ''
+      artifactName: ${{parameters.artifactName}}

@@ -1,8 +1,0 @@
-parameters:
-  projects: '**/*.sln'
-steps:
-  - task: NuGetCommand@2
-    displayName: 'NuGet restore'
-    inputs:
-      restoreSolution: ${{parameters.projects}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'

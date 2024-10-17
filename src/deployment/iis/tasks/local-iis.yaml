@@ -1,9 +1,15 @@
+# Task to deploy to a self-hosted IIS server
 parameters:
-  websiteName: ''
-  websitePath: ''
-  ipAddress: ''
-  hostname: ''
-  sslThumbprint: ''
+  - name: websiteName
+    default: ''
+  - name: websitePath
+    default: ''
+  - name: ipAddress
+    default: ''
+  - name: hostname
+    default: ''
+  - name: sslThumbprint
+    default: ''
 
 steps:
   - task: IISWebAppManagementOnMachineGroup@0

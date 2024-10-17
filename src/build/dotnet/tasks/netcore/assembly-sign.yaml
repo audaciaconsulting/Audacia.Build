@@ -1,8 +1,9 @@
+# Task to sign a .NET Core Project with the Audacia Code Signing certificate
 parameters:
-  projects: '**/*.csproj'
+  - name: projects
+    default: '**/*.csproj'
 
 steps:
-
   - task: DownloadSecureFile@1
     displayName: Get Code Sign Certificate
     name: CodeSignCertificate
@@ -16,7 +17,7 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-        $project = "${{ parameters.projects }}"; # todo: what about multi-line values here
+        $project = "${{parameters.projects}}";
         $folderPath = [System.IO.Directory]::GetParent($project)
         $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project)
         $files = Get-ChildItem -Path $folderPath -Filter "$projectName.dll" -Recurse

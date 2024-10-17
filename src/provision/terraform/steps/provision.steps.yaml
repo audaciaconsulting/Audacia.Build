@@ -1,0 +1,75 @@
+# Steps to provision an environment with Terraform
+parameters:
+  - name: terraformDirectory
+    default: $(System.DefaultWorkingDirectory)
+  - name: terraformVersion # Version of terraform to install
+    default: ''
+  - name: environmentId # Name of the environment in Azure. example qa, uat, production
+    default: ''
+  - name: terraformStateServiceConnectionName # Name of the service connection to connect to the Terraform state storage
+    default: ''
+  - name: terraformStateResourceGroup # Resource group with the Terraform state storage in
+    default: ''
+  - name: terraformStateStorageAccount # Storage Account with the Terraform state storage in
+    default: ''
+  - name: terraformStateStoragePrefix # The prefix to use for the Terraform state storage
+    default: ''
+  - name: provisioningServiceConnectionName # Name of the service connection used to provision resources
+    default: ''
+  - name: terraformInputVariables # Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties
+    type: object
+    default: []
+
+steps:
+  - ${{ each variable in parameters.terraformInputVariables }}:
+    - template: /src/provision/terraform/tasks/set-variable.yaml
+      parameters:
+        terraformDirectory: ${{ parameters.terraformDirectory }}
+        variableName: ${{ variable.variableName }}
+        variableValue: ${{ variable.variableValue }}
+
+  - template: /src/provision/azure/tasks/create-storage-container.yaml
+    parameters:
+      storageContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      serviceConnectionName: ${{parameters.terraformStateServiceConnectionName}}
+      storageAccountName: ${{parameters.terraformStateStorageAccount}}
+
+  - task: TerraformInstaller@1
+    displayName: Terraform Install
+    inputs:
+      terraformVersion: ${{parameters.terraformVersion}}
+
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    name: TerraformInit
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
+  - task: TerraformTaskV4@4
+    displayName: Terraform Apply
+    name: TerraformApply
+    inputs:
+      provider: 'azurerm'
+      command: 'apply'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  - task: TerraformTaskV4@4
+    displayName: Terraform Output
+    name: TerraformOutput
+    inputs:
+      provider: 'azurerm'
+      command: 'output'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+      outputFormat: json
+      outputTo: file
+
+  - template: /src/provision/terraform/tasks/expand-variables.yaml

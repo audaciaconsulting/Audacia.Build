@@ -1,68 +1,75 @@
 # Sends a login request to the configured token endpoint using resource owner password credentials authorization flow.
 # On a successful login the $(access_token) variable is set with the access token in the response.
 parameters:
-  tokenIssuerUrl: '' # REQUIRED: The token endpoint i.e. 'https://example.com/connect/token'
-  clientScope: ''    # REQUIRED: The scopes required by the client, i.e. 'openid profile api'
-  clientId: ''       # REQUIRED: The client application name, i.e. 'SecurityTestingClient'
-  clientSecret: ''   # REQUIRED: The client application secret
-  username: ''       # REQUIRED: The username / email address for the test user
-  password: ''       # REQUIRED: The password for the test user
-  grantType: 'password' #grant_type to use when obtaining a token
+  - name: tokenIssuerUrl # REQUIRED: The token endpoint i.e. 'https://example.com/connect/token'
+    default: ''
+  - name: clientScope # REQUIRED: The scopes required by the client, i.e. 'openid profile api'
+    default: ''
+  - name: clientId # REQUIRED: The client application name, i.e. 'SecurityTestingClient'
+    default: ''
+  - name: clientSecret # REQUIRED: The client application secret
+    default: ''
+  - name: username # REQUIRED: The username / email address for the test user
+    default: ''
+  - name: password # REQUIRED: The password for the test user
+    default: ''
+  - name: grantType #grant_type to use when obtaining a token
+    default: 'password'
 
 steps:
-- task: PowerShell@2
-  env:
-    TokenIssuerUrl: ${{ parameters.tokenIssuerUrl }}
-    Scope: ${{ parameters.clientScope }}
-    ClientId: ${{ parameters.clientId }}
-    ClientSecret: ${{ parameters.clientSecret }}
-    Username: ${{ parameters.username }}
-    Password: ${{ parameters.password }}
-    GrantType: ${{ parameters.grantType }}
-  inputs:
-    failOnStderr: true
-    targetType: 'inline'
-    script: |
-      Write-Output "Sending authorisation request to $env:TokenIssuerUrl"
+  - task: PowerShell@2
+    displayName: "Authenticate User"
+    env:
+      TokenIssuerUrl: ${{parameters.tokenIssuerUrl}}
+      Scope: ${{parameters.clientScope}}
+      ClientId: ${{parameters.clientId}}
+      ClientSecret: ${{parameters.clientSecret}}
+      Username: ${{parameters.username}}
+      Password: ${{parameters.password}}
+      GrantType: ${{parameters.grantType}}
+    inputs:
+      failOnStderr: true
+      targetType: 'inline'
+      script: |
+        Write-Output "Sending authorisation request to $env:TokenIssuerUrl"
 
-      if ([string]::IsNullOrEmpty($env:GrantType))
-      {
-          Write-Error "Parameter grantType must be provided."
-          exit 1
-      }
+        if ([string]::IsNullOrEmpty($env:GrantType))
+        {
+            Write-Error "Parameter grantType must be provided."
+            exit 1
+        }
 
-      if ($env:GrantType -ne 'password' -and $env:GrantType -ne 'client_credentials')
-      {
-          Write-Error "grantType '$($env:GrantType)' not supported."
-          exit 1
-      }
+        if ($env:GrantType -ne 'password' -and $env:GrantType -ne 'client_credentials')
+        {
+            Write-Error "grantType '$($env:GrantType)' not supported."
+            exit 1
+        }
 
-      if ([string]::IsNullOrEmpty($env:ClientId) -or [string]::IsNullOrEmpty($env:ClientSecret))
-      {
-          Write-Error "clientId and clientSecret parameters must be provided."
-          exit 1
-      }
+        if ([string]::IsNullOrEmpty($env:ClientId) -or [string]::IsNullOrEmpty($env:ClientSecret))
+        {
+            Write-Error "clientId and clientSecret parameters must be provided."
+            exit 1
+        }
 
-      if ($env:GrantType -eq "password" -and ([string]::IsNullOrEmpty($env:Username) -or [string]::IsNullOrEmpty($env:Password)))
-      {
-          Write-Error "Username and Password must be provided for grant type password"
-          exit 1
-      }
+        if ($env:GrantType -eq "password" -and ([string]::IsNullOrEmpty($env:Username) -or [string]::IsNullOrEmpty($env:Password)))
+        {
+            Write-Error "Username and Password must be provided for grant type password"
+            exit 1
+        }
 
-      $body = @{
-        "client_id" = $env:ClientId
-        "client_secret" = $env:ClientSecret
-        "scope" = $env:Scope
-        "grant_type" = $env:GrantType
-        "username" = $env:Username
-        "password" = $env:Password
-      }
+        $body = @{
+          "client_id" = $env:ClientId
+          "client_secret" = $env:ClientSecret
+          "scope" = $env:Scope
+          "grant_type" = $env:GrantType
+          "username" = $env:Username
+          "password" = $env:Password
+        }
 
-      try {
-          $response = Invoke-RestMethod -Uri $env:TokenIssuerUrl -Method Post -Body $body -ContentType "application/x-www-form-urlencoded"
-          Write-Host "##vso[task.setvariable variable=access_token]$($response.access_token)"
-      } catch {
-          Write-Error "Error fetching token: $_"
-          exit 1
-      }
-  displayName: "Authenticate User"
+        try {
+            $response = Invoke-RestMethod -Uri $env:TokenIssuerUrl -Method Post -Body $body -ContentType "application/x-www-form-urlencoded"
+            Write-Host "##vso[task.setvariable variable=access_token]$($response.access_token)"
+        } catch {
+            Write-Error "Error fetching token: $_"
+            exit 1
+        }

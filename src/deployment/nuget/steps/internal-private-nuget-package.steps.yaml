@@ -1,9 +1,0 @@
-steps:
-- task: NuGetToolInstaller@1
-  displayName: Get NuGet
-- task: NuGetCommand@2
-  displayName: NuGet Push
-  inputs:
-    command: 'push'
-    packagesToPush: '$(Pipeline.Workspace)\**\*.nupkg'
-    publishVstsFeed: 'f09ace73-ace9-4751-ab42-2fada3f24d78'
