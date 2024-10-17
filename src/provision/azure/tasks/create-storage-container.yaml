@@ -1,4 +1,5 @@
 # Task to check if a storage container exists, and if not creates it
+# This task uses AzureAD to authenticate, so ensure you have the correct RBAC permissions setup for the service connection
 parameters:
   - name: storageContainerName
     type: string
