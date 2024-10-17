@@ -27,16 +27,19 @@ steps:
         }
 
         if ($containerExists.exists -eq $true)
+        {
           Write-host "Storage container $storageContainerName already exists"
           exit 0
         }
 
         $containerCreated = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off) | ConvertFrom-Json
 
-        if ($containerCreated.created -eq $true) {
+        if ($containerCreated.created -eq $true)
+        {
           Write-host "Storage container $storageContainerName created"
         }
-        else {
+        else
+        {
           Write-Error "Storage container was not created"
           exit 1
         }
