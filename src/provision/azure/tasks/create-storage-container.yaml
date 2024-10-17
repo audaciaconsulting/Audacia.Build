@@ -12,7 +12,7 @@ steps:
     displayName: Create Storage Container
     inputs:
       azureSubscription: ${{parameters.serviceConnectionName}}
-      scriptType: 'ps'
+      scriptType: 'pscore'
       scriptLocation: inlineScript
       inlineScript: |
         $storageContainerName="${{parameters.storageContainerName}}"
@@ -20,22 +20,23 @@ steps:
 
         $containerExists = (az storage container exists --account-name $backendStorageAccount --name $storageContainerName --auth-mode login) | ConvertFrom-Json
 
-        if ($containerExists.exists -eq $false)
+        if (!$containerExists)
         {
-          $containerCreated = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off) | ConvertFrom-Json
-
-          if ($containerCreated.created -eq $false) {
-            write-host "Storage container was not created"
-            exit 1
-          }
-          else {
-            write-host "Storage container $storageContainerName created"
-          }
+          Write-Error "Failed to query for container existing"
+          exit 1
         }
-        else
-        {
-            write-host "Storage container $storageContainerName already exists"
+
+        if ($containerExists.exists -eq $true)
+          Write-host "Storage container $storageContainerName already exists"
+          exit 0
         }
-        exit 0
 
+        $containerCreated = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off) | ConvertFrom-Json
 
+        if ($containerCreated.created -eq $true) {
+          Write-host "Storage container $storageContainerName created"
+        }
+        else {
+          Write-Error "Storage container was not created"
+          exit 1
+        }
