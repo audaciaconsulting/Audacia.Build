@@ -18,23 +18,23 @@ steps:
         $storageContainerName="${{parameters.storageContainerName}}"
         $backendStorageAccount="${{parameters.storageAccountName}}"
 
-        $containerExists = (az storage container exists --account-name $backendStorageAccount --name $storageContainerName --auth-mode login) | ConvertFrom-Json
+        $containerExistsResult = (az storage container exists --account-name $backendStorageAccount --name $storageContainerName --auth-mode login) | ConvertFrom-Json
 
-        if (!$containerExists)
+        if (!$containerExistsResult)
         {
           Write-Error "Failed to query for container existing"
           exit 1
         }
 
-        if ($containerExists.exists -eq $true)
+        if ($containerExistsResult.exists -eq $true)
         {
           Write-host "Storage container $storageContainerName already exists"
           exit 0
         }
 
-        $containerCreated = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off) | ConvertFrom-Json
+        $containerCreatedResult = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off --auth-mode login) | ConvertFrom-Json
 
-        if ($containerCreated.created -eq $true)
+        if ($containerCreatedResult.created -eq $true)
         {
           Write-host "Storage container $storageContainerName created"
         }
