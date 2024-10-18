@@ -1,0 +1,46 @@
+# Task to check if a storage container exists, and if not creates it
+# This task uses AzureAD to authenticate, so ensure you have the correct RBAC permissions setup for the service connection
+parameters:
+  - name: storageContainerName
+    type: string
+  - name: storageAccountName
+    type: string
+  - name: serviceConnectionName
+    type: string
+
+steps:
+  - task: AzureCLI@2
+    displayName: Create Storage Container
+    inputs:
+      azureSubscription: ${{parameters.serviceConnectionName}}
+      scriptType: 'pscore'
+      scriptLocation: inlineScript
+      inlineScript: |
+        $storageContainerName="${{parameters.storageContainerName}}"
+        $backendStorageAccount="${{parameters.storageAccountName}}"
+
+        $containerExistsResult = (az storage container exists --account-name $backendStorageAccount --name $storageContainerName --auth-mode login) | ConvertFrom-Json
+
+        if (!$containerExistsResult)
+        {
+          Write-Error "Failed to query for container existing"
+          exit 1
+        }
+
+        if ($containerExistsResult.exists -eq $true)
+        {
+          Write-host "Storage container $storageContainerName already exists"
+          exit 0
+        }
+
+        $containerCreatedResult = (az storage container create --name $storageContainerName --account-name $backendStorageAccount --public-access off --auth-mode login) | ConvertFrom-Json
+
+        if ($containerCreatedResult.created -eq $true)
+        {
+          Write-host "Storage container $storageContainerName created"
+        }
+        else
+        {
+          Write-Error "Storage container was not created"
+          exit 1
+        }

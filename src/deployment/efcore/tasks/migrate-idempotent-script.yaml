@@ -1,0 +1,34 @@
+# Runs the EF Core migrations script for the provided DbContext on the provided SQL Server.
+# Requires the /src/build/dotnet/steps/ef-migration-idempotent-script.steps.yaml steps
+# to have been run at an earlier stage in the pipeline.
+parameters:
+  - name: displayName
+    default: 'Migrate Azure SQL Database'
+  - name: artifactName
+    default: 'Migrations'
+  - name: dbContext # Name of the DbContext
+    default: ''
+  - name: azureSubscription # Azure Subscription for the resource
+    default: ''
+  - name: sqlHostname # SQL Server Hostname
+    default: ''
+  - name: sqlDatabase # Database Name on the SQL Server
+    default: ''
+  - name: sqlUser # SQL Server Username
+    default: ''
+  - name: sqlPassword # SQl Server Password
+    default: ''
+
+steps:
+  - task: SqlAzureDacpacDeployment@1
+    displayName: ${{parameters.displayName}}
+    inputs:
+      azureSubscription: ${{parameters.azureSubscription}}
+      AuthenticationType: 'server'
+      ServerName: ${{parameters.sqlHostname}}
+      DatabaseName: ${{parameters.sqlDatabase}}
+      SqlUsername: ${{parameters.sqlUser}}
+      SqlPassword: ${{parameters.sqlPassword}}
+      deployType: 'SqlTask'
+      SqlFile: $(Pipeline.Workspace)/${{parameters.artifactName}}/${{parameters.dbContext}}.sql
+      IpDetectionMethod: 'AutoDetect'

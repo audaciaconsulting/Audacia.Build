@@ -1,9 +1,0 @@
-parameters:
-  projects: '**/*.csproj'
-steps:
-  - task: MSBuild@1
-    displayName: .NET Build
-    inputs:
-      solution: '${{parameters.projects}}'
-      msbuildArchitecture: 'x64'
-      configuration: 'Release'

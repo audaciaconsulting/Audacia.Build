@@ -1,0 +1,56 @@
+# Steps to build an EF Project as an idempotent script
+parameters:
+  - name: displayName
+    default: 'Build EF Core Migration Scripts'
+  - name: dbContext # (required) The name of the database context for the application.
+    default: 'DatabaseContext'
+  - name: defaultProject # (optional) The entity framework project which contains the database context.
+    default: ''
+  - name: startupProject # (optional) The executable project that contains the appsettings.json file.
+    default: ''
+  - name: dotNetToolsManifest # The location of the dotnet tools manifest. Defaults to the root of the source repository.
+    default: '$(Build.SourcesDirectory)/.config/dotnet-tools.json'
+  - name: workingDirectory # The directory the scripts are run inside. If you are only specifying the database context then this should be the startup project directory.
+    default: '$(Build.SourcesDirectory)'
+  - name: artifactName
+    default: 'EFMigrationScript'
+
+steps:
+  - task: DotNetCoreCLI@2
+    displayName: .NET Restore
+    inputs:
+      command: restore
+      projects: ${{parameters.efProjectPath}}
+      vstsFeed: 'Audacia.Public/AudaciaPublic'
+
+  - task: PowerShell@2
+    displayName: ${{parameters.displayName}}
+    inputs:
+      targetType: 'inline'
+      script: |
+        function isNullOrEmpty($str) { return ($str -Eq $Null) -Or ($str -Eq ''); }
+        # The path of the output sql migration file
+        $sqlMigrationPath = "$(Build.ArtifactStagingDirectory)/Migrations/${{parameters.dbContext}}.sql"
+        $missingStartupPath = isNullOrEmpty("${{parameters.startupProject}}")
+        $missingDefaultPath = isNullOrEmpty("${{parameters.defaultProject}}")
+
+        # Check for the dotnet tools manifest
+        if ((Test-Path("${{parameters.dotNetToolsManifest}}")) -Eq $False) {
+          Write-Error Unable to build EF Migrations, dotnet tools manifest has not been configured.
+        }
+
+        # Restore the dotnet tools manifest
+        dotnet tool restore --tool-manifest "${{parameters.dotNetToolsManifest}}"
+
+        # The most basic config is to only provide the DbContext, otherwise define all parameters
+        if ($missingStartupPath -Or $missingDefaultPath) {
+          dotnet tool run dotnet-ef migrations script -i -c "${{parameters.dbContext}}" -o $sqlMigrationPath
+        } else {
+          dotnet tool run dotnet-ef migrations script -i -c "${{parameters.dbContext}}" -s "${{parameters.startupProject}}" -p "${{parameters.defaultProject}}" -o $sqlMigrationPath
+        }
+      errorActionPreference: 'stop'
+      workingDirectory: ${{parameters.workingDirectory}}
+
+  - template: /src/build/common/tasks/publish.yaml
+    parameters:
+      artifactName: ${{parameters.artifactName}}

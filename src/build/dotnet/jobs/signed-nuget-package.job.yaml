@@ -1,24 +1,113 @@
+# Job to build a NuGet Package that will be hosted on the Audacia NuGet feed, as this requires code signing
 parameters:
-  projects: '**/*.csproj'
-  configuration: 'release'
-  testPath: '**/*Tests/*.csproj'
-  displayName: 'Build Package'
-  skipDependencyChecks: false
-  releaseBranchName: 'master'
+  - name: displayName
+    default: 'Build Package'
+  - name: projects
+    default: '**/*.csproj'
+  - name: configuration
+    default: 'release'
+  - name: testPath
+    default: '**/*Tests/*.csproj'
+  - name: skipDependencyChecks
+    default: false
+  - name: releaseBranchName
+    default: 'master,main'
+  - name: excludePreReleasePostfix
+    default: false
+  - name: workingDirectory # The working directory containing relevant csproj and nuspec files; if not set then $(Build.SourcesDirectory) is used.
+    default: ''
+  - name: includeCsproj
+    default: true
+  - name: includeNuspec
+    default: false
+  - name: packageSource # Where the package is published; should be one of 'public', 'internalPrivate' or 'internalPublic'
+    default: 'public'
+  - name: excludePaths # Comma-delimited paths to exclude from versioning
+    default: '*.Tests.csproj'
+  - name: artifactName
+    default: '$(Build.DefinitionName)'
 
 jobs:
+  - job:
+    displayName: ${{parameters.displayName}}
+    variables:
+      - group: Code Signing
 
-- job:
-  displayName: ${{ parameters.displayName }}
-  variables:
-  - group: Code Signing
-  
-  steps:
+    steps:
+      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
+        - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
+          parameters:
+            continueIfVulnerabilities: true
 
-  - template: /src/build/dotnet/steps/signed-nuget-package.steps.yaml
-    parameters:
-      projects: ${{parameters.projects}}
-      configuration: ${{parameters.configuration}}
-      testPath: ${{parameters.testPath}}
-      skipDependencyChecks: ${{ parameters.skipDependencyChecks }}
-      releaseBranchName: ${{parameters.releaseBranchName}}
+      - ${{ if eq(parameters.applyVersioning, true) }}:
+        - task: UpdateDotNetVersions@12
+          displayName: .NET Versioning
+          inputs:
+            releaseBranchNames: ${{parameters.releaseBranchName}}
+            ExcludePreReleasePostfix: ${{parameters.excludePreReleasePostfix}}
+            workingDirectory: ${{parameters.workingDirectory}}
+            includeCsproj: ${{parameters.includeCsproj}}
+            includeNuspec: ${{parameters.includeNuspec}}
+            packageSource: ${{parameters.packageSource}}
+            excludePaths: ${{parameters.excludePaths}}
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+      - task: DotNetCoreCLI@2
+        displayName: .NET Restore
+        inputs:
+          command: restore
+          projects: ${{parameters.projects}}
+
+      - task: DownloadSecureFile@1
+        displayName: Get Strong Naming Certificate
+        name: StrongNameCertificate
+        inputs:
+          secureFile: audacia.snk
+
+      - task: MSBuild@1
+        displayName: .NET Build
+        inputs:
+          solution: ${{parameters.projects}}
+          msbuildArchitecture: x64
+          configuration: ${{parameters.configuration}}
+          msbuildArguments: /p:AssemblyOriginatorKeyFile=$(StrongNameCertificate.secureFilePath)
+
+      - task: DotNetCoreCLI@2
+        displayName: .NET Test
+        condition: and(succeeded(), eq('${{parameters.runTests}}', true))
+        inputs:
+          command: test
+          projects: ${{parameters.testPath}}
+          arguments: >
+            --collect "Code coverage"
+          configuration: 'Release'
+
+      - template: /src/build/dotnet/tasks/netcore/assembly-sign.yaml
+        parameters:
+          projects: ${{parameters.projects}}
+
+      - task: DotNetCoreCLI@2
+        displayName: .NET Pack
+        inputs:
+          command: pack
+          nobuild: true
+          includesymbols: false
+          packagesToPack: ${{parameters.projects}}
+
+      - task: NuGetToolInstaller@1
+        displayName: Get Nuget
+        inputs:
+          versionSpec: '4.9.3'
+
+      - task: NuGetCommand@2
+        displayName: NuGet Sign
+        condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+        inputs:
+          command: 'custom'
+          arguments: sign "$(build.ArtifactStagingDirectory)\*.nupkg" -CertificatePath "$(CodeSignCertificate.secureFilePath)" -CertificatePassword "$(CertificatePassword)" -Timestamper "http://timestamp.digicert.com"
+
+      - template: /src/build/common/tasks/publish.yaml
+        parameters:
+          path: ''
+          artifactName: ${{parameters.artifactName}}

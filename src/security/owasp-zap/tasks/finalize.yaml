@@ -1,19 +1,18 @@
 # Fails or passes pipeline based on results and removes temporary folders
 steps:
+  # Fail if any of the scans railes alerts (and therefore have failed tests)
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: exit 1
+    condition: and(succeeded(), eq(variables.alertsExist, 'true'))
+    displayName: "Finalize: Fail Pipeline If Alerts Exist"
 
-# Fail if any of the scans railes alerts (and therefore have failed tests)
-- task: Bash@3  
-  inputs:
-    targetType: 'inline'
-    script: exit 1
-  condition: and(succeeded(), eq(variables.alertsExist, 'true'))
-  displayName: "Finalize: Fail Pipeline If Alerts Exist"
-  
-# Delete the temporary directory created in setup.yaml as clean-up
-- task: DeleteFiles@1
-  inputs:
-    sourceFolder: $(parentWorkingTempDirectory)
-    contents: '**/*'
-    removeSourceFolder: true
-  condition: always() # this step will always run, even if the pipeline is cancelled
-  displayName: 'Finalize: Remove Temporary Directory'
+  # Delete the temporary directory created in setup.yaml as clean-up
+  - task: DeleteFiles@1
+    inputs:
+      sourceFolder: $(parentWorkingTempDirectory)
+      contents: '**/*'
+      removeSourceFolder: true
+    condition: always() # this step will always run, even if the pipeline is cancelled
+    displayName: 'Finalize: Remove Temporary Directory'

@@ -1,0 +1,26 @@
+# Task to add a variable to the Terraform tfvars file
+parameters:
+  - name: terraformDirectory
+    default: '$(System.DefaultWorkingDirectory)'
+  - name: variableName
+    default: ''
+  - name: variableValue
+    default: ''
+
+steps:
+  - task: Powershell@2
+    displayName: Set Terraform Variable '${{parameters.variableName}}'
+    inputs:
+      targetType: inline
+      script: |
+        $name = "${{parameters.variableName}}"
+        if ($name.Length -lt 1) {
+          echo "Variable name is missing."
+          exit 1
+        }
+
+        $value = "${{parameters.variableValue}}"
+
+        Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = `"$value`""
+        write-host "$name is $value"
+        exit 0

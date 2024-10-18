@@ -1,18 +1,19 @@
 ﻿parameters:
-  targetBranch: 'master'
+  - name: targetBranch
+    default: 'master'
 
 steps:
   - checkout: self  # self represents the repo where the initial Azure Pipelines YAML file was found
 
-  - script: cd $(Build.SourcesDirectory) 
+  - script: cd $(Build.SourcesDirectory)
     displayName: 'Move To Source Directory'
-    
-  - script: git checkout ${{ parameters.targetBranch }}
-    workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Checkout ${{ parameters.targetBranch }}'
 
-  - script: git merge $(Build.SourceVersion) 
+  - script: git checkout ${{parameters.targetBranch}}
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Checkout ${{parameters.targetBranch}}'
+
+  - script: git merge $(Build.SourceVersion)
     displayName: 'Merge Branches'
-    
-  - script: git push origin ${{ parameters.targetBranch }}
-    displayName: 'push origin ${{ parameters.targetBranch }}'
+
+  - script: git push origin ${{parameters.targetBranch}}
+    displayName: 'push origin ${{parameters.targetBranch}}'

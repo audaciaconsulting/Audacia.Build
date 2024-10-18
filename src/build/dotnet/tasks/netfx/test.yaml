@@ -1,8 +1,0 @@
-parameters:
-  testAssemblies: '**\\*test*.dll\n!**\\*TestAdapter.dll\n!**\\obj\\**'
-steps:
-- task: VSTest@2
-  displayName: 'Test Assemblies'
-  inputs:
-    configuration: 'Release'
-    testAssemblyVer2: ${{parameters.testAssemblies}}

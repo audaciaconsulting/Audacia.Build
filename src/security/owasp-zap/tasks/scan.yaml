@@ -1,265 +1,278 @@
 # Performs an OWASP ZAP scan of the configured website, and produces a security vulnerability report
 parameters:
-  name: ''                          # REQUIRED: A name for the scan (allowed characters: space, a-z, A-Z, 0-9, _ and -). Must be unique within a job
-  scanType: ''                      # REQUIRED: [ Baseline, Full, API ], using API requires the targetUrl be an open api endpoint, i.e. 'https://example.com/swagger/v1/swagger.json'  
-  targetUrl: ''                     # REQUIRED: Either url to attack for baseline/full scans, or the /swagger.json open API definition url for API scans
-  authorizationHeaderName: ''       # OPTIONAL: Used to override the name of an authorization header (e.g. "MY-API-AUTH-KEY" instead of "Authorization")
-  authorizationHeaderValue: ''      # OPTIONAL: A value to use as the value of the authorization header
-  zapContextLocation: ''            # OPTIONAL: The ZAP context file to use for non-header based authentication, alert filters, and additional configuration
-  authenticationScriptType: ''      # OPTIONAL: [ 'Mozilla Zest', 'Oracle Nashorn', 'Graal.js' ] authentication script type for more complex authentication - must be paired with a Zap context configured for script authentication
-  authenticationScriptLocation: ''  # OPTIONAL: ZAP authentication script for more complex authentication - must be paired with a Zap context configured for script authentication and a specified authenticationScriptType
-  username: ''                      # OPTIONAL: The username for the user (required for authorization using a context file)
-  password: ''                      # OPTIONAL: The password for the user (required for authorization using a context file)
-  useAjaxSpider: false              # OPTIONAL: Use Ajax Spider test URLs found on webpages that have been scanned - Baseline and Full scan types only
-  maxPassiveScanTime: -1            # OPTIONAL: Max time in minutes to wait for ZAP to start and the passive scan to run (minutes). Default of -1 means not set so will use ZAP Docker default
-  maxSpiderCrawlTime: -1            # OPTIONAL: the number of minutes to spider for (optional, minutes) - Baseline and Full scan types only. Default of -1 means not set so will use ZAP Docker default
+  - name: name # REQUIRED: A name for the scan (allowed characters: space, a-z, A-Z, 0-9, _ and -). Must be unique within a job
+    default: ''
+  - name: scanType # REQUIRED: [ Baseline, Full, API ], using API requires the targetUrl be an open api endpoint, i.e. 'https://example.com/swagger/v1/swagger.json'
+    default: ''
+  - name: targetUrl # REQUIRED: Either url to attack for baseline/full scans, or the /swagger.json open API definition url for API scans
+    default: ''
+  - name: authorizationHeaderName # OPTIONAL: Used to override the name of an authorization header (e.g. "MY-API-AUTH-KEY" instead of "Authorization")
+    default: ''
+  - name: authorizationHeaderValue # OPTIONAL: A value to use as the value of the authorization header
+    default: ''
+  - name: zapContextLocation # OPTIONAL: The ZAP context file to use for non-header based authentication, alert filters, and additional configuration
+    default: ''
+  - name: authenticationScriptType # OPTIONAL: [ 'Mozilla Zest', 'Oracle Nashorn', 'Graal.js' ] authentication script type for more complex authentication - must be paired with a Zap context configured for script authentication
+    default: ''
+  - name: authenticationScriptLocation # OPTIONAL: ZAP authentication script for more complex authentication - must be paired with a Zap context configured for script authentication and a specified authenticationScriptType
+    default: ''
+  - name: username # OPTIONAL: The username for the user (required for authorization using a context file)
+    default: ''
+  - name: password # OPTIONAL: The password for the user (required for authorization using a context file)
+    default: ''
+  - name: useAjaxSpider # OPTIONAL: Use Ajax Spider test URLs found on webpages that have been scanned - Baseline and Full scan types only
+    default: false
+  - name: maxPassiveScanTime # OPTIONAL: Max time in minutes to wait for ZAP to start and the passive scan to run (minutes). Default of -1 means not set so will use ZAP Docker default
+    default: -1
+  - name: maxSpiderCrawlTime # OPTIONAL: the number of minutes to spider for (optional, minutes) - Baseline and Full scan types only. Default of -1 means not set so will use ZAP Docker default
+    default: -1
 
 steps:
-# Check initialize yaml step has been run
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      if (-not(Test-Path -Path "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt" -PathType Leaf)) {
-          throw "You must run a initialize.yaml step before running a scan."
-      }      
-  displayName: '${{ parameters.name }}: Check initialize.yaml Step Has Been Run'
+  # Check initialize yaml step has been run
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Check initialize.yaml Step Has Been Run'
+    inputs:
+      targetType: 'inline'
+      script: |
+        if (-not(Test-Path -Path "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt" -PathType Leaf)) {
+            throw "You must run a initialize.yaml step before running a scan."
+        }
 
-# Use the scan type to select the correct OWAZP Zap python file to run
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # Work out the correct python file to use for scan based on type
-      $Filename = switch ("${{ parameters.scanType }}")
-      {
-          "Full" { "zap-full-scan.py"; Break }
-          "Baseline" { "zap-baseline.py" ; Break }
-          "API" { "zap-api-scan.py" ; Break }
-          "" { Throw "Invalid Scan Type provided! Options: [ 'Full', 'Baseline', 'API' ]" }
-      }
-      Write-Host "##vso[task.setvariable variable=scanPythonFile]$Filename"
-  displayName: '${{ parameters.name }}: Setup Scan Python File Variable'
+  # Use the scan type to select the correct OWAZP Zap python file to run
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Setup Scan Python File Variable'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Work out the correct python file to use for scan based on type
+        $Filename = switch ("${{parameters.scanType}}")
+        {
+            "Full" { "zap-full-scan.py"; Break }
+            "Baseline" { "zap-baseline.py" ; Break }
+            "API" { "zap-api-scan.py" ; Break }
+            "" { Throw "Invalid Scan Type provided! Options: [ 'Full', 'Baseline', 'API' ]" }
+        }
+        Write-Host "##vso[task.setvariable variable=scanPythonFile]$Filename"
 
-# Create a working directory for this scan
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # Create the working temp directory
-      New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
+  # Create a working directory for this scan
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Create Scan Temporary Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Create the working temp directory
+        New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{parameters.name}}" -ItemType "directory"
 
-      $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
+        $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{parameters.name}}"
 
-      # Create a variable for the new directory for use in other steps
-      Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
+        # Create a variable for the new directory for use in other steps
+        Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
 
-      # Allow all write permissions so it can be writen to by zap2docker
-      chmod a+w "$NewDirectoryFullPath"
+        # Allow all write permissions so it can be writen to by zap2docker
+        chmod a+w "$NewDirectoryFullPath"
 
-      echo "Created temp working folder for scan at $NewDirectoryFullPath"
-  displayName: '${{ parameters.name }}: Create Scan Temporary Working Directory'
-      
-# Copy context file to temporary working directory and do find and substitute username and password tokens
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      echo "Copying ${{ parameters.zapContextLocation }} to temp working folder"
+        echo "Created temp working folder for scan at $NewDirectoryFullPath"
 
-      # ZAP Context files have Base64 encoded usernames and passwords
-      # Note: the context xml file uses UTF-8 so we use the same here
-      # Convert username to Base64
-      $Base64UserName = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("${{ parameters.username }}"))
+  # Copy context file to temporary working directory and do find and substitute username and password tokens
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Copy Context to Working Directory and Substitute Tokens'
+    inputs:
+      targetType: 'inline'
+      script: |
+        echo "Copying ${{parameters.zapContextLocation}} to temp working folder"
 
-      # Convert password to Base64
-      $Base64Password = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("${{ parameters.password }}"))
+        # ZAP Context files have Base64 encoded usernames and passwords
+        # Note: the context xml file uses UTF-8 so we use the same here
+        # Convert username to Base64
+        $Base64UserName = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("${{parameters.username}}"))
 
-      # Load all of the text from the source file
-      $FileText = Get-Content "${{ parameters.zapContextLocation }}" -Raw
+        # Convert password to Base64
+        $Base64Password = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("${{parameters.password}}"))
 
-      # Find and Replace username and password tokens
-      $FileText = $FileText.replace("%%BASE64USERNAME%%", "$Base64UserName").replace("%%BASE64PASSWORD%%", "$Base64Password")
+        # Load all of the text from the source file
+        $FileText = Get-Content "${{parameters.zapContextLocation}}" -Raw
 
-      # Write to target file at new location
-      $FileText | Out-File -FilePath "$(workingTempDirectory)/ZapContext.context"
-  # Run step if the previous step succeded and zapContextLocation is not empty
-  condition: and(succeeded(), ne('${{ parameters.zapContextLocation }}', ''))
-  displayName: '${{ parameters.name }}: Copy Context to Working Directory and Substitute Tokens'
+        # Find and Replace username and password tokens
+        $FileText = $FileText.replace("%%BASE64USERNAME%%", "$Base64UserName").replace("%%BASE64PASSWORD%%", "$Base64Password")
 
-# Copy authentication script file to temporary working directory
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      echo "Copying ${{ parameters.authenticationScriptLocation }} to temp working folder"
+        # Write to target file at new location
+        $FileText | Out-File -FilePath "$(workingTempDirectory)/ZapContext.context"
+    # Run step if the previous step succeded and zapContextLocation is not empty
+    condition: and(succeeded(), ne('${{parameters.zapContextLocation}}', ''))
 
-      # Extract the name of the file
-      $FileName = Split-Path "${{ parameters.authenticationScriptLocation }}" -leaf
+  # Copy authentication script file to temporary working directory
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Copy Authentication Script to Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        echo "Copying ${{parameters.authenticationScriptLocation}} to temp working folder"
 
-      # Create a variable containing the file name as this needs to match the script name in the context file
-      Write-Host "##vso[task.setvariable variable=authenticationScriptFileName]$FileName"
+        # Extract the name of the file
+        $FileName = Split-Path "${{parameters.authenticationScriptLocation}}" -leaf
 
-      # Copy file to new location
-      Copy-Item "${{ parameters.authenticationScriptLocation }}" -Destination "$(workingTempDirectory)/$FileName"
-  # Run step if the previous step succeded and authenticationScriptLocation is not empty
-  condition: and(succeeded(), ne('${{ parameters.authenticationScriptLocation }}', ''))
-  displayName: '${{ parameters.name }}: Copy Authentication Script to Working Directory'
-  
-# Run Security Scans
-- task: Bash@3
-  env:
-    ScanUrl: ${{ parameters.targetUrl }}
-    ScanType: ${{ parameters.scanType }}
-    AuthorizationHeaderName: ${{ parameters.authorizationHeaderName }}
-    AuthorizationHeaderValue: ${{ parameters.authorizationHeaderValue }}
-    ZapContextLocation: ${{ parameters.zapContextLocation }}
-    AuthenticationScriptType: ${{ parameters.authenticationScriptType }}
-    AuthenticationScriptLocation: ${{ parameters.authenticationScriptLocation }}
-    UserName: ${{ parameters.username }}
-    ConfigurationFileLocation: ${{ parameters.configurationFileLocation}}
-    UseAjaxSpider: ${{ parameters.useAjaxSpider }}
-    MaxPassiveScanTime: ${{ parameters.maxPassiveScanTime }}
-    MaxSpiderCrawlTime: ${{ parameters.maxSpiderCrawlTime }}
-  inputs:      
-    targetType: 'inline'
-    script: |
-      # A new docker run command
-      # --rm will remove container if it already exists
-      # --mount will mount $(workingTempDirectory) so that it appears as /zap/wrk/ (standard zap2docker working directory) to the docker container
-      baseCommand="docker run --rm --mount type=bind,source=\"$(workingTempDirectory)\",target=/zap/wrk/"
-      redactedCommand=$baseCommand
+        # Create a variable containing the file name as this needs to match the script name in the context file
+        Write-Host "##vso[task.setvariable variable=authenticationScriptFileName]$FileName"
 
-      if [ "$AuthorizationHeaderName" != '' ]; then
-        echo "Setting custom Authorization Header Name"
+        # Copy file to new location
+        Copy-Item "${{parameters.authenticationScriptLocation}}" -Destination "$(workingTempDirectory)/$FileName"
+    # Run step if the previous step succeded and authenticationScriptLocation is not empty
+    condition: and(succeeded(), ne('${{parameters.authenticationScriptLocation}}', ''))
 
-        # Add Auth Header, see https://docs.docker.com/engine/reference/commandline/run/#set-environment-variables--e---env---env-file and https://www.zaproxy.org/docs/desktop/start/features/authentication/
-        baseCommand+=" --env ZAP_AUTH_HEADER=\"$AuthorizationHeaderName\""
-        redactedCommand+=" --env ZAP_AUTH_HEADER=\"$AuthorizationHeaderName\""
-      fi
+  # Run Security Scans
+  - task: Bash@3
+    displayName: '${{parameters.name}}: Run OWASP ZAP Scan'
+    env:
+      ScanUrl: ${{parameters.targetUrl}}
+      ScanType: ${{parameters.scanType}}
+      AuthorizationHeaderName: ${{parameters.authorizationHeaderName}}
+      AuthorizationHeaderValue: ${{parameters.authorizationHeaderValue}}
+      ZapContextLocation: ${{parameters.zapContextLocation}}
+      AuthenticationScriptType: ${{parameters.authenticationScriptType}}
+      AuthenticationScriptLocation: ${{parameters.authenticationScriptLocation}}
+      UserName: ${{parameters.username}}
+      ConfigurationFileLocation: ${{parameters.configurationFileLocation}}
+      UseAjaxSpider: ${{parameters.useAjaxSpider}}
+      MaxPassiveScanTime: ${{parameters.maxPassiveScanTime}}
+      MaxSpiderCrawlTime: ${{parameters.maxSpiderCrawlTime}}
+    inputs:
+      targetType: 'inline'
+      script: |
+        # A new docker run command
+        # --rm will remove container if it already exists
+        # --mount will mount $(workingTempDirectory) so that it appears as /zap/wrk/ (standard zap2docker working directory) to the docker container
+        baseCommand="docker run --rm --mount type=bind,source=\"$(workingTempDirectory)\",target=/zap/wrk/"
+        redactedCommand=$baseCommand
 
-      if [ "$AuthorizationHeaderValue" != '' ]; then
-        echo "Setting custom Authorization Header Value"
+        if [ "$AuthorizationHeaderName" != '' ]; then
+          echo "Setting custom Authorization Header Name"
 
-        # Add Auth Header, see https://docs.docker.com/engine/reference/commandline/run/#set-environment-variables--e---env---env-file and https://www.zaproxy.org/docs/desktop/start/features/authentication/
-        baseCommand+=" --env ZAP_AUTH_HEADER_VALUE=\"$AuthorizationHeaderValue\""
-        redactedCommand+=" --env ZAP_AUTH_HEADER_VALUE=\"REDACTED\""
-      fi
+          # Add Auth Header, see https://docs.docker.com/engine/reference/commandline/run/#set-environment-variables--e---env---env-file and https://www.zaproxy.org/docs/desktop/start/features/authentication/
+          baseCommand+=" --env ZAP_AUTH_HEADER=\"$AuthorizationHeaderName\""
+          redactedCommand+=" --env ZAP_AUTH_HEADER=\"$AuthorizationHeaderName\""
+        fi
 
-      # zap2docker commands ref: https://www.zaproxy.org/docs/docker/baseline-scan/
-      # -I : do not return failure on warning
-      # -t : the target to scan
-      # -x : XML report file output path
-      # -r : HTML report file output path
-      # -d : show debug messages
-      zap2DockerArguments=" ghcr.io/zaproxy/zaproxy:stable $(scanPythonFile) -I -t $ScanUrl -x Report.xml -r Report.html -d"
-      
-      if [ "$MaxPassiveScanTime" -gt -1 ]; then
-        # Add max passive scan time
-        zap2DockerArguments+=" -T $MaxPassiveScanTime"        
-      fi
+        if [ "$AuthorizationHeaderValue" != '' ]; then
+          echo "Setting custom Authorization Header Value"
 
-      if [ "$MaxSpiderCrawlTime" -gt -1 ]; then
-        # Add max spider crawl time
-        zap2DockerArguments+=" -m $MaxSpiderCrawlTime"        
-      fi
+          # Add Auth Header, see https://docs.docker.com/engine/reference/commandline/run/#set-environment-variables--e---env---env-file and https://www.zaproxy.org/docs/desktop/start/features/authentication/
+          baseCommand+=" --env ZAP_AUTH_HEADER_VALUE=\"$AuthorizationHeaderValue\""
+          redactedCommand+=" --env ZAP_AUTH_HEADER_VALUE=\"REDACTED\""
+        fi
 
-      if [ "$ZapContextLocation" != '' ]; then
-        # Add ZAP Context file
-        zap2DockerArguments+=" -n ZapContext.context"        
-      fi
+        # zap2docker commands ref: https://www.zaproxy.org/docs/docker/baseline-scan/
+        # -I : do not return failure on warning
+        # -t : the target to scan
+        # -x : XML report file output path
+        # -r : HTML report file output path
+        # -d : show debug messages
+        zap2DockerArguments=" ghcr.io/zaproxy/zaproxy:stable $(scanPythonFile) -I -t $ScanUrl -x Report.xml -r Report.html -d"
 
-      if [ "$AuthenticationScriptType" != ''] && ["$AuthenticationScriptLocation" != '' ]; then
-        # Add Authentication Script
-        # See: https://www.zaproxy.org/faq/how-do-you-add-a-script-to-zap-from-the-command-line/
-        # Use of single quotes as already contained in double quotes
-        # -z: ZAP command line options e.g. -z "-config aaa=bbb -config ccc=ddd"
-        zapCLIOptions="-config script.scripts.name='$(authenticationScriptFileName)'";
-        zapCLIOptions+=" -config script.scripts.engine='$AuthenticationScriptType'";
-        zapCLIOptions+=" -config script.scripts.type=authentication";
-        zapCLIOptions+=" -config script.scripts.enabled=true";
-        # For some reason full path is required here, even though it is not in other places
-        zapCLIOptions+=" -config script.scripts.file='/zap/wrk/$(authenticationScriptFileName)'";
+        if [ "$MaxPassiveScanTime" -gt -1 ]; then
+          # Add max passive scan time
+          zap2DockerArguments+=" -T $MaxPassiveScanTime"
+        fi
 
-        zap2DockerArguments+=" -z \"$zapCLIOptions\""        
-      
-      # Else-If as we don't specify username is using a custom script (as the username/password info is in the script not the context)
-      elif [ "$UserName" != '' ]; then
-        # Add username
-        zap2DockerArguments+=" -U $UserName" 
-      fi
+        if [ "$MaxSpiderCrawlTime" -gt -1 ]; then
+          # Add max spider crawl time
+          zap2DockerArguments+=" -m $MaxSpiderCrawlTime"
+        fi
 
-      if [ "$ScanType" == 'API' ]; then
-        # If it's an API scan we need to let it know to use the open API standard
-        zap2DockerArguments+=" -f openapi"
-      fi
+        if [ "$ZapContextLocation" != '' ]; then
+          # Add ZAP Context file
+          zap2DockerArguments+=" -n ZapContext.context"
+        fi
 
-      if [ "$UseAjaxSpider" == 'true' ]; then
-        # -j : use the Ajax spider in addition to the traditional one
-        zap2DockerArguments+=" -j"
-      fi
+        if [ "$AuthenticationScriptType" != ''] && ["$AuthenticationScriptLocation" != '' ]; then
+          # Add Authentication Script
+          # See: https://www.zaproxy.org/faq/how-do-you-add-a-script-to-zap-from-the-command-line/
+          # Use of single quotes as already contained in double quotes
+          # -z: ZAP command line options e.g. -z "-config aaa=bbb -config ccc=ddd"
+          zapCLIOptions="-config script.scripts.name='$(authenticationScriptFileName)'";
+          zapCLIOptions+=" -config script.scripts.engine='$AuthenticationScriptType'";
+          zapCLIOptions+=" -config script.scripts.type=authentication";
+          zapCLIOptions+=" -config script.scripts.enabled=true";
+          # For some reason full path is required here, even though it is not in other places
+          zapCLIOptions+=" -config script.scripts.file='/zap/wrk/$(authenticationScriptFileName)'";
 
-      baseCommand+=$zap2DockerArguments
-      redactedCommand+=$zap2DockerArguments
+          zap2DockerArguments+=" -z \"$zapCLIOptions\""
 
-      echo "Running"
-      echo "$redactedCommand"
-      eval "$baseCommand"
-  displayName: '${{ parameters.name }}: Run OWASP ZAP Scan'
-    
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-      $XmlInputPath = "$(workingTempDirectory)/Report.xml"
-      $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
-      $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-      $XslTransform.Load($XslPath)
+        # Else-If as we don't specify username is using a custom script (as the username/password info is in the script not the context)
+        elif [ "$UserName" != '' ]; then
+          # Add username
+          zap2DockerArguments+=" -U $UserName"
+        fi
 
-      echo "Transforming OWASP Report.xml into an NUnit3 format"
+        if [ "$ScanType" == 'API' ]; then
+          # If it's an API scan we need to let it know to use the open API standard
+          zap2DockerArguments+=" -f openapi"
+        fi
 
-      # Transform OWASP ZAP XML results to NUnit3 format
-      $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
-  displayName: '${{ parameters.name }}: Run OWASP to NUnit XSLT Transformation'
+        if [ "$UseAjaxSpider" == 'true' ]; then
+          # -j : use the Ajax spider in addition to the traditional one
+          zap2DockerArguments+=" -j"
+        fi
 
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathtoPublish: '$(workingTempDirectory)/Report.xml'
-    artifactName: ${{ parameters.name }}
-    publishLocation: 'Container'
-  displayName: '${{ parameters.name }}: Publish XML Report as Build Artifact'
+        baseCommand+=$zap2DockerArguments
+        redactedCommand+=$zap2DockerArguments
 
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathtoPublish: '$(workingTempDirectory)/Report.html'
-    artifactName: ${{ parameters.name }}
-    publishLocation: 'Container'
-  displayName: '${{ parameters.name }}: Publish HTML Report as Build Artifact'
+        echo "Running"
+        echo "$redactedCommand"
+        eval "$baseCommand"
 
-# Publish the transformed XML as test results so Azure DevOps shows alerts as test cases
-- task: PublishTestResults@2
-  inputs:
-    testRunTitle: ${{ parameters.name }}
-    testRunner: 'NUnit'
-    testResultsFiles: '**/NUnit-Report.xml'
-    searchFolder: '$(workingTempDirectory)'
-    publishRunAttachments: false    
-  displayName: '${{ parameters.name }}: Publish Scan Results As Test Results'
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Run OWASP to NUnit XSLT Transformation'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+        $XslTransform.Load($XslPath)
 
-# Set variables.alerstExist to true if there have been alerts so we can later fail the pipeline
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # If the scan resulted in alerts which are not allow-listed, set a flag so we can fail the pipeline later
-      # <confidence>0</confidence> in <alertitem> if alert configured as false positive
-      $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "OWASPZAPReport/site/alerts/alertitem[not(confidence=0)]"
+        echo "Transforming OWASP Report.xml into an NUnit3 format"
 
-      if ($Alerts.Count -gt 0) {
-          echo "Setting alerts exist variable to true"
-          Write-Host "##vso[task.setvariable variable=alertsExist]true"
-      }
-    failOnStderr: true
-  displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
-  condition: and(succeeded(), ne(variables.alertsExist, 'true'))
+        # Transform OWASP ZAP XML results to NUnit3 format
+        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      artifactName: ${{parameters.name}}
+      publishLocation: 'Container'
+    displayName: '${{parameters.name}}: Publish XML Report as Build Artifact'
+
+  - task: PublishBuildArtifacts@1
+    displayName: '${{parameters.name}}: Publish HTML Report as Build Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      artifactName: ${{parameters.name}}
+      publishLocation: 'Container'
+
+  # Publish the transformed XML as test results so Azure DevOps shows alerts as test cases
+  - task: PublishTestResults@2
+    displayName: '${{parameters.name}}: Publish Scan Results As Test Results'
+    inputs:
+      testRunTitle: ${{parameters.name}}
+      testRunner: 'NUnit'
+      testResultsFiles: '**/NUnit-Report.xml'
+      searchFolder: '$(workingTempDirectory)'
+      publishRunAttachments: false
+
+  # Set variables.alerstExist to true if there have been alerts so we can later fail the pipeline
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Set Alerts Exist Flag If Required'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # If the scan resulted in alerts which are not allow-listed, set a flag so we can fail the pipeline later
+        # <confidence>0</confidence> in <alertitem> if alert configured as false positive
+        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "OWASPZAPReport/site/alerts/alertitem[not(confidence=0)]"
+
+        if ($Alerts.Count -gt 0) {
+            echo "Setting alerts exist variable to true"
+            Write-Host "##vso[task.setvariable variable=alertsExist]true"
+        }
+      failOnStderr: true
+    condition: and(succeeded(), ne(variables.alertsExist, 'true'))

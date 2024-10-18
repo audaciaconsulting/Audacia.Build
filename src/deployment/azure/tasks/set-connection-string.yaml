@@ -1,27 +1,33 @@
-# Sets the Connection String on an Azure Web Application Deployment Slot to the specified SQL Server Database
+# Task to set the Connection String on an Azure Web Application Deployment Slot to the specified SQL Server Database
 parameters:
-  azureSubscription: '' # Service Principle name to access the Azure Environment
-  resourceGroupName: '' # Name of the Azure Resource Group containing the application
-  applicationName: '' # Name of the Azure Wep Application
-  slotName: 'Production' # Name of the Azure Web App Slot. defaults to Production the slot
-  dbContextName: '' # The name of the database context for your project
-  connectionString: '' # The connection string for your database context
+  - name: azureSubscription # Service Principle name to access the Azure Environment
+    default: ''
+  - name: resourceGroupName # Name of the Azure Resource Group containing the application
+    default: ''
+  - name: applicationName # Name of the Azure Wep Application
+    default: ''
+  - name: slotName # Name of the Azure Web App Slot. defaults to Production the slot
+    default: 'Production'
+  - name: dbContextName # The name of the database context for your project
+    default: ''
+  - name: connectionString # The connection string for your database context
+    default: ''
 
 steps:
   - task: AzurePowerShell@3 # AzureRM is supported by version 2 & 3
-    displayName: "Set ${{ parameters.dbContextName }} Connection String for ${{ parameters.applicationName }} ${{ parameters.slotName }}"
+    displayName: "Set ${{parameters.dbContextName}} Connection String for ${{parameters.applicationName}} ${{parameters.slotName}}"
     inputs:
-      azureSubscription: ${{ parameters.azureSubscription }}
+      azureSubscription: ${{parameters.azureSubscription}}
       scriptType: inlineScript
       errorActionPreference: 'stop'
       failOnStandardError: true
       azurePowerShellVersion: 'latestVersion'
       inline: |
-        $ResourceGroup = "${{ parameters.resourceGroupName }}"
-        $AppName = "${{ parameters.applicationName }}"
-        $SlotName = "${{ parameters.slotName }}"
-        $DbContext = "${{ parameters.dbContextName }}"
-        $ConnectionString = "${{ parameters.connectionString }}"
+        $ResourceGroup = "${{parameters.resourceGroupName}}"
+        $AppName = "${{parameters.applicationName}}"
+        $SlotName = "${{parameters.slotName}}"
+        $DbContext = "${{parameters.dbContextName}}"
+        $ConnectionString = "${{parameters.connectionString}}"
 
         # grab the existing configuration
         Write-Host "##vso[task.logdetail id=7332a6da-76a9-4765-945d-6cab83fed79d;name=actions;type=command;order=1]Actions"

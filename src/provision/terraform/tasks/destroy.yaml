@@ -1,0 +1,31 @@
+# Task to destory some or all Terraform resources
+parameters:
+  - name: terraformDirectory
+    default: $(System.DefaultWorkingDirectory)
+  - name: provisioningServiceConnectionName # Name of the service connection used to destroy resources
+    default: ''
+  - name: resourcesToDestroy # If the whole plan should be destroyed then don't pass anything in
+    default: []
+
+steps:
+  # If no specific resources passed in to destroy then destroy the whole thing
+  - ${{ if eq(length(parameters.resourcesToDestroy), 0) }}:
+    - task: TerraformTaskV2@2
+      displayName: Terraform Destroy
+      inputs:
+        provider: 'azurerm'
+        command: 'destroy'
+        workingDirectory: ${{parameters.terraformDirectory}}
+        environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  # If some resources have been passed in then we only want to destroy them, so loop through and call destroy for each one
+  - ${{ if gt(length(parameters.resourcesToDestroy), 0) }}:
+    - ${{ each resource in parameters.resourcesToDestroy }}:
+      - task: TerraformTaskV2@2
+        displayName: Terraform Destroy ${{ resource }})
+        inputs:
+          provider: 'azurerm'
+          command: 'destroy'
+          workingDirectory: ${{parameters.terraformDirectory}}
+          environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+          commandOptions: -target=${{ resource }}

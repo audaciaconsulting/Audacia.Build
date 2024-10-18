@@ -1,24 +1,29 @@
+# Task to run EF6 OpenIddict Seeding
 parameters:
-  toolVersion: '' # The version of the Audacia.Auth.OpenIddict libraries to use
-  identityProjectBasePath: '' # The base path to the identity project artifact
-  identityProjectName: ''
-  openIddictEntitiesKeyType: 'int' # string and Guid also supported
-  databaseConnectionStringName: ''
+  - name: toolVersion # The version of the libraries to use
+    default: ''
+  - name: identityProjectBasePath # The base path to the identity project artifact
+    default: ''
+  - name: identityProjectName
+    default: ''
+  - name: openIddictEntitiesKeyType # string and Guid also supported
+    default: 'int'
+  - name: databaseConnectionStringName
+    default: ''
 
 steps:
-
   - task: NuGetAuthenticate@0
 
   - script: |
       dotnet new tool-manifest --force
-      dotnet tool install Audacia.Auth.OpenIddict.Seeding.EntityFramework --version ${{ parameters.toolVersion }} --add-source https://pkgs.dev.azure.com/audacia/Audacia.Public/_packaging/AudaciaPublic/nuget/v3/index.json
-    workingDirectory: ${{ parameters.identityProjectBasePath }}
+      dotnet tool install Audacia.Auth.OpenIddict.Seeding.EntityFramework --version ${{parameters.toolVersion}} --add-source https://pkgs.dev.azure.com/audacia/Audacia.Public/_packaging/AudaciaPublic/nuget/v3/index.json
+    workingDirectory: ${{parameters.identityProjectBasePath}}
     env:
       # Need to increase the timeout to stop intermittent errors from the credential provider
       NUGET_PLUGIN_HANDSHAKE_TIMEOUT_IN_SECONDS: 20
       NUGET_PLUGIN_REQUEST_TIMEOUT_IN_SECONDS: 20
     displayName: 'Install OpenIddict Seeding Tool'
 
-  - script: dotnet tool run openiddict-ef6-seeding "${{ parameters.identityProjectBasePath }}" "${{ parameters.identityProjectName }}" "${{ parameters.openIddictEntitiesKeyType }}" "${{ parameters.databaseConnectionStringName }}"
-    workingDirectory: ${{ parameters.identityProjectBasePath }}
+  - script: dotnet tool run openiddict-ef6-seeding "${{parameters.identityProjectBasePath}}" "${{parameters.identityProjectName}}" "${{parameters.openIddictEntitiesKeyType}}" "${{parameters.databaseConnectionStringName}}"
+    workingDirectory: ${{parameters.identityProjectBasePath}}
     displayName: 'Run OpenIddict Seeding'

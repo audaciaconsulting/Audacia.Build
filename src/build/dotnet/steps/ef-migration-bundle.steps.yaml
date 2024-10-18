@@ -1,0 +1,91 @@
+# Steps to build an EF Project as a migration bundle
+parameters:
+  - name: efProject # The path to the EF Project
+    type: string
+  - name: startupProject # (Optional) The path to the Startup Project if it is different to the EF Project
+    default: ''
+  - name: dbContext # (Optional) The name of the DB Context if multiple exist
+    default: ''
+  - name: runtime # The runtime that the migration bundle will be run on
+    default: 'windows'
+    values:
+      - 'windows'
+      - 'linux'
+  - name: artifactName
+    default: 'EFMigrationBundle'
+
+steps:
+  - task: DotNetCoreCLI@2
+    displayName: .NET Restore
+    inputs:
+      command: restore
+      projects: ${{ coalesce(parameters.startupProject, parameters.efProject) }}
+      vstsFeed: 'Audacia.Public/AudaciaPublic'
+
+  - task: PowerShell@2
+    displayName: Build EF Core Migration Bundle
+    condition: and(succeeded(), not(eq(variables['Build.Reason'], 'PullRequest')))
+    inputs:
+      targetType: "inline"
+      script: |
+        $efProjectPath = "${{parameters.efProject}}"
+        $csprojectMatches = Get-ChildItem $efProjectPath
+
+        if ($csprojectMatches.Count -lt 1) {
+          Write-Error "No project was found"
+          exit 1
+        }
+
+        $csproj = $csprojectMatches[0]
+
+        Write-Host "Found EF Project: $csproj.Name"
+
+        $containingFolder = $csproj.DirectoryName
+
+        Set-Location $containingFolder
+
+        $appSettingsLocation = "$containingFolder/appsettings.json"
+        if (!(Test-Path $appSettingsLocation)) {
+          Write-Error "appsettings.json must exist in same folder as the EF .csproj"
+          exit 1
+        }
+
+        $efProject = $csproj.FullName
+
+        $outputPath = "$(Build.ArtifactStagingDirectory)"
+
+        $sqlMigrationPath = $outputPath
+
+        $platform = "${{parameters.runtime}}"
+
+        If ($platform -eq "windows") { $sqlMigrationPath += "/efbundle.exe" }
+        ElseIf ($platform -eq "linux") { $sqlMigrationPath += "/efbundle" }
+        Else { $sqlMigrationPath += "/efbundle" }
+
+        Write-Host "Outputting to: $sqlMigrationPath"
+
+        $runtime = ""
+
+        If ($platform -eq "windows") { $runtime = "win-x64" }
+        ElseIf ($platform -eq "linux") { $runtime = "linux-x64" }
+        Else { $runtime = "win-x64" }
+
+        $extraParams = '';
+
+        If ("${{parameters.startupProject}}" -ne "") { $extraParams += " -s ${{parameters.startupProject}}" }
+        If ("${{parameters.dbContext}}" -ne "") { $extraParams += " -c ${{parameters.dbContext}}" }
+
+        # Restore the dotnet-ef tools manifest
+        dotnet tool restore
+
+        # Create .exe to run the migrations
+        $command = "dotnet tool run dotnet-ef migrations bundle -p $efProject -o $sqlMigrationPath --configuration Bundle --self-contained -r $runtime $extraParams"
+        Invoke-Expression $command
+
+        # Copy the appsettings file
+        Copy-Item $appSettingsLocation -Destination $outputPath
+      errorActionPreference: "stop"
+
+  - template: /src/build/common/tasks/publish.yaml
+    parameters:
+      artifactName: ${{parameters.artifactName}}

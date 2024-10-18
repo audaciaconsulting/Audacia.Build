@@ -1,7 +1,7 @@
 parameters:
-- name: workingDirectory
-  type: string
-  default: '.'
+  - name: workingDirectory
+    type: string
+    default: '.'
 
 steps:
   - powershell: Write-Host "##vso[task.setvariable variable=CYPRESS_CACHE_FOLDER;]$(Build.SourcesDirectory)/.cypress_cache"
@@ -21,8 +21,7 @@ steps:
       verbose: false
       customCommand: run cypress:verify
 
-  # Temporarily use an internally forked version of FileTransform due to this bug: https://github.com/microsoft/azure-pipelines-tasks/issues/16821
-  - task: 106a9556-f58d-4016-9194-5b99f5aeb243@1
+  - task: FileTransform@1
     displayName: 'File Transform: cypress.json'
     inputs:
       folderPath: ${{parameters.workingDirectory}}

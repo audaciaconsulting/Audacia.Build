@@ -1,27 +1,42 @@
+# Steps to build an NPM Application
 parameters:
-  path: ''
-  test: true
-  displayName: 'Build NPM'
+  - name: path
+    default: ''
+  - name: runTests
+    default: true
+  - name: artifactName
+    default: '$(Build.DefinitionName)'
 
 steps:
+  - task: npmAuthenticate@0
+    displayName: NPM Authenticate
+    inputs:
+      workingFile: $(Build.SourcesDirectory)/${{parameters.path}}/.npmrc
 
-- template: /src/build/npm/tasks/authenticate.yaml
-  parameters:
-    path: ${{ parameters.path }}
+  - task: Npm@1
+    displayName: NPM Install
+    inputs:
+      command: custom
+      workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+      customCommand: 'ci --prefer-offline --no-audit'
 
-- template: /src/build/npm/tasks/install.yaml
-  parameters:
-    path: ${{ parameters.path }}
+  - task: Npm@1
+    displayName: NPM Build
+    inputs:
+      command: custom
+      workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+      customCommand: 'run build'
 
-- template: /src/build/npm/tasks/build.yaml
-  parameters:
-    path: ${{ parameters.path }}
+  - task: Npm@1
+    displayName: NPM Test
+    condition: and(succeeded(), eq('${{parameters.runTests}}', 'true'))
+    inputs:
+      command: custom
+      workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
+      customCommand: 'test'
 
-- template: /src/build/npm/tasks/test.yaml
-  parameters:
-    path: ${{ parameters.path }}
-    test: ${{ parameters.test }}
-
-- template: /src/build/npm/tasks/publish.yaml
-  parameters:
-    path: ${{ parameters.path }}
+  - task: PublishBuildArtifacts@1
+    displayName: Artifact Publish
+    inputs:
+      PathtoPublish: $(Build.SourcesDirectory)/${{parameters.path}}/dist/
+      ArtifactName: ${{parameters.artifactName}}

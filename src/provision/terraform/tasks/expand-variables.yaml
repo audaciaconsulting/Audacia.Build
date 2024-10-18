@@ -1,0 +1,23 @@
+# Task to take Terraform outputs and map them to Azure DevOps pipeline variables
+steps:
+  - task: PowerShell@1
+    displayName: Expand Variables
+    name: Variables
+    inputs:
+      scriptType: inlineScript
+      inlineScript: |
+        $variables = Get-Content -Raw -Path $(TerraformOutput.jsonOutputVariablesPath) | ConvertFrom-Json
+        foreach ($property in $variables.PSObject.Properties) {
+            $key = $property.Name
+            $value = $property.Value.value
+            $sensitive = $property.Value.sensitive
+
+            if ($sensitive) {
+              write-host "Expanding secret variable: $key"
+            }
+            else {
+              write-host "Expanding variable: $key with value $value"
+            }
+
+            echo "##vso[task.setvariable variable=$key;isSecret=$sensitive;isOutput=true]$value"
+        }

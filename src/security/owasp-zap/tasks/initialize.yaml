@@ -1,110 +1,109 @@
 # Initializes pre-requisites to OWASP ZAP scans
 steps:
-    
-# Create a temporary working directory with write permissions so docker can write to it
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # Create the working temp directory
-      New-Item -Path "$(Agent.TempDirectory)" -Name "$(Build.BuildId)" -ItemType "directory"
+  # Create a temporary working directory with write permissions so docker can write to it
+  - task: PowerShell@2
+    displayName: 'Initialize: Create Parent Temporary Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Create the working temp directory
+        New-Item -Path "$(Agent.TempDirectory)" -Name "$(Build.BuildId)" -ItemType "directory"
 
-      $NewDirectoryFullPath = "$(Agent.TempDirectory)/$(Build.BuildId)"
+        $NewDirectoryFullPath = "$(Agent.TempDirectory)/$(Build.BuildId)"
 
-      # Create a variable for the new directory for use in other steps
-      Write-Host "##vso[task.setvariable variable=parentWorkingTempDirectory]$NewDirectoryFullPath"
+        # Create a variable for the new directory for use in other steps
+        Write-Host "##vso[task.setvariable variable=parentWorkingTempDirectory]$NewDirectoryFullPath"
 
-      echo "Created temp working folder at $NewDirectoryFullPath"
-  displayName: 'Initialize: Create Parent Temporary Working Directory'
+        echo "Created temp working folder at $NewDirectoryFullPath"
 
-# Create variables.alertsExist set to false - this will be later used to pass/fail the pipeline
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: Write-Host "##vso[task.setvariable variable=alertsExist]false"
-  displayName: 'Initialize: Create Alerts Exist Variable Set To False'
+  # Create variables.alertsExist set to false - this will be later used to pass/fail the pipeline
+  - task: PowerShell@2
+    displayName: 'Initialize: Create Alerts Exist Variable Set To False'
+    inputs:
+      targetType: 'inline'
+      script: Write-Host "##vso[task.setvariable variable=alertsExist]false"
 
-# Create xslt transform file which will be used to transform test results to look like NUnit results
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      # See https://docs.nunit.org/articles/nunit/technical-notes/usage/Test-Result-XML-Format.html for NUnit 3.0 XML ref
-      # See https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/test/publish-test-results?view=azure-devops&tabs=nunit3%2Cyaml#arguments for how this is translated to DevOps
-      # <!-- XML Comments --> help provide some context
-      $FileContents = '<?xml version="1.0" encoding="utf-8"?>
-      <xsl:stylesheet version="2.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:msxsl="urn:schemas-microsoft-com:xslt" exclude-result-prefixes="msxsl">
-        <xsl:output method="xml" indent="yes"/>
-        
-        <xsl:variable name="NumberOfItems" select="count(OWASPZAPReport/site/alerts/alertitem)"/>
+  # Create xslt transform file which will be used to transform test results to look like NUnit results
+  - task: PowerShell@2
+    displayName: 'Initialize: Create OWASP to NUnit XSLT Transformation'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # See https://docs.nunit.org/articles/nunit/technical-notes/usage/Test-Result-XML-Format.html for NUnit 3.0 XML ref
+        # See https://docs.microsoft.com/en-us/azure/devops/pipelines/tasks/test/publish-test-results?view=azure-devops&tabs=nunit3%2Cyaml#arguments for how this is translated to DevOps
+        # <!-- XML Comments --> help provide some context
+        $FileContents = '<?xml version="1.0" encoding="utf-8"?>
+        <xsl:stylesheet version="2.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:msxsl="urn:schemas-microsoft-com:xslt" exclude-result-prefixes="msxsl">
+          <xsl:output method="xml" indent="yes"/>
 
-        <!-- Treat "False Positive" as skip -->
-        <!-- confidence 0 for false positive - see https://javadoc.io/doc/org.zaproxy/zap-clientapi/1.7.0/org/zaproxy/clientapi/core/Alert.Confidence.html#FalsePositive -->
-        <xsl:variable name="NumberOfSkippedtems" select="count(OWASPZAPReport/site/alerts/alertitem[confidence=0])"/>
-        <xsl:variable name="NumberOfFailedItems" select="$NumberOfItems - $NumberOfSkippedtems"/>
+          <xsl:variable name="NumberOfItems" select="count(OWASPZAPReport/site/alerts/alertitem)"/>
 
-        <xsl:variable name="generatedDateTime" select="OWASPZAPReport/generated"/>
-  
-        <xsl:template match="/">
-          <test-run id="1" name="OWASP" fullname="OWASP" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0" start-time="{$generatedDateTime}" end-time="{$generatedDateTime}" duration="0">
-            <test-suite type="Assembly" id="0-1000" name="OWASP" fullname="OWASP" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0">
-              <test-suite type="TestFixture" id="0-1001" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0">
+          <!-- Treat "False Positive" as skip -->
+          <!-- confidence 0 for false positive - see https://javadoc.io/doc/org.zaproxy/zap-clientapi/1.7.0/org/zaproxy/clientapi/core/Alert.Confidence.html#FalsePositive -->
+          <xsl:variable name="NumberOfSkippedtems" select="count(OWASPZAPReport/site/alerts/alertitem[confidence=0])"/>
+          <xsl:variable name="NumberOfFailedItems" select="$NumberOfItems - $NumberOfSkippedtems"/>
 
-                <!-- Foreach alert in original report -->
-                <xsl:for-each select="OWASPZAPReport/site/alerts/alertitem">
-                 
-                  <!-- Switch for False Positive vs. Everything else  -->
-                  <xsl:choose>
+          <xsl:variable name="generatedDateTime" select="OWASPZAPReport/generated"/>
 
-                    <!-- confidence 0 for false positive -->
-                    <xsl:when test="confidence=0">
-                      <!-- Although "Not executed" is not valid in NUNit it will get translated to DevOps and is valid there for skipped -->
-                      <test-case id="{pluginid}" name="{name}" fullname="{name}" result="Not executed"/>
-                    </xsl:when>
+          <xsl:template match="/">
+            <test-run id="1" name="OWASP" fullname="OWASP" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0" start-time="{$generatedDateTime}" end-time="{$generatedDateTime}" duration="0">
+              <test-suite type="Assembly" id="0-1000" name="OWASP" fullname="OWASP" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0">
+                <test-suite type="TestFixture" id="0-1001" testcasecount="{$NumberOfItems}" result="Failed" total="{$NumberOfItems}" passed="0" failed="{$NumberOfFailedItems}" inconclusive="0" skipped="{$NumberOfSkippedtems}" asserts="0">
 
-                    <!-- Everything else as failure -->
-                    <xsl:otherwise>
-                      <test-case id="{pluginid}" name="{name}" fullname="{name}" result="Failed">
-                        <failure>
-                          <message>
-                            <xsl:text>Description:</xsl:text>
-                            <xsl:text>&#xa;</xsl:text>
-                            <xsl:value-of select="desc"/>
-                            <xsl:text>&#xa;</xsl:text>
-                            <xsl:text>&#xa;</xsl:text>
-                            <xsl:text>Solution:</xsl:text>
-                            <xsl:value-of select="solution"/>
-                          </message>
-                          <stack-trace>
-                            <xsl:for-each select="instances/instance">
-                              <xsl:value-of select="uri"/>
-                              <xsl:text>&#160;</xsl:text>
-                              <xsl:value-of select="method"/>
-                              <xsl:text>&#160;</xsl:text>
-                              <xsl:value-of select="param"/>
+                  <!-- Foreach alert in original report -->
+                  <xsl:for-each select="OWASPZAPReport/site/alerts/alertitem">
+
+                    <!-- Switch for False Positive vs. Everything else  -->
+                    <xsl:choose>
+
+                      <!-- confidence 0 for false positive -->
+                      <xsl:when test="confidence=0">
+                        <!-- Although "Not executed" is not valid in NUNit it will get translated to DevOps and is valid there for skipped -->
+                        <test-case id="{pluginid}" name="{name}" fullname="{name}" result="Not executed"/>
+                      </xsl:when>
+
+                      <!-- Everything else as failure -->
+                      <xsl:otherwise>
+                        <test-case id="{pluginid}" name="{name}" fullname="{name}" result="Failed">
+                          <failure>
+                            <message>
+                              <xsl:text>Description:</xsl:text>
                               <xsl:text>&#xa;</xsl:text>
-                            </xsl:for-each>
-                          </stack-trace>
-                        </failure>
-                      </test-case>
-                    </xsl:otherwise>
+                              <xsl:value-of select="desc"/>
+                              <xsl:text>&#xa;</xsl:text>
+                              <xsl:text>&#xa;</xsl:text>
+                              <xsl:text>Solution:</xsl:text>
+                              <xsl:value-of select="solution"/>
+                            </message>
+                            <stack-trace>
+                              <xsl:for-each select="instances/instance">
+                                <xsl:value-of select="uri"/>
+                                <xsl:text>&#160;</xsl:text>
+                                <xsl:value-of select="method"/>
+                                <xsl:text>&#160;</xsl:text>
+                                <xsl:value-of select="param"/>
+                                <xsl:text>&#xa;</xsl:text>
+                              </xsl:for-each>
+                            </stack-trace>
+                          </failure>
+                        </test-case>
+                      </xsl:otherwise>
 
-                  </xsl:choose>
-                  
-                </xsl:for-each>
+                    </xsl:choose>
+
+                  </xsl:for-each>
+                </test-suite>
               </test-suite>
-            </test-suite>
-          </test-run>
-        </xsl:template>
-      </xsl:stylesheet>'
-      
-      # Write to file
-      $FileContents | Out-File -FilePath "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-  displayName: 'Initialize: Create OWASP to NUnit XSLT Transformation'
+            </test-run>
+          </xsl:template>
+        </xsl:stylesheet>'
 
-# Download zap2Docker image
-- task: Bash@3  
-  inputs:
-    targetType: 'inline'
-    script: docker pull ghcr.io/zaproxy/zaproxy:stable
-  displayName: 'Initialize: Download zap2Docker Image'
+        # Write to file
+        $FileContents | Out-File -FilePath "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+
+  # Download zap2Docker image
+  - task: Bash@3
+    displayName: 'Initialize: Download zap2Docker Image'
+    inputs:
+      targetType: 'inline'
+      script: docker pull ghcr.io/zaproxy/zaproxy:stable

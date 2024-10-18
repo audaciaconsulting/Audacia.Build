@@ -1,23 +1,26 @@
-﻿# Creates a self signed certificate
+﻿# Task to create a self signed certificate
 parameters:
-  stepName: 'CreateSelfSignedCertificate'
-  certificateName: 'IdentityServer'
-  outputDirectory: ''
-  certificatePassword: ''
+  - name: stepName
+    default: 'CreateSelfSignedCertificate'
+  - name: certificateName
+    default: 'IdentityServer'
+  - name: outputDirectory
+    default: ''
+  - name: certificatePassword
+    default: ''
 
 steps:
-
   - task: PowerShell@2
-    name: ${{ parameters.stepName }}
+    name: ${{parameters.stepName}}
     displayName: Create Self-Signed Certificate
     inputs:
       targetType: inline
       errorActionPreference: 'stop'
       failOnStderr: true
       script: |
-        $CertificateName = "${{ parameters.certificateName }}"
-        $Password = "${{ parameters.certificatePassword }}"
-        $Directory = "${{ parameters.outputDirectory }}"
+        $CertificateName = "${{parameters.certificateName}}"
+        $Password = "${{parameters.certificatePassword}}"
+        $Directory = "${{parameters.outputDirectory}}"
 
         Write-Host "Creating the certificate..."
         $cert = New-SelfSignedCertificate -KeyAlgorithm RSA -KeyLength 4096 -Type Custom -HashAlgorithm SHA256 -Subject "audacia" -KeyExportPolicy Exportable -CertStoreLocation "cert:\CurrentUser\My"
