@@ -58,6 +58,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'apply'
+      commandOptions: '-input=false'
       workingDirectory: ${{parameters.terraformDirectory}}
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
