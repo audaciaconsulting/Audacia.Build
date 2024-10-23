@@ -3,7 +3,7 @@ jobs:
   - deployment: Deploy
     displayName: Deploy
     environment: NPM Internal
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+    condition: and(eq(variables['Build.ShouldPublish'], 'true'), and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule')))))
     strategy:
       runOnce:
         deploy:
@@ -27,7 +27,7 @@ jobs:
               inputs:
                 workingFile: dist/package/.npmrc
 
-            - task: UpdateNpmVersions@1
+            - task: UpdateVersions@1
               displayName: NPM Versioning
               inputs:
                 workingDirectory: 'dist/package'
