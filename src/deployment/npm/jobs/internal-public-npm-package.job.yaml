@@ -27,7 +27,7 @@ jobs:
               inputs:
                 workingFile: dist/package/.npmrc
 
-            - task: UpdateNpmVersions@1
+            - task: UpdateVersions@1
               displayName: NPM Versioning
               inputs:
                 workingDirectory: 'dist/package'

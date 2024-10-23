@@ -49,7 +49,7 @@ jobs:
             continueIfVulnerabilities: true
 
       - ${{ if eq(parameters.applyVersioning, true) }}:
-        - task: UpdateDotNetVersions@12
+        - task: UpdateVersions@1
           displayName: .NET Versioning
           inputs:
             releaseBranchNames: ${{parameters.releaseBranchName}}
