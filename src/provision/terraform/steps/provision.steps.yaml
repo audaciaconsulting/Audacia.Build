@@ -16,7 +16,7 @@ parameters:
     default: ''
   - name: provisioningServiceConnectionName # Name of the service connection used to provision resources
     default: ''
-  - name: terraformInputVariables # Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties
+  - name: terraformInputVariables # Environment variables prefixed with TF_VAR_ are preferred over this. Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties
     type: object
     default: []
 
