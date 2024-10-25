@@ -3,7 +3,7 @@ parameters:
   - name: terraformDirectory
     default: $(System.DefaultWorkingDirectory)
   - name: terraformVersion # Version of terraform to install
-    default: ''
+    default: 'latest'
   - name: environmentId # Name of the environment in Azure. example qa, uat, production
     default: ''
   - name: terraformStateServiceConnectionName # Name of the service connection to connect to the Terraform state storage
