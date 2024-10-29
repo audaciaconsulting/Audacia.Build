@@ -36,7 +36,7 @@ steps:
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
       suppressionPath: $(suppressionsPath)
-      projectName: ${{parameters.displayName}}
+      projectName: ${{parameters.projectName}}
       scanPath: '**/*.csproj'
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
