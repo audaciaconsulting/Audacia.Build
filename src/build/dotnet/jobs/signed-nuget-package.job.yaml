@@ -20,7 +20,7 @@ parameters:
     default: '$(Build.DefinitionName)'
 
 jobs:
-  - job:
+  - job: Job_Build
     displayName: ${{parameters.displayName}}
     variables:
       - group: Code Signing

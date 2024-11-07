@@ -29,8 +29,8 @@ parameters:
     default: '*.Tests.csproj'
 
 jobs:
-  - job:
-    displayName:
+  - job: Job_Build
+    displayName: ${{parameters.displayName}}
     variables:
       - group: Code Signing
 

@@ -10,7 +10,7 @@ parameters:
     default: false
 
 jobs:
-  - job:
+  - job: Job_Build
     displayName: ${{ parameters.displayName }}
     steps:
       - task: npmAuthenticate@0
