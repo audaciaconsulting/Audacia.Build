@@ -10,8 +10,6 @@ parameters:
     default: false
   - name: signAssemblies
     default: true
-  - name: releaseBranchName
-    default: 'master,main'
   - name: runTests
     default: true
   - name: applyVersioning
@@ -20,14 +18,8 @@ parameters:
     default: ''
   - name: artifactName
     default: '$(Build.DefinitionName)'
-  - name: excludePreReleasePostfix
-    default: false
   - name: workingDirectory # The working directory containing relevant csproj and nuspec files; if not set then $(Build.SourcesDirectory) is used.
     default: ''
-  - name: includeCsproj
-    default: true
-  - name: includeNuspec
-    default: false
   - name: packageSource # Where the package is published; should be one of 'internalPrivate' or 'internalPublic'
     default: 'internalPublic'
     values:
@@ -49,14 +41,12 @@ jobs:
             continueIfVulnerabilities: true
 
       - ${{ if eq(parameters.applyVersioning, true) }}:
-        - task: UpdateDotNetVersions@12
+        - task: UpdateVersions@1
+          name: UpdateVersions
           displayName: .NET Versioning
           inputs:
-            releaseBranchNames: ${{parameters.releaseBranchName}}
-            ExcludePreReleasePostfix: ${{parameters.excludePreReleasePostfix}}
+            buildType: 'nuget'
             workingDirectory: ${{parameters.workingDirectory}}
-            includeCsproj: ${{parameters.includeCsproj}}
-            includeNuspec: ${{parameters.includeNuspec}}
             packageSource: ${{parameters.packageSource}}
             excludePaths: ${{parameters.excludePaths}}
           env:
