@@ -31,6 +31,14 @@ jobs:
             path: ${{parameters.path}}
             continueIfVulnerabilities: true
 
+      - task: UpdateVersions@1
+        name: UpdateVersions
+        displayName: npm versioning
+        inputs:
+          buildType: 'npm'
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
       - task: Npm@1
         displayName: NPM Test
         condition: and(succeeded(), eq('${{parameters.runTests}}', 'true'))
