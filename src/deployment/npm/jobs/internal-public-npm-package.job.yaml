@@ -1,9 +1,8 @@
 # Job to deploy an NPM Package to the Internal Public Feed
 jobs:
-  - deployment: Deploy
+  - deployment: Job_Deploy
     displayName: Deploy
     environment: NPM Internal
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
     strategy:
       runOnce:
         deploy:

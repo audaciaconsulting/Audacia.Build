@@ -1,6 +1,6 @@
 # Job to deploy a NuGet Package to the Public NuGet Feed
 jobs:
-  - deployment: Deploy
+  - deployment: Job_Deploy
     displayName: Deploy to NuGet (Public)
     environment: NuGet Public
     strategy:
