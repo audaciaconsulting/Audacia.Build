@@ -1,9 +1,8 @@
 # Job to deploy an NPM Package to the Internal Public Feed
 jobs:
-  - deployment: Deploy
+  - deployment: Job_Deploy
     displayName: Deploy
     environment: NPM Internal
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
     strategy:
       runOnce:
         deploy:
@@ -26,11 +25,6 @@ jobs:
               displayName: NPM Authenticate
               inputs:
                 workingFile: dist/package/.npmrc
-
-            - task: UpdateNpmVersions@1
-              displayName: NPM Versioning
-              inputs:
-                workingDirectory: 'dist/package'
 
             - task: Npm@1
               displayName: NPM Publish

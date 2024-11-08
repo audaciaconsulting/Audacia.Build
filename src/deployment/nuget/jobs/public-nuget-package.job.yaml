@@ -1,9 +1,8 @@
 # Job to deploy a NuGet Package to the Public NuGet Feed
 jobs:
-  - deployment: Deploy
+  - deployment: Job_Deploy
     displayName: Deploy to NuGet (Public)
     environment: NuGet Public
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
     strategy:
       runOnce:
         deploy:

@@ -10,7 +10,7 @@ parameters:
     default: false
 
 jobs:
-  - job:
+  - job: Job_Build
     displayName: ${{ parameters.displayName }}
     steps:
       - task: npmAuthenticate@0
@@ -30,6 +30,14 @@ jobs:
           parameters:
             path: ${{parameters.path}}
             continueIfVulnerabilities: true
+
+      - task: UpdateVersions@1
+        name: UpdateVersions
+        displayName: npm versioning
+        inputs:
+          buildType: 'npm'
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
       - task: Npm@1
         displayName: NPM Test
