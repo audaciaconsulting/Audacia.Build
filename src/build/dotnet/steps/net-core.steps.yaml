@@ -34,14 +34,12 @@ steps:
     displayName: .NET Restore
     inputs:
       command: restore
-      projects: ${{parameters.projects}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
-      
-  - task: DotNetCoreCLI@2
-    displayName: .NET Restore
-    inputs:
-      command: restore
-      projects: ${{parameters.tests}}
+      ${{ if eq(parameters.runTests, true) }}:
+        projects: |
+            ${{parameters.projects}}
+            ${{parameters.tests}}
+      ${{ else }}:
+        projects: ${{parameters.projects}}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
 
   - task: DotNetCoreCLI@2

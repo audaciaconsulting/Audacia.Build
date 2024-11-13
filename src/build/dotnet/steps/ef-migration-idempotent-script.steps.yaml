@@ -16,19 +16,16 @@ parameters:
     default: 'EFMigrationScript'
 
 steps:
-  - task: DotNetCoreCLI@2
-    displayName: .NET Restore
-    inputs:
-      command: restore
-      projects: ${{parameters.defaultProject}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
-  
-  - task: DotNetCoreCLI@2
-    displayName: .NET Restore
-    inputs:
-      command: restore
-      projects: ${{parameters.startupProject}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
+  # if default project is provided, startup should also be provided
+  - ${{ if not(eq(length(parameters.defaultProject), 0)) }}:
+    - task: DotNetCoreCLI@2
+      displayName: .NET Restore
+      inputs:
+        command: restore
+        projects: |
+            ${{parameters.defaultProject}}
+            ${{parameters.startupProject}}
+        vstsFeed: 'Audacia.Public/AudaciaPublic'
 
   - task: PowerShell@2
     displayName: ${{parameters.displayName}}
