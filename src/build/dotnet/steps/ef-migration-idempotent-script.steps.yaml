@@ -4,9 +4,9 @@ parameters:
     default: 'Build EF Core Migration Scripts'
   - name: dbContext # (required) The name of the database context for the application.
     default: 'DatabaseContext'
-  - name: defaultProject # (optional) The entity framework project which contains the database context.
+  - name: defaultProject # (optional) The path to the csproj of the entity framework project which contains the database context.
     default: ''
-  - name: startupProject # (optional) The executable project that contains the appsettings.json file.
+  - name: startupProject # (optional) The path to the csproj of the executable project that contains the appsettings.json file.
     default: ''
   - name: dotNetToolsManifest # The location of the dotnet tools manifest. Defaults to the root of the source repository.
     default: '$(Build.SourcesDirectory)/.config/dotnet-tools.json'
@@ -16,13 +16,6 @@ parameters:
     default: 'EFMigrationScript'
 
 steps:
-  - task: DotNetCoreCLI@2
-    displayName: .NET Restore
-    inputs:
-      command: restore
-      projects: ${{parameters.efProjectPath}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
-
   - task: PowerShell@2
     displayName: ${{parameters.displayName}}
     inputs:
