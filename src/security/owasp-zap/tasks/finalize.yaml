@@ -21,7 +21,7 @@ steps:
       script: |
         filter ConvertTo-FoldedString { $_ -replace "\r?\n", " " }
 
-        $organization = "${{parameters.organization}}"
+        $organization = "${{parameters.organisationUri}}"
         $projectName = "${{parameters.projectName}}"
         $parentCardId = "${{parameters.parentCardId}}"
 
