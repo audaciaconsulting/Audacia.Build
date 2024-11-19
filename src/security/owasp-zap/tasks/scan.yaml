@@ -131,7 +131,6 @@ steps:
       AuthenticationScriptType: ${{parameters.authenticationScriptType}}
       AuthenticationScriptLocation: ${{parameters.authenticationScriptLocation}}
       UserName: ${{parameters.username}}
-      ConfigurationFileLocation: ${{parameters.configurationFileLocation}}
       UseAjaxSpider: ${{parameters.useAjaxSpider}}
       MaxPassiveScanTime: ${{parameters.maxPassiveScanTime}}
       MaxSpiderCrawlTime: ${{parameters.maxSpiderCrawlTime}}
