@@ -18,6 +18,10 @@ parameters:
     default: '*.Tests.csproj'
   - name: artifactName
     default: '$(Build.DefinitionName)'
+  - name: runTests
+    default: true
+  - name: applyVersioning
+    default: true
 
 jobs:
   - job: Job_Build
