@@ -71,14 +71,16 @@ steps:
               "OWASP Suggested Solution: $($scenario.solution)<br>" +
               "Resources: $($scenario.reference)</li></ol>"
 
+            $bugRepro = "<ul>" +
+              "<li>Scan Name: $($scanName)</li>" +
+              "<li>Evidence: $($scenario.instances.instance.evidence)</li>" +
+              "</ul>"
+
             # Define the bug fields using the scenario data
             $fields = @(
               "AudaciaScrum.Notes=$($scenario.desc)"
               "Microsoft.VSTS.Common.AcceptanceCriteria=$($bugDetail)",
-              "Microsoft.VSTS.TCM.ReproSteps=<ul>" +
-                "<li>Scan Name: $($scanName)</li>" +
-                "<li>Evidence: $($scenario.instances.instance.evidence)</li>" +
-                "</ul>"
+              "Microsoft.VSTS.TCM.ReproSteps=$($bugRepro)"
             )
 
             # Create the bug
