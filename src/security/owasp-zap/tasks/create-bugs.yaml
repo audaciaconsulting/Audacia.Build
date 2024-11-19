@@ -24,7 +24,7 @@ steps:
 
         $organization = "${{parameters.organisationUri}}"
         $projectName = "${{parameters.projectName}}"
-        $parentCardId = "${{parameters.parentCardId}}"]
+        $parentCardId = "${{parameters.parentCardId}}"
         $scanName = "${{parameters.name}}"
 
         # Load the ZAP alerts from the Report XML
