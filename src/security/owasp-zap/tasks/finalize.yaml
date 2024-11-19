@@ -17,7 +17,7 @@ steps:
     displayName: 'Create Bug Cards for OWASP ZAP Failures'
     condition: and(succeeded(), eq('${{ parameters.createBugsForFailures }}', 'true'))
     env:
-      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken) # Used by az devops commands
     inputs:
       targetType: inline
       script: |
@@ -26,8 +26,6 @@ steps:
         $organization = "${{parameters.organisationUri}}"
         $projectName = "${{parameters.projectName}}"
         $parentCardId = "${{parameters.parentCardId}}"
-
-        az devops login --organization $organization --output none --access-token $env:SYSTEM_ACCESSTOKEN
 
         # Load the ZAP alerts from the Report XML
         $reportPath = "$(workingTempDirectory)/Report.xml"
