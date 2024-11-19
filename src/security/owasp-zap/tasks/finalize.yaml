@@ -99,7 +99,7 @@ steps:
               $createLinkResponse = az boards work-item relation add `
                 --organization $organization `
                 --id $createResponse.id `
-                --target-id $parentCard `
+                --target-id $parentCardId `
                 --relation-type "Parent"
 
               if (!$createLinkResponse) {
