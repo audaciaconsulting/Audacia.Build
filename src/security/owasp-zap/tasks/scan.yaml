@@ -26,6 +26,14 @@ parameters:
     default: -1
   - name: maxSpiderCrawlTime # OPTIONAL: the number of minutes to spider for (optional, minutes) - Baseline and Full scan types only. Default of -1 means not set so will use ZAP Docker default
     default: -1
+  - name: createBugsForFailures # OPTIONAL: If the OWASP pipeline fails, have Azure DevOps create bug cards
+    default: false
+  - name: parentCardId # OPTIONAL: If 'createBugsForFailures' is true, provide a parent card number for any raised cards
+    default: ''
+  - name: organisationUri # OPTIONAL: The URI of the DevOps organisation to create the bugs in. Defaults to the current organisation.
+    default: '$(System.TeamFoundationCollectionUri)'
+  - name: projectName # OPTIONAL: The name of the DevOps project to create the bugs in. Defaults to the current project.
+    default: '$(System.TeamProject)'
 
 steps:
   # Check initialize yaml step has been run
@@ -234,6 +242,14 @@ steps:
 
         # Transform OWASP ZAP XML results to NUnit3 format
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+
+  - template: ./create-bugs.yaml
+    parameters:
+      createBugsForFailures: ${{parameters.createBugsForFailures}}
+      parentCardId: ${{parameters.parentCardId}}
+      organisationUri: ${{parameters.organisationUri}}
+      projectName: ${{parameters.projectName}}
+      name: ${{parameters.name}}
 
   - task: PublishBuildArtifacts@1
     inputs:
