@@ -9,7 +9,7 @@ parameters:
   - name: testPath
     default: '**/*Tests/*.csproj'
   - name: skipDependencyChecks
-    default: false
+    default: true
   - name: workingDirectory # The working directory containing relevant csproj and nuspec files; if not set then $(Build.SourcesDirectory) is used.
     default: ''
   - name: packageSource # Where the package is published; should be one of 'public', 'internalPrivate' or 'internalPublic'
