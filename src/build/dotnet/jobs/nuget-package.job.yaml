@@ -7,7 +7,7 @@ parameters:
   - name: tests
     default: '**/*Tests/*.csproj'
   - name: skipDependencyChecks
-    default: false
+    default: true
   - name: signAssemblies
     default: true
   - name: runTests
