@@ -243,13 +243,13 @@ steps:
         # Transform OWASP ZAP XML results to NUnit3 format
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
-  - template: ./create-bugs.yaml
-    parameters:
-      createBugsForFailures: ${{parameters.createBugsForFailures}}
-      parentCardId: ${{parameters.parentCardId}}
-      organisationUri: ${{parameters.organisationUri}}
-      projectName: ${{parameters.projectName}}
-      name: ${{parameters.name}}
+  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+    - template: ./create-bugs.yaml
+      parameters:
+        parentCardId: ${{parameters.parentCardId}}
+        organisationUri: ${{parameters.organisationUri}}
+        projectName: ${{parameters.projectName}}
+        name: ${{parameters.name}}
 
   - task: PublishBuildArtifacts@1
     inputs:
