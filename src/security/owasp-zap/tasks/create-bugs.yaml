@@ -49,7 +49,7 @@ steps:
           WHERE
             [System.TeamProject] = '$projectName' AND
             [System.WorkItemType] = 'Bug' AND
-            [System.State] <> 'Removed' AND
+            [System.State] NOT IN ('Removed', 'Done') AND
             [System.Title] CONTAINS 'OWASP Issue: $($scenario.name)'
         "@ | ConvertTo-FoldedString
 
