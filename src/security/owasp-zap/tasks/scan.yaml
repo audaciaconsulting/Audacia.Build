@@ -68,7 +68,7 @@ steps:
         # Create a variable for the new directory for use in other steps
         Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
 
-        # Allow all write permissions so it can be writen to by zap2docker
+        # Allow all write permissions so it can be written to by zap2docker
         chmod a+w "$NewDirectoryFullPath"
 
         echo "Created temp working folder for scan at $NewDirectoryFullPath"
@@ -131,7 +131,6 @@ steps:
       AuthenticationScriptType: ${{parameters.authenticationScriptType}}
       AuthenticationScriptLocation: ${{parameters.authenticationScriptLocation}}
       UserName: ${{parameters.username}}
-      ConfigurationFileLocation: ${{parameters.configurationFileLocation}}
       UseAjaxSpider: ${{parameters.useAjaxSpider}}
       MaxPassiveScanTime: ${{parameters.maxPassiveScanTime}}
       MaxSpiderCrawlTime: ${{parameters.maxSpiderCrawlTime}}

@@ -1,35 +1,17 @@
 # Steps to build .NET Core Projects
 parameters:
-  - name: projects
+  - name: projects                     # OPTIONAL: The glob for the projects to be built
     default: '**/*.csproj'
-  - name: tests
+  - name: tests                        # OPTIONAL: The glob for the test projects to be run
     default: '**/*.Tests.csproj'
-  - name: runTests
+  - name: runTests                     # OPTIONAL: Should the tests projects be run
     default: true
-  - name: configuration
+  - name: configuration                # OPTIONAL: The configuration to use in the build, e.g. Release or Debug
     default: 'Release'
-  - name: applyVersioning
-    default: true
-  - name: artifactName
+  - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
-  - name: releaseBranchName
-    default: 'master,main'
 
 steps:
-  - ${{ if eq(parameters.applyVersioning, true) }}:
-    - task: UpdateDotNetVersions@12
-      displayName: .NET Versioning
-      inputs:
-        releaseBranchNames: ${{parameters.releaseBranchName}}
-        ExcludePreReleasePostfix: false
-        workingDirectory: ''
-        includeCsproj: true
-        includeNuspec: false
-        packageSource: 'internalPublic'
-        excludePaths: ${{parameters.tests}}
-      env:
-        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-
   - task: DotNetCoreCLI@2
     displayName: .NET Restore
     inputs:
