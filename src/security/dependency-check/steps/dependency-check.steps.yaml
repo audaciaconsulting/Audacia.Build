@@ -20,7 +20,7 @@ steps:
 
   - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
     parameters:
-      displayName: .NET Dependency Check
+      projectName: .NET Dependency Check
       publishAs: Dependency Check Result (.NET)
       runEvenIfError: true
       suppressionsFilePath: ${{parameters.dotnetSuppressionsFilePath}}
