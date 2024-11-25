@@ -5,6 +5,7 @@ parameters:
   - name: provisioningServiceConnectionName # Name of the service connection used to destroy resources
     default: ''
   - name: resourcesToDestroy # If the whole plan should be destroyed then don't pass anything in
+    type: object
     default: []
 
 steps:
