@@ -1,16 +1,19 @@
 # Task to destroy some or all Terraform resources
 parameters:
+  # Directory where Terraform configuration files are located
   - name: terraformDirectory
     default: $(System.DefaultWorkingDirectory)
-  - name: provisioningServiceConnectionName # Name of the service connection used to destroy resources
+  # Name of the service connection used to destroy resources
+  - name: provisioningServiceConnectionName
     default: ''
-  - name: resourcesToDestroy # If the whole plan should be destroyed then don't pass anything in
+  # List of specific resources to destroy; if empty, the entire plan will be destroyed
+  - name: resourcesToDestroy
     default: []
 
 steps:
   # If no specific resources passed in to destroy then destroy the whole thing
   - ${{ if eq(length(parameters.resourcesToDestroy), 0) }}:
-    - task: TerraformTaskV2@2
+    - task: TerraformTaskV4@4
       displayName: Terraform Destroy
       inputs:
         provider: 'azurerm'
@@ -21,7 +24,7 @@ steps:
   # If some resources have been passed in then we only want to destroy them, so loop through and call destroy for each one
   - ${{ if gt(length(parameters.resourcesToDestroy), 0) }}:
     - ${{ each resource in parameters.resourcesToDestroy }}:
-      - task: TerraformTaskV2@2
+      - task: TerraformTaskV4@4
         displayName: Terraform Destroy ${{ resource }})
         inputs:
           provider: 'azurerm'
