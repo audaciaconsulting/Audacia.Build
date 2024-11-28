@@ -1,26 +1,46 @@
-# Steps to provision an environment with Terraform
+# This YAML file defines the steps to provision an environment with Terraform.
+
 parameters:
+  # Directory where Terraform configuration files are located.
   - name: terraformDirectory
     default: $(System.DefaultWorkingDirectory)
-  - name: terraformVersion # Version of terraform to install
+  
+  # Version of Terraform to install.
+  - name: terraformVersion
     default: 'latest'
-  - name: environmentId # Name of the environment in Azure. example qa, uat, production
+  
+  # Name of the environment in Azure (e.g., qa, uat, production).
+  - name: environmentId
     default: ''
-  - name: terraformStateServiceConnectionName # Name of the service connection to connect to the Terraform state storage
+  
+  # Name of the service connection to connect to the Terraform state storage.
+  - name: terraformStateServiceConnectionName
     default: ''
-  - name: terraformStateResourceGroup # Resource group with the Terraform state storage in
+  
+  # Resource group containing the Terraform state storage.
+  - name: terraformStateResourceGroup
     default: ''
-  - name: terraformStateStorageAccount # Storage Account with the Terraform state storage in
+  
+  # Storage account containing the Terraform state storage.
+  - name: terraformStateStorageAccount
     default: ''
-  - name: terraformStateStoragePrefix # The prefix to use for the Terraform state storage
+  
+  # Prefix to use for the Terraform state storage.
+  - name: terraformStateStoragePrefix
     default: ''
-  - name: provisioningServiceConnectionName # Name of the service connection used to provision resources
+  
+  # Name of the service connection used to provision resources.
+  - name: provisioningServiceConnectionName
     default: ''
-  - name: terraformInputVariables # Environment variables prefixed with TF_VAR_ are preferred over this. Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties
+  
+  # Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties.
+  # Environment variables prefixed with TF_VAR_ are preferred over this.
+  - name: terraformInputVariables
     type: object
     default: []
 
 steps:
+  # Loop through each variable in terraformInputVariables and set them using the set-variable.yaml template.
   - ${{ each variable in parameters.terraformInputVariables }}:
     - template: /src/provision/terraform/tasks/set-variable.yaml
       parameters:
@@ -28,17 +48,20 @@ steps:
         variableName: ${{ variable.variableName }}
         variableValue: ${{ variable.variableValue }}
 
+  # Create a storage container for the Terraform state using the create-storage-container.yaml template.
   - template: /src/provision/azure/tasks/create-storage-container.yaml
     parameters:
       storageContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       serviceConnectionName: ${{parameters.terraformStateServiceConnectionName}}
       storageAccountName: ${{parameters.terraformStateStorageAccount}}
 
+  # Install the specified version of Terraform.
   - task: TerraformInstaller@1
     displayName: Terraform Install
     inputs:
       terraformVersion: ${{parameters.terraformVersion}}
 
+  # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
     displayName: Terraform Init
     name: TerraformInit
@@ -52,6 +75,7 @@ steps:
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
+  # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
     displayName: Terraform Apply
     name: TerraformApply
@@ -62,6 +86,7 @@ steps:
       workingDirectory: ${{parameters.terraformDirectory}}
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
+  # Retrieve the output from the Terraform state.
   - task: TerraformTaskV4@4
     displayName: Terraform Output
     name: TerraformOutput
@@ -73,4 +98,5 @@ steps:
       outputFormat: json
       outputTo: file
 
+  # Expand variables using the expand-variables.yaml template.
   - template: /src/provision/terraform/tasks/expand-variables.yaml
