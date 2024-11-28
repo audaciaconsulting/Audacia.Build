@@ -9,19 +9,22 @@ parameters:
   - name: terraformVersion
     default: 'latest'
   
-  # Name of the environment in Azure (e.g., qa, uat, production).
+  # Name of the environment in Azure (e.g: qa, uat, production).
   - name: environmentId
     default: ''
   
   # Name of the service connection to connect to the Terraform state storage.
+  # Previously called: backendSubscription
   - name: terraformStateServiceConnectionName
     default: ''
   
   # Resource group containing the Terraform state storage.
+  # Previously called: backendResourceGroup
   - name: terraformStateResourceGroup
     default: ''
   
   # Storage account containing the Terraform state storage.
+  # Previously called: backendStorageAccount
   - name: terraformStateStorageAccount
     default: ''
   
@@ -30,6 +33,7 @@ parameters:
     default: ''
   
   # Name of the service connection used to provision resources.
+  # Previously called: environmentSubscription
   - name: provisioningServiceConnectionName
     default: ''
   
