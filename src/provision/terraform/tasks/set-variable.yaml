@@ -12,7 +12,7 @@ parameters:
 
   # The value of the variable to be added to the tfvars file. It can be a string, a number, or a Boolean.
   variableValue: ''
-  
+
 steps:
   - task: Powershell@2
     displayName: Set Terraform Variable '${{ parameters.variableName }}'
@@ -21,7 +21,6 @@ steps:
       script: |
         $name = "${{parameters.variableName}}"
         Write-Host "$name is ${{parameters.variableValue}} when passed in"
-        
         
         # Validate that the variable name is not empty
         if ($name.Length -lt 1) {
@@ -32,17 +31,16 @@ steps:
         # Assign the variable value from the pipeline parameters
         $value = "${{parameters.variableValue}}"
         
-        # Check if the value is Boolean (case-insensitively: true/false)
+        # Explicitly ensure Boolean values remain lowercase
         if ($value -ieq "true" -or $value -ieq "false") {
-            # Ensure Boolean is written in lowercase without quotes
-            $normalizedValue = $value.ToLower()
-            Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = $normalizedValue"
-        } else {
-            # If the value is not a Boolean, treat it as a string and wrap it in quotes
-            Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = `"$value`"" 
+            # Normalize Boolean to lowercase
+            $value = $value.ToLower()
         }
         
-        Write-Host "This is the test pipeline 5"
+        # Add the variable to the tfvars file
+        Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = $value"
+        
+        Write-Host "This is the test pipeline 6"
         Write-Host "$name is $value"
         
         exit 0
