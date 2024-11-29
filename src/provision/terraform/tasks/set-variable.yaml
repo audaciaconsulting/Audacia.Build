@@ -28,13 +28,15 @@ steps:
           exit 1
         }
         
-        # Assign the variable value from the pipeline parameters
-        $value = "`"${{parameters.variableValue}}`""
+        # Get the raw value of the variable
+        $rawValue = "${{parameters.variableValue}}"
+        # Quote the raw value
+        $value = "`"$rawValue`""
         
-        # Explicitly ensure Boolean values remain lowercase
-        if ($value -ieq "true" -or $value -ieq "false") {
-            # Normalize Boolean to lowercase
-            $value = $value.ToLower()
+        # Check if the value is a Boolean and normalize it to lowercase if true
+        if ($rawValue -ieq "true" -or $rawValue -ieq "false") {
+          # Normalize Boolean to lowercase
+          $value = $value.ToLower()
         }
         
         # Add the variable to the tfvars file
