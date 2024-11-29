@@ -23,6 +23,8 @@ steps:
       targetType: inline
       script: |
         $name = "${{parameters.variableName}}"
+        Write-Host "$name is $value when passed in"
+        
         
         # Validate that the variable name is not empty
         if ($name.Length -lt 1) {
@@ -43,7 +45,7 @@ steps:
             Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = `"$value`"" 
         }
         
-        Write-Host "This is the test pipeline"
+        Write-Host "This is the test pipeline 3"
         Write-Host "$name is $value"
         
         exit 0
