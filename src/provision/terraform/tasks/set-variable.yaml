@@ -42,6 +42,7 @@ steps:
             # If the value is not a Boolean, treat it as a string and wrap it in quotes
             Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = `"$value`"" 
         }
+        Write-Host "This is the test pipeline"
         
         Write-Host "$name is $value"
         
