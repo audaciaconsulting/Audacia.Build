@@ -38,7 +38,7 @@ steps:
             throw "You must run a initialize.yaml step before running a scan."
         }
 
-  # Use the scan type to select the correct OWAZP Zap python file to run
+  # Use the scan type to select the correct OWASP Zap python file to run
   - task: PowerShell@2
     displayName: '${{parameters.name}}: Setup Scan Python File Variable'
     inputs:
@@ -97,7 +97,7 @@ steps:
 
         # Write to target file at new location
         $FileText | Out-File -FilePath "$(workingTempDirectory)/ZapContext.context"
-    # Run step if the previous step succeded and zapContextLocation is not empty
+    # Run step if the previous step succeeded and zapContextLocation is not empty
     condition: and(succeeded(), ne('${{parameters.zapContextLocation}}', ''))
 
   # Copy authentication script file to temporary working directory
@@ -116,7 +116,7 @@ steps:
 
         # Copy file to new location
         Copy-Item "${{parameters.authenticationScriptLocation}}" -Destination "$(workingTempDirectory)/$FileName"
-    # Run step if the previous step succeded and authenticationScriptLocation is not empty
+    # Run step if the previous step succeeded and authenticationScriptLocation is not empty
     condition: and(succeeded(), ne('${{parameters.authenticationScriptLocation}}', ''))
 
   # Run Security Scans

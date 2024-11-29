@@ -11,7 +11,7 @@ parameters:
   - name: data                    # REQUIRED: Object array of key value pairs for find and replace; objects should have 'key' and 'value' properties
     type: object
     default: []
-  - name: base64EncodeValues      # OPTIONAL: Base64 encode replaced values. For use in OWAZP ZAP .context files where user authenticiation details are stored Base64 encoded
+  - name: base64EncodeValues      # OPTIONAL: Base64 encode replaced values. For use in OWASP ZAP .context files where user authentication details are stored Base64 encoded
     type: boolean
     default: false
 

@@ -60,7 +60,7 @@ The Audacia.Build OWASP ZAP steps currently actively supports 3 authentication t
 
 - Authorization Header Authentication
   - JWT token provisioning can be achieved using the `src/security/auth/tasks/authenticate-jwtbearer.yaml` step.
-  - The header name can also be overridden to alow for headers not directly called "Authorization", for example the use of custom headers to specify a PAT (personal access token).
+  - The header name can also be overridden to allow for headers not directly called "Authorization", for example the use of custom headers to specify a PAT (personal access token).
   - Client_credential and password grant types are supported.
   - See `examples/security/owasp-zap/header-authenticated-api-scan` in `Audacia.Build` for an example / template.
   - [Click here to view the relevant OWASP ZAP docs](https://www.zaproxy.org/docs/desktop/start/features/authentication/#envvars).

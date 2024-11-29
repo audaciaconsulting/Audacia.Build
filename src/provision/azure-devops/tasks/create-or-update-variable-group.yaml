@@ -1,4 +1,4 @@
-# Task to create a new Azure DevOps Library Variable Group if it does not exists, and adds/updates variables in the group
+# Task to create a new Azure DevOps Library Variable Group if it does not exist, and adds/updates variables in the group
 parameters:
   - name: variableGroupName # The name of the variable group to create
     type: string

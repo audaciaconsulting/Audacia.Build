@@ -76,7 +76,7 @@ steps:
                   [string] $KeyVaultName
               )
 
-              # Supress progress messages. Azure DevOps doesn't format them correctly (used by New-PACertificate)
+              # Suppress progress messages. Azure DevOps doesn't format them correctly (used by New-PACertificate)
               $global:ProgressPreference = 'SilentlyContinue'
 
               # Split certificate names by comma or semi-colin
