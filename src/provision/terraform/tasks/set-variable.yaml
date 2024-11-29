@@ -1,7 +1,8 @@
 # Task to add a variable to the Terraform tfvars file
 # This YAML script is used in an Azure DevOps pipeline to dynamically append a variable
-# (name and value) to a Terraform tfvars file. It ensures Boolean values are properly
-# written unquoted in lowercase, as required by Terraform.
+# (name and value) to a Terraform tfvars file. It ensures proper handling of Boolean values
+# by normalizing them to lowercase without quotes, as required by Terraform. 
+# All other values are added as strings, wrapped in quotes, maintaining compatibility with Terraform.
 
 parameters:
   # The directory where the Terraform tfvars file is located. Defaults to the pipeline's working directory.
@@ -20,7 +21,6 @@ steps:
       targetType: inline
       script: |
         $name = "${{parameters.variableName}}"
-        Write-Host "$name is ${{parameters.variableValue}} when passed in"
         
         # Validate that the variable name is not empty
         if ($name.Length -lt 1) {
@@ -30,19 +30,19 @@ steps:
         
         # Get the raw value of the variable
         $rawValue = "${{parameters.variableValue}}"
-        # Quote the raw value
+        
+        # Add quotes to the raw value
         $value = "`"$rawValue`""
         
         # Check if the value is a Boolean and normalize it to lowercase if true
         if ($rawValue -ieq "true" -or $rawValue -ieq "false") {
           # Normalize Boolean to lowercase
-          $value = $value.ToLower()
+          $value = $rawValue.ToLower()
         }
         
         # Add the variable to the tfvars file
         Add-Content ${{parameters.terraformDirectory}}/terraform.tfvars "`n`t$name = $value"
         
-        Write-Host "This is the test pipeline 7"
         Write-Host "$name is $value"
         
         exit 0
