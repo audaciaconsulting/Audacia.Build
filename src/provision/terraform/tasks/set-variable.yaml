@@ -6,14 +6,16 @@
 
 parameters:
   # The directory where the Terraform tfvars file is located. Defaults to the pipeline's working directory.
-  terraformDirectory: '$(System.DefaultWorkingDirectory)'
-
+  - name: terraformDirectory
+    default: '$(System.DefaultWorkingDirectory)'
   # The name of the variable to be added to the tfvars file. This should not be empty.
-  variableName: ''
+  - name: variableName
+    default: ''
 
   # The value of the variable to be added to the tfvars file. It can be a string, a number, or a Boolean.
-  variableValue: ''
-
+  - name: variableValue
+    default: ''
+    
 steps:
   - task: Powershell@2
     displayName: Set Terraform Variable '${{ parameters.variableName }}'
