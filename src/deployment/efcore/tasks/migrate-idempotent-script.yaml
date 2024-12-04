@@ -5,7 +5,7 @@ parameters:
   - name: displayName
     default: 'Migrate Azure SQL Database'
   - name: artifactName
-    default: 'Migrations'
+    default: 'EFMigrationScript'
   - name: dbContext # Name of the DbContext
     default: ''
   - name: azureSubscription # Azure Subscription for the resource
