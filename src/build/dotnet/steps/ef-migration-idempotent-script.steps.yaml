@@ -46,4 +46,5 @@ steps:
 
   - template: /src/build/common/tasks/publish.yaml
     parameters:
+      path: Migrations
       artifactName: ${{parameters.artifactName}}
