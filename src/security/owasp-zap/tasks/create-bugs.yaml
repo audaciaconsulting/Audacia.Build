@@ -47,7 +47,8 @@ steps:
             [System.TeamProject] = '$projectName' AND
             [System.WorkItemType] = 'Bug' AND
             [System.State] NOT IN ('Removed', 'Done') AND
-            [System.Title] CONTAINS 'OWASP Issue: $($scenario.name)'
+            [System.Title] CONTAINS 'OWASP Issue: $($scenario.name)' AND
+            [Repro Steps] CONTAINS 'Scan Name: $scanName'
         "@ | ConvertTo-FoldedString
 
           $queryExistingBugsResult = (az boards query `
