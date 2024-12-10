@@ -69,6 +69,10 @@ jobs:
             --configuration Release
             --no-restore
 
+      - template: /src/build/common/steps/license-checks-steps.yaml
+        parameters:
+          projects: ${{parameters.projects}}
+          
       - task: DotNetCoreCLI@2
         displayName: .NET Test
         condition: and(succeeded(), eq('${{parameters.runTests}}', true))
