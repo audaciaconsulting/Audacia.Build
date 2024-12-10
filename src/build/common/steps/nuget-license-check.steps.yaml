@@ -19,7 +19,7 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-        foreach ($projectPath in parameters.projectPaths) {
+        foreach ($projectPath in ${{parameters.projectPaths}}) {
           dotnet tool run dotnet-project-licenses -i $projectPath -t --use-project-assets-json --allowed-license-types '${{ parameters.allowedLicensesPath }}' --licenseurl-to-license-mappings '${{ parameters.licenseUrlMappingsPath }}' --packages-filter '${{ parameters.excludedPackagesPath }}'
         }
         
