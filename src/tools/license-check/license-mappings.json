@@ -1,0 +1,8 @@
+{
+    "https://www.bouncycastle.org/csharp/licence.html": "X11",
+    "https://raw.githubusercontent.com/DotNetAnalyzers/DocumentationAnalyzers/489c06575b/LICENSE": "MIT",
+    "https://github.com/dotnet/standard/blob/master/LICENSE.TXT": "MIT",
+    "https://raw.githubusercontent.com/aspnet/AspNetCore/2.0.0/LICENSE.txt": "Apache-2.0",
+    "https://github.com/dotnet/core-setup/blob/master/LICENSE.TXT": "MIT",
+    "https://raw.githubusercontent.com/Microsoft/OpenAPI.NET/master/LICENSE": "MIT"
+}
