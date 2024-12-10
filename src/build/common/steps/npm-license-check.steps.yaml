@@ -9,7 +9,7 @@ steps:
     displayName: Install license checker
 
   - task: PowerShell@2
-    displayName: Run license check
+    displayName: Run Npm license check
     inputs:
       targetType: inline
       pwsh: true

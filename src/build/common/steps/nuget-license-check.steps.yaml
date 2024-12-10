@@ -14,7 +14,7 @@ steps:
     displayName: Install license check dotnet tool
 
   - task: PowerShell@2
-    displayName: Run license check
+    displayName: Run nuget license check
     inputs:
       targetType: inline
       pwsh: true
