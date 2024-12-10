@@ -1,0 +1,29 @@
+# Job template to deploy to a specific environment
+parameters:
+  name: '' # The job name.
+  projectPaths: ''
+  allowedLicensesPath: '' # The JSON file that contains the allowed licenses
+  licenseUrlMappingsPath: '' # The JSON file that contains a mapping from license urls to the license that they represent
+  excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
+
+steps:
+  - script: dotnet tool install dotnet-project-licenses
+    name: ${{ parameters.name }}
+    displayName: Install license check dotnet tool
+
+  - task: PowerShell@2
+    displayName: Run license check
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        foreach ($projectPath in parameters.projectPaths) {
+          dotnet tool run dotnet-project-licenses -i $projectPath -t --use-project-assets-json --allowed-license-types '${{ parameters.allowedLicensesPath }}' --licenseurl-to-license-mappings '${{ parameters.licenseUrlMappingsPath }}' --packages-filter '${{ parameters.excludedPackagesPath }}'
+        }
+        
+    
+
+
+
+
+    

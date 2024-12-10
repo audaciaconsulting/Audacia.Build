@@ -1,0 +1,20 @@
+# Job template to deploy to a specific environment
+parameters:
+  projectPath: ''
+  allowedLicensesPath: '' # The JSON file that contains the allowed licenses
+  excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
+
+steps:
+  - script: npm install -g license-checker
+    displayName: Install license checker
+
+  - task: PowerShell@2
+    displayName: Run license check
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        $allowedLicenses = Get-Content '${{ parameters.allowedLicensesPath }}' | ConvertFrom-Json | Join-String -Separator ';'
+        $excludedPackages = Get-Content '${{ parameters.excludedPackagesPath }}' | ConvertFrom-Json | Join-String -Separator ';'
+        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow $allowedLicenses --excludePackages $excludedPackages --excludePrivatePackages
+    
