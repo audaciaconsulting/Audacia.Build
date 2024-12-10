@@ -1,19 +1,21 @@
 parameters:
-  projects: '**/*.csproj'
-  npmPath: '' 
+  - name: projects
+    default: '**/*.csproj'
+  - name: npmPath
+    default: ''
   # ^ rename
   
-  steps: 
-    - template: ./nuget-license-check.steps.yaml
-      parameters:
-        name: dotnet_license_check_tool
-        projectPaths: ${{parameters.projects}}
-        allowedLicensesPath: 'src/tools/license-check/allowed-license-types.json'
-        licenseUrlMappingsPath: 'src/tools/license-check/license-mappings.json'
-        excludedPackagesPath: 'src/tools/license-check/nuget-excluded-packages.json'
-      
-    - template: ./steps/npm-license-check.steps.yaml
-      parameters:
-        projectPath: ${{parameters.npmPath}}
-        allowedLicensesPath: 'src/tools/license-check/allowed-license-types.json'
-        excludedPackagesPath: 'src/tools/license-check/npm-excluded-packages.json'
+steps: 
+  - template: ./nuget-license-check.steps.yaml
+    parameters:
+      name: dotnet_license_check_tool
+      projectPaths: ${{ parameters.projects }}
+      allowedLicensesPath: 'src/tools/license-check/allowed-license-types.json'
+      licenseUrlMappingsPath: 'src/tools/license-check/license-mappings.json'
+      excludedPackagesPath: 'src/tools/license-check/nuget-excluded-packages.json'
+    
+  - template: ./steps/npm-license-check.steps.yaml
+    parameters:
+      projectPath: ${{ parameters.npmPath }}
+      allowedLicensesPath: 'src/tools/license-check/allowed-license-types.json'
+      excludedPackagesPath: 'src/tools/license-check/npm-excluded-packages.json'
