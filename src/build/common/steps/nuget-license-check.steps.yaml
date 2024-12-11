@@ -7,11 +7,13 @@ parameters:
   excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
 
 steps:
-  - script: |
-      for dir in */ ; do
-        echo "$dir"
-      done
+  - task: PowerShell@2
     displayName: 'List directories'
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        Get-ChildItem -Directory | ForEach-Object { Write-Output $_.FullName }
 
   - script: |
       dotnet new tool-manifest
