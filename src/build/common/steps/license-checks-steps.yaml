@@ -6,6 +6,13 @@ parameters:
   # ^ rename
   
 steps: 
+  - task:
+    - script: |
+        for dir in */ ; do
+          echo "$dir"
+        done
+      displayName: 'List directories'
+      
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: 'src/build/common/config' # Folder containing the files to publish
