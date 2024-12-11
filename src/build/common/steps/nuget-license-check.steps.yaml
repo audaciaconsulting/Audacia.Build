@@ -19,6 +19,6 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-          $allowedLicenses = Echo(get-content ..\config\allowed-license-types.json)
-          $excludedPackages = Echo(get-content ..\config\nuget-excluded-packages.json)
+          $allowedLicenses = Echo(get-content $(Pipeline.Workspace)\src\build\common\config\allowed-license-types.json)
+          $excludedPackages = Echo(get-content $(Pipeline.Workspace)\src\build\common\config\nuget-excluded-packages.json)
           dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types $allowedLicenses --packages-filter $excludedPackages
