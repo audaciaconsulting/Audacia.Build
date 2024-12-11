@@ -1,0 +1,5 @@
+[
+    "Microsoft.Data.SqlClient.SNI.runtime",
+    "Microsoft.DotNet.PlatformAbstractions",
+    "Microsoft.Extensions.DependencyModel"
+]
