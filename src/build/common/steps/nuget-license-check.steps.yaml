@@ -19,7 +19,7 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-          dotnet tool run dotnet-project-licenses -i ${{parameters.projectPaths}} --allowed-license-types /src/tools/license-check/allowed-license-types.json --licenseurl-to-license-mappings /src/tools/license-check/license-mappings.json
+          dotnet tool run dotnet-project-licenses -i ${{parameters.projectPaths}} --allowed-license-types /src/tools/license-check/allowed-license-types.json 
         
     
 
