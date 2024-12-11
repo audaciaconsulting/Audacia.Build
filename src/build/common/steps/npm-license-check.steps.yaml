@@ -14,14 +14,5 @@ steps:
       targetType: inline
       pwsh: true
       script: | 
-        try {
-        $allowedLicenses = Get-Content '${{ parameters.allowedLicensesPath }}' | ConvertFrom-Json | Join-String -Separator ';'
-        Write-Output "Allowed Licenses: $allowedLicenses"
-        } catch {
-            Write-Error "Failed to process allowed licenses: $_"
-            exit 1
-        }
-        $allowedLicenses = Get-Content '${{ parameters.allowedLicensesPath }}' | ConvertFrom-Json | Join-String -Separator ';'
-        $excludedPackages = Get-Content '${{ parameters.excludedPackagesPath }}' | ConvertFrom-Json | Join-String -Separator ';'
-        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow $allowedLicenses --excludePackages $excludedPackages --excludePrivatePackages
+        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow --config '${{ parameters.allowedLicensesPath }}' --excludePackages '${{ parameters.excludedPackagesPath }}' --excludePrivatePackages
     
