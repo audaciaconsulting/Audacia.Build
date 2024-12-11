@@ -7,6 +7,13 @@ parameters:
   excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
 
 steps:
+  - task:
+    - script: |
+        for dir in */ ; do
+          echo "$dir"
+        done
+      displayName: 'List directories'
+      
   - script: |
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
