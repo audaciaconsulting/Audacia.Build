@@ -13,6 +13,12 @@ steps:
     name: ${{ parameters.name }}
     displayName: Install license check dotnet tool
 
+  - task: CopyFiles@2
+    inputs:
+      SourceFolder: 'src/tools/license-check'
+      Contents: 'allowed-license-types.json'
+      TargetFolder: '$(Build.SourcesDirectory)/src/tools/license-check'
+
   - task: PowerShell@2
     displayName: Run nuget license check
     inputs:
