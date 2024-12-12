@@ -23,7 +23,7 @@ steps:
       targetType: 'inline'
       script: |
         Write-Host "Before $licenses"
-        $licenses = "${{parameters.allowedLicenses}}"
+        $licenses = 'MIT;Apache-2.0;BSD-3-Clause'
         Write-Host "After $licenses"
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
         Write-Host "After $licensesPath"
