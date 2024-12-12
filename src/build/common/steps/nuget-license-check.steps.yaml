@@ -20,8 +20,8 @@ steps:
   - task: PowerShell@1
     displayName: "Process Allowed Licenses and Mappings"
     inputs:
-      targetType: 'inline'
-      script: |
+      scriptType: inlineScript
+      inlineScript: |
         Write-Host "Before"
         $licenses = 'MIT;Apache-2.0;BSD-3-Clause'
         Write-Host "After $licenses"
