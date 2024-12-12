@@ -18,10 +18,16 @@ steps:
     displayName: Install license check dotnet tool
 
   - task: PowerShell@1
+    displayName: "Process Allowed Licenses and Mappings"
     inputs:
+      targetType: 'inline'
       script: |
-        $licenses = ${{ convertToJson(parameters.allowedLicenses) }}
-        $licensesPath = $(Agent.TempDirectory)/allowed-licenses.json
-        $licenses | ConvertTo-Json -depth 100 | Out-File "$licensesPath"
+        $licenses = @${{ parameters.allowedLicenses }}
+        $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
+        $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
 
-        dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $licensesPath 
+        dotnet tool run dotnet-project-licenses `
+          -i '${{ parameters.projectPath }}' `
+          -t `
+          --use-project-assets-json `
+          --allowed-license-types "$licensesPath"
