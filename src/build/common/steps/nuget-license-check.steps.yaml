@@ -6,10 +6,6 @@ parameters:
   licenseUrlMappingsPath: '' # The JSON file that contains a mapping from license urls to the license that they represent
   excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
 
-variables: 
-  - name: ALLOWED_LICENSES
-    value: "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause"
-
 steps:
   - task: PowerShell@2
     displayName: 'List directories'
@@ -31,4 +27,4 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types "$(variables['ALLOWED_LICENSES'])"
+          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
