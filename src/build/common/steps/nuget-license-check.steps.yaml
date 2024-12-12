@@ -1,51 +1,26 @@
 # Job template to deploy to a specific environment
 parameters:
-  name: '' # The job name.
-  projectPaths: ''
-  allowedLicensesPath: '' # The JSON file that contains the allowed licenses
-  licenseUrlMappingsPath: '' # The JSON file that contains a mapping from license urls to the license that they represent
-  excludedPackagesPath: '' # The JSON file that contains the packages to exclude from checking, e.g. because their license cannot be automatically identified, but we know it's ok
+  - projectPath: 
+    type: string
+    default: ''
+  - name: allowedLicenses
+    type: object
+    default:
+      - MIT
+      - Apache
+      - BSD
 
 steps:
-  - task: PowerShell@2
-    displayName: 'List directories'
-    inputs:
-      targetType: inline
-      pwsh: true
-      script: |
-        Get-ChildItem -Directory | ForEach-Object { Write-Output $_.FullName }
-
   - script: |
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
     name: ${{ parameters.name }}
     displayName: Install license check dotnet tool
 
-  - script: |
-      echo '{"allowedLicenses": [{"LicenseType":"MIT"},{"LicenseType":"Apache"}], "licenseUrlMappings": [{"LicenseURL":"http://mit-license.org","LicenseType":"MIT"},{"LicenseURL":"http://apache-license.org","LicenseType":"Apache"}], "excludedPackages": [{"PackageId":"excluded-package1"},{"PackageId":"excluded-package2"}]}' > config.json
-    displayName: 'Generate JSON Configuration'
+  - task: PowerShell@1
+    inlineScript: |
+      $licenses = ${{ convertToJson(parameters.allowedLicenses) }}
+      $licensesPath = $(Agent.TempDirectory)/allowed-licenses.json
+      $licenses | ConvertTo-Json -depth 100 | Out-File "$licensesPath"
 
-  - task: PublishPipelineArtifact@0
-    inputs:
-      targetPath: '$(System.ArtifactsDirectory)/config.json'
-      artifactName: 'config-artifact'
-    displayName: 'Publish Config Artifact'
-
-  - download: current
-    artifact: config-artifact
-    patterns: '**/config.json'
-
-  - script: |
-      jsonContent=$(cat config.json)
-      
-      # Use the JSON content in your dotnet tool command
-      dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $jsonContent --licenseurl-to-license-mappings $jsonContent --packages-filter $jsonContent
-    displayName: 'Run dotnet-project-licenses with Config'
-
-  # - task: PowerShell@2
-  #   displayName: Run nuget license check
-  #   inputs:
-  #     targetType: inline
-  #     pwsh: true
-  #     script: |
-  #         dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
+      dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $licensesPath 
