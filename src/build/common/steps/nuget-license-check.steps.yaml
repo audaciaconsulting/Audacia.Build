@@ -21,12 +21,15 @@ steps:
     name: ${{ parameters.name }}
     displayName: Install license check dotnet tool
 
+  - task:
+    - name: 'Set environment variables'
+      script: |
+        echo "ALLOWED_LICENSES=[\"MIT\", \"Apache-2.0\"]" >> $GITHUB_ENV
+
   - task: PowerShell@2
     displayName: Run nuget license check
     inputs:
       targetType: inline
       pwsh: true
       script: |
-          $allowedLicenses = Echo(get-content src\build\common\config\allowed-license-types.json@templates)
-          $excludedPackages = Echo(get-content src\build\common\config\nuget-excluded-packages.json@templates)
-          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types $allowedLicenses --packages-filter $excludedPackages
+          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types ${{ env.ALLOWED_LICENSES }}
