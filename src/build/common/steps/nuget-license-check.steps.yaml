@@ -3,7 +3,7 @@ parameters:
   projectPaths: 
     type: string
     default: ''
-  allowedLicenses: "MIT;Apache-2.0;BSD-3-Clause"
+  allowedLicenses: 'MIT;Apache-2.0;BSD-3-Clause'
     # type: Object
     # default:
     #   - MIT
@@ -22,12 +22,16 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $licenses = @${{ parameters.allowedLicenses }} | Write-Output
-        $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json" | Write-Output
-        $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath | Write-Output
+        Write-Host "Before $licenses"
+        $licenses = @${{ parameters.allowedLicenses }}
+        Write-Host "After $licenses"
+        $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
+        Write-Host "After $licensesPath"
+        $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
+        Write-Host "After $licenses 2"
 
         dotnet tool run dotnet-project-licenses `
-          -i '${{ parameters.projectPath }}' `
+          -i '${{ parameters.projectPaths }}' `
           -t `
           --use-project-assets-json `
           --allowed-license-types "$licensesPath"

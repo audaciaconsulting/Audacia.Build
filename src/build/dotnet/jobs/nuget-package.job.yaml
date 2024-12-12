@@ -69,7 +69,7 @@ jobs:
             --configuration Release
             --no-restore
 
-      - template: /src/build/common/steps/license-checks-steps.yaml
+      - template: /src/build/common/steps/license-checks.steps.yaml
         parameters:
           projects: ${{parameters.projects}}
           

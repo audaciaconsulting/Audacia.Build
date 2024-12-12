@@ -48,7 +48,7 @@ jobs:
           workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
           customCommand: 'test'
 
-      - template: /src/build/common/steps/license-checks-steps.yaml
+      - template: /src/build/common/steps/license-checks.steps.yaml
         parameters:
           npmPath: ${{parameters.path}}
 
