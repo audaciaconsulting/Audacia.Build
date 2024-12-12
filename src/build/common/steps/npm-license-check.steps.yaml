@@ -10,9 +10,10 @@ steps:
 
   - task: PowerShell@2
     displayName: Run Npm license check
+    condition: and(succeeded(), ne(variables['parameters.projectPath'], ''))
     inputs:
       targetType: inline
       pwsh: true
       script: | 
-        license-checker --start src/ui/Audacia.Dissectio.Ui --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
+        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
     
