@@ -27,4 +27,4 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
+          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
