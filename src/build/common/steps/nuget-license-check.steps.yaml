@@ -4,7 +4,7 @@ parameters:
     type: string
     default: ''
   allowedLicenses: 
-    type: string
+    type: Object
     default:
       - MIT
       - Apache
@@ -22,9 +22,9 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $licenses = @${{ parameters.allowedLicenses }}
+        $licenses = ConvertTo-Json -InputObject @${{ parameters.allowedLicenses }} - Depth 100
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
-        $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
+        $licenses | Out-File -Encoding UTF8 $licensesPath
 
         dotnet tool run dotnet-project-licenses `
           -i '${{ parameters.projectPath }}' `
