@@ -3,7 +3,7 @@ parameters:
   projectPaths: 
     type: string
     default: ''
-  allowedLicenses: ["MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause"]
+  allowedLicenses: "MIT,Apache-2.0,BSD-3-Clause,Apache-2.0 OR MPL-2.0,MS-EULA,X11,Unlicense,0BSD, BSD-2-Clause"
     # type: Object
     # default:
     #   - MIT
