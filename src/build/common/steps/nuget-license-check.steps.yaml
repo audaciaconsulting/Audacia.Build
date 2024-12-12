@@ -1,9 +1,9 @@
 # Job template to deploy to a specific environment
 parameters:
-  - projectPaths: 
+  projectPaths: 
     type: string
     default: ''
-  - name: allowedLicenses
+  allowedLicenses: 
     type: object
     default:
       - MIT
@@ -18,9 +18,10 @@ steps:
     displayName: Install license check dotnet tool
 
   - task: PowerShell@1
-    script: |
-      $licenses = ${{ convertToJson(parameters.allowedLicenses) }}
-      $licensesPath = $(Agent.TempDirectory)/allowed-licenses.json
-      $licenses | ConvertTo-Json -depth 100 | Out-File "$licensesPath"
+    inputs:
+      script: |
+        $licenses = ${{ convertToJson(parameters.allowedLicenses) }}
+        $licensesPath = $(Agent.TempDirectory)/allowed-licenses.json
+        $licenses | ConvertTo-Json -depth 100 | Out-File "$licensesPath"
 
-      dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $licensesPath 
+        dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $licensesPath 
