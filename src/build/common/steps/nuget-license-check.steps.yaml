@@ -23,7 +23,7 @@ steps:
       scriptType: inlineScript
       inlineScript: |
         Write-Host "Before"
-        $licenses = @("MIT", "Apache-2.0", "BSD-3-Clause")
+        $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
         Write-Host "After $licenses"
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
         Write-Host "After $licensesPath"
