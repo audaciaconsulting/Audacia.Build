@@ -25,9 +25,9 @@ steps:
       echo '{"allowedLicenses": [{"LicenseType":"MIT"},{"LicenseType":"Apache"}], "licenseUrlMappings": [{"LicenseURL":"http://mit-license.org","LicenseType":"MIT"},{"LicenseURL":"http://apache-license.org","LicenseType":"Apache"}], "excludedPackages": [{"PackageId":"excluded-package1"},{"PackageId":"excluded-package2"}]}' > config.json
     displayName: 'Generate JSON Configuration'
 
-  - task: PublishBuildArtifacts@1
+  - task: PublishPipelineArtifact@0
     inputs:
-      pathToPublish: '$(System.ArtifactsDirectory)/config.json'
+      targetPath: '$(System.ArtifactsDirectory)/config.json'
       artifactName: 'config-artifact'
     displayName: 'Publish Config Artifact'
 
