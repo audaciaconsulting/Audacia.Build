@@ -10,6 +10,7 @@ steps:
   #   inputs:
   #     targetPath: 'src/build/common/config' # Folder containing the files to publish
   #     artifact: 'build-files'     # Name of the artifact
+  
 
   - template: ./nuget-license-check.steps.yaml
     parameters:
@@ -22,5 +23,3 @@ steps:
   - template: ./npm-license-check.steps.yaml
     parameters:
       projectPath: ${{ parameters.npmPath }}
-      # allowedLicensesPath: '$(Build.SourcesDirectory)/src/tools/license-check/allowed-license-types.json'
-      # excludedPackagesPath: '$(Build.SourcesDirectory)/src/tools/license-check/npm-excluded-packages.json'

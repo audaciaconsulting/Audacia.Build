@@ -21,10 +21,31 @@ steps:
     name: ${{ parameters.name }}
     displayName: Install license check dotnet tool
 
-  - task: PowerShell@2
-    displayName: Run nuget license check
+  - script: |
+      echo '{"allowedLicenses": [{"LicenseType":"MIT"},{"LicenseType":"Apache"}], "licenseUrlMappings": [{"LicenseURL":"http://mit-license.org","LicenseType":"MIT"},{"LicenseURL":"http://apache-license.org","LicenseType":"Apache"}], "excludedPackages": [{"PackageId":"excluded-package1"},{"PackageId":"excluded-package2"}]}' > config.json
+    displayName: 'Generate JSON Configuration'
+
+  - task: PublishBuildArtifacts@1
     inputs:
-      targetType: inline
-      pwsh: true
-      script: |
-          dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
+      pathToPublish: '$(System.ArtifactsDirectory)/config.json'
+      artifactName: 'config-artifact'
+    displayName: 'Publish Config Artifact'
+
+  - download: current
+    artifact: config-artifact
+    patterns: '**/config.json'
+
+  - script: |
+      jsonContent=$(cat config.json)
+      
+      # Use the JSON content in your dotnet tool command
+      dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPath }}' -t --use-project-assets-json --allowed-license-types $jsonContent --licenseurl-to-license-mappings $jsonContent --packages-filter $jsonContent
+    displayName: 'Run dotnet-project-licenses with Config'
+
+  # - task: PowerShell@2
+  #   displayName: Run nuget license check
+  #   inputs:
+  #     targetType: inline
+  #     pwsh: true
+  #     script: |
+  #         dotnet tool run dotnet-project-licenses -i '${{ parameters.projectPaths }}' -t --use-project-assets-json --allowed-license-types '[{"LicenseType":"MIT"},{"LicenseType":"Apache"}]'
