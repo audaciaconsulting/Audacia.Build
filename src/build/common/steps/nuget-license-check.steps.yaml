@@ -21,10 +21,9 @@ steps:
     name: ${{ parameters.name }}
     displayName: Install license check dotnet tool
 
-  - task:
-    - name: 'Set environment variables'
-      script: |
+  - script: |
         echo "ALLOWED_LICENSES=[\"MIT\", \"Apache-2.0\"]" >> $GITHUB_ENV
+    name: 'Set environment variables'
 
   - task: PowerShell@2
     displayName: Run nuget license check
