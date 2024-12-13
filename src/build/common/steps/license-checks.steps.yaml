@@ -6,19 +6,10 @@ parameters:
   # ^ rename
   
 steps: 
-  # - task: PublishPipelineArtifact@1
-  #   inputs:
-  #     targetPath: 'src/build/common/config' # Folder containing the files to publish
-  #     artifact: 'build-files'     # Name of the artifact
-  
-
   - template: ./nuget-license-check.steps.yaml
     parameters:
       name: dotnet_license_check_tool
       projectPaths: ${{ parameters.projects }}
-      allowedLicensesPath: '$(Build.SourcesDirectory)/src/tools/license-check/allowed-license-types.json'
-      licenseUrlMappingsPath: '$(Build.SourcesDirectory)/src/tools/license-check/license-mappings.json'
-      excludedPackagesPath: '$(Build.SourcesDirectory)/src/tools/license-check/nuget-excluded-packages.json'
     
   - template: ./npm-license-check.steps.yaml
     parameters:
