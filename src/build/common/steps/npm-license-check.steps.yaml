@@ -1,4 +1,4 @@
-# Job template to deploy to a specific environment
+# Steps to run npm license checks 
 parameters:
   projectPaths: 
     default: []
