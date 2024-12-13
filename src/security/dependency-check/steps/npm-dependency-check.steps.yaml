@@ -1,4 +1,4 @@
-# Steps to run an NPM depdendency check
+# Steps to run an NPM dependency check
 parameters:
   - name: path
     default: ''

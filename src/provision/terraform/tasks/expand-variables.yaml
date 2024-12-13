@@ -1,4 +1,6 @@
 # Task to take Terraform outputs and map them to Azure DevOps pipeline variables
+# Note: This task requires the TerraformOutput task to have been run first to generate the TerraformOutput.json file.
+
 steps:
   - task: PowerShell@1
     displayName: Expand Variables
@@ -6,7 +8,7 @@ steps:
     inputs:
       scriptType: inlineScript
       inlineScript: |
-        $variables = Get-Content -Raw -Path $(TerraformOutput.jsonOutputVariablesPath) | ConvertFrom-Json
+        $variables = Get-Content -Raw -Path $(TerraformOutput.jsonOutputVariablesPath) | ConvertFrom-Json        
         foreach ($property in $variables.PSObject.Properties) {
             $key = $property.Name
             $value = $property.Value.value

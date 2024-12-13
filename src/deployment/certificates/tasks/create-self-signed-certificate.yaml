@@ -1,4 +1,4 @@
-﻿# Task to create a self signed certificate
+﻿# Task to create a self-signed certificate
 parameters:
   - name: stepName
     default: 'CreateSelfSignedCertificate'
