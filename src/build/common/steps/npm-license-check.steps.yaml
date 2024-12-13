@@ -1,7 +1,6 @@
 # Job template to deploy to a specific environment
 parameters:
   projectPaths: 
-    type: array
     default: []
 
 steps:
