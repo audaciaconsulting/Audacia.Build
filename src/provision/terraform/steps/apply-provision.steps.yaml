@@ -34,6 +34,20 @@ parameters:
     default: ''
 
 steps:
+  # Initialize Terraform with the specified backend configuration.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    name: TerraformInit
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
     displayName: Terraform Apply
