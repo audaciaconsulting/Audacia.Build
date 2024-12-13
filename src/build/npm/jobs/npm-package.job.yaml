@@ -31,6 +31,10 @@ jobs:
             path: ${{parameters.path}}
             continueIfVulnerabilities: true
 
+      - template: /src/build/common/steps/license-checks.steps.yaml
+        parameters:
+          npmProjects: ${{parameters.path}}
+
       - task: UpdateVersions@1
         name: UpdateVersions
         displayName: npm versioning
@@ -39,10 +43,6 @@ jobs:
           workingDirectory: ${{parameters.path}}
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-
-      - template: /src/build/common/steps/license-checks.steps.yaml
-        parameters:
-          npmProjects: ${{parameters.path}}
           
       - task: Npm@1
         displayName: NPM Test

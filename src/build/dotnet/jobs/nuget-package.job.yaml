@@ -40,6 +40,10 @@ jobs:
           parameters:
             continueIfVulnerabilities: true
 
+      - template: /src/build/common/steps/license-checks.steps.yaml
+        parameters:
+          projects: ${{parameters.projects}}
+
       - ${{ if eq(parameters.applyVersioning, true) }}:
         - task: UpdateVersions@1
           name: UpdateVersions
@@ -68,10 +72,6 @@ jobs:
           arguments: >
             --configuration Release
             --no-restore
-
-      - template: /src/build/common/steps/license-checks.steps.yaml
-        parameters:
-          projects: ${{parameters.projects}}
 
       - task: DotNetCoreCLI@2
         displayName: .NET Test
