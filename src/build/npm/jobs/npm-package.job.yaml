@@ -50,7 +50,7 @@ jobs:
 
       - template: /src/build/common/steps/license-checks.steps.yaml
         parameters:
-          uiProjects: ${{parameters.path}}
+          npmProjects: ${{parameters.path}}
 
       - task: Npm@1
         displayName: NPM Pack

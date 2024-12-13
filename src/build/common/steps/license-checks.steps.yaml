@@ -1,7 +1,9 @@
 parameters:
   - name: projects
+    type: object  
     default: []
-  - name: uiProjects
+  - name: npmProjects   
+    type: object  
     default: []
   
 steps: 
@@ -12,4 +14,4 @@ steps:
     
   - template: ./npm-license-check.steps.yaml
     parameters:
-      projectPaths: ${{ parameters.uiProjects }}
+      projectPaths: ${{ parameters.npmProjects }}
