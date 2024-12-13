@@ -73,6 +73,3 @@ steps:
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
-
-  # Expand variables using the expand-variables.yaml template.
-  - template: /src/provision/terraform/tasks/expand-variables.yaml
