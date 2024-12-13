@@ -1,9 +1,10 @@
 parameters:
   - name: projects
-    default: '**/*.csproj'
-  - name: npmPath
-    default: ''
-  # ^ rename
+    type: array
+    default: []
+  - name: uiProjects
+    type: array
+    default: []
   
 steps: 
   - template: ./nuget-license-check.steps.yaml
@@ -13,4 +14,4 @@ steps:
     
   - template: ./npm-license-check.steps.yaml
     parameters:
-      projectPath: ${{ parameters.npmPath }}
+      projectPaths: ${{ parameters.uiProjects }}

@@ -40,5 +40,4 @@ steps:
         $nugetExcludedPackages | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $nugetExcludedPackagesPath
  
         foreach( $projectPath in ${{ parameters.projectPaths }} ) {
-        Write-Host projectPath
         dotnet tool run dotnet-project-licenses -i '$projectPath' -t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath" }
