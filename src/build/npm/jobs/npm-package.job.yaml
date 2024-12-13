@@ -40,6 +40,10 @@ jobs:
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
+      - template: /src/build/common/steps/license-checks.steps.yaml
+        parameters:
+          npmProjects: ${{parameters.path}}
+          
       - task: Npm@1
         displayName: NPM Test
         condition: and(succeeded(), eq('${{parameters.runTests}}', 'true'))
