@@ -2,7 +2,7 @@
 parameters:
   - name: displayName
     default: 'Build NPM'
-  - name: path
+  - name: path # The path to the directory containing the package.json file
     default: ''
   - name: runTests
     default: true
@@ -36,6 +36,7 @@ jobs:
         displayName: npm versioning
         inputs:
           buildType: 'npm'
+          workingDirectory: ${{parameters.path}}
         env:
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
