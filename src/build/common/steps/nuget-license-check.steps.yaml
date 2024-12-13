@@ -5,6 +5,7 @@ parameters:
 
 steps:
   - script: |
+      Write-Host parameters.projectPaths
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
     name: ${{ parameters.name }}
