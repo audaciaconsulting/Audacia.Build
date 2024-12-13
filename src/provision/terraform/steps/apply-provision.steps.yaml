@@ -1,0 +1,38 @@
+# This YAML file defines the steps to provision an environment with Terraform.
+
+parameters:
+  # Directory where Terraform configuration files are located.
+  - name: terraformDirectory
+    default: $(System.DefaultWorkingDirectory)
+  
+  # Name of the service connection used to provision resources.
+  # Previously called: environmentSubscription
+  - name: provisioningServiceConnectionName
+    default: ''
+
+steps:
+  # Apply the Terraform configuration to provision resources.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Apply
+    name: TerraformApply
+    inputs:
+      provider: 'azurerm'
+      command: 'apply'
+      commandOptions: '-input=false'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  # Retrieve the output from the Terraform state.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Output
+    name: TerraformOutput
+    inputs:
+      provider: 'azurerm'
+      command: 'output'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+      outputFormat: json
+      outputTo: file
+
+  # Expand variables using the expand-variables.yaml template.
+  - template: /src/provision/terraform/tasks/expand-variables.yaml
