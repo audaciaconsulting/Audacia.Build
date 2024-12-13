@@ -9,6 +9,10 @@ parameters:
   - name: environmentId
     default: ''
 
+  # Version of Terraform to install.
+  - name: terraformVersion
+    default: 'latest'
+
   # Name of the service connection to connect to the Terraform state storage.
   # Previously called: backendSubscription
   - name: terraformStateServiceConnectionName
