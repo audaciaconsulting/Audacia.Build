@@ -12,7 +12,7 @@ parameters:
 steps:
   # If no specific resources passed in to destroy then destroy the whole thing
   - ${{ if eq(length(parameters.resourcesToDestroy), 0) }}:
-    - task: TerraformTaskV2@2
+    - task: TerraformTaskV4@4
       displayName: Terraform Destroy
       inputs:
         provider: 'azurerm'
@@ -23,7 +23,7 @@ steps:
   # If some resources have been passed in then we only want to destroy them, so loop through and call destroy for each one
   - ${{ if gt(length(parameters.resourcesToDestroy), 0) }}:
     - ${{ each resource in parameters.resourcesToDestroy }}:
-      - task: TerraformTaskV2@2
+      - task: TerraformTaskV4@4
         displayName: Terraform Destroy ${{ resource }})
         inputs:
           provider: 'azurerm'
