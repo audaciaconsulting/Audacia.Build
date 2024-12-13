@@ -1,0 +1,19 @@
+# Job template to deploy to a specific environment
+parameters:
+  projectPaths: 
+    default: []
+
+steps:
+  - script: npm install -g license-checker
+    displayName: Install license checker
+
+  - task: PowerShell@2
+    displayName: Run Npm license check
+    condition: and(succeeded(), ne(variables['parameters.projectPaths'], ''))
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: | 
+        foreach( $projectPath in ${{ parameters.projectPaths.path }} ) {
+        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
+        }
