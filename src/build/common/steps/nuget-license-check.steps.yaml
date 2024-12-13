@@ -16,7 +16,7 @@ steps:
     inputs:
       scriptType: inlineScript
       inlineScript: |
-        Write-Host {{ parameters.projectPaths }}
+        Write-Host ${{ parameters.projectPaths }}
         $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
         $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
