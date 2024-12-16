@@ -1,4 +1,4 @@
-# This YAML file defines the steps to provision an environment with Terraform.
+# This YAML file defines the steps to apply the provision of an environment with Terraform.
 
 parameters:
   # Directory where Terraform configuration files are located.
