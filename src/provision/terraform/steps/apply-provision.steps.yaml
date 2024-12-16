@@ -39,10 +39,10 @@ parameters:
 
 steps:
   # Install the specified version of Terraform.
-#  - task: TerraformInstaller@1
-#    displayName: Terraform Install
-#    inputs:
-#      terraformVersion: ${{parameters.terraformVersion}}
+  - task: TerraformInstaller@1
+    displayName: Terraform Install
+    inputs:
+      terraformVersion: ${{parameters.terraformVersion}}
 
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
