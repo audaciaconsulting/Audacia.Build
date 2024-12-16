@@ -1,0 +1,12 @@
+# This YAML file defines the steps to approval gate the provision with Terraform.
+
+parameters:
+  # Instructions on approval gate.
+  - name: interventionInstructions
+    default: 'Please validate the TF plan.'
+
+steps:
+  # Set up approval gate to move onto apply stage.
+  - task: ManualIntervention@8
+    inputs:
+      instructions: ${{parameters.interventionInstructions}}
