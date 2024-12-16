@@ -1,0 +1,83 @@
+parameters:
+  - name: environmentName
+    displayName: Which Env to test against?
+    type: string
+    default: 'qa'
+    values:
+      - dev
+      - qa
+      - uat
+
+stages:
+  - stage: Automation_Tests
+    displayName: Automation Testing
+
+    jobs:
+      - job: AutomationTests
+        displayName: 'Automation Tests'
+        variables:
+          - group: 'Audacia.Tests.Playwright.QA'
+        pool:
+          vmImage: "ubuntu-latest"
+
+        steps:
+          - checkout: git://Audacia.Template.Testing.Playwright
+            displayName: "Checkout Repo"
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: '18'
+
+          - script: npm ci
+            displayName: 'npm ci'
+
+          - script: npx playwright install --with-deps
+            displayName: 'Install Playwright browsers'
+
+          - script: npm run generate-types
+            displayName: 'Generate type definitions from Swagger'
+
+          - script: npm run api-tests
+            displayName: 'Run API tests'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            inputs:
+              searchFolder: 'test-results'
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'e2e-junit-results.xml'
+              mergeTestResults: true
+              failTaskOnFailedTests: true
+              testRunTitle: 'My API Tests'
+            condition: always()
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Playwright report artifacts ${{ parameters.environmentName }}'
+            inputs:
+              targetPath: playwright-report
+              artifact: playwright-API-report
+              publishLocation: 'pipeline'
+            condition: always()
+
+          - script: npm run e2e-tests
+            displayName: 'Run End-To-End tests'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish test results'
+            inputs:
+              searchFolder: 'test-results'
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'e2e-junit-results.xml'
+              mergeTestResults: true
+              failTaskOnFailedTests: true
+              testRunTitle: 'My End-To-End Tests'
+            condition: always()
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Playwright report artifacts ${{ parameters.environmentName }}'
+            inputs:
+              targetPath: playwright-report
+              artifact: playwright-E2E-report
+              publishLocation: 'pipeline'
+            condition: always()
