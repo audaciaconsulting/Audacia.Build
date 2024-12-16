@@ -79,6 +79,15 @@ steps:
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
+  # Validates the Terraform Init task.
+  - task: TerraformTaskV4@4
+    enabled: true
+    displayName: Terraform Validate
+    inputs:
+      provider: 'azurerm'
+      command: 'validate'
+      workingDirectory: ${{parameters.terraformDirectory}}
+
   - task: TerraformTaskV4@4
     name: terraformPlan
     displayName: Create Terraform Plan
