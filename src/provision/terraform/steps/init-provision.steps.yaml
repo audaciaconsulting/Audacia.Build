@@ -90,8 +90,8 @@ steps:
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
   # Save the Terraform plan as an artifact.
-  - task: PublishPipelineArtifact@1
-    displayName: Publish Terraform Plan
-    inputs:
-      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
-      artifact: terraform-plan
+#  - task: PublishPipelineArtifact@1
+#    displayName: Publish Terraform Plan
+#    inputs:
+#      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
+#      artifact: terraform-plan
