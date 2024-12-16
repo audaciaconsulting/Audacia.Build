@@ -2,11 +2,11 @@ parameters:
   - name: environmentName
     displayName: Which Env to test against?
     type: string
-    default: 'qa'
+    default: 'QA'
     values:
-      - dev
-      - qa
-      - uat
+      - QA
+      - UAT
+      - Production
 
 stages:
   - stage: Automation_Tests
