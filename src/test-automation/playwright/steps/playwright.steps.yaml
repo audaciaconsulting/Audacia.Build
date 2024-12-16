@@ -21,9 +21,6 @@ stages:
           vmImage: "ubuntu-latest"
 
         steps:
-          - checkout: git://Audacia.Template.Testing.Playwright
-            displayName: "Checkout Repo"
-
           - task: NodeTool@0
             displayName: 'Install Node.js'
             inputs:
