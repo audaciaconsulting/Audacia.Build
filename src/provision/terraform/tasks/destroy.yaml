@@ -7,6 +7,7 @@ parameters:
     default: ''
   # List of specific resources to destroy; if empty, the entire plan will be destroyed
   - name: resourcesToDestroy
+    type: object
     default: []
 
 steps:
