@@ -38,6 +38,11 @@ parameters:
     type: object
     default: []
 
+  # Name of the service connection used to provision resources.
+  # Previously called: environmentSubscription
+  - name: provisioningServiceConnectionName
+    default: ''
+
 steps:
   # Loop through each variable in terraformInputVariables and set them using the set-variable.yaml template.
   - ${{ each variable in parameters.terraformInputVariables }}:
@@ -73,3 +78,19 @@ steps:
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
+  - task: TerraformTaskV4@4
+    name: terraformPlan
+    displayName: Create Terraform Plan
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      commandOptions: '-out main.tfplan'
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  # Save the Terraform plan as an artifact.
+  - task: PublishPipelineArtifact@1
+    displayName: Publish Terraform Plan
+    inputs:
+      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
+      artifact: terraform-plan

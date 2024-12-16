@@ -58,6 +58,12 @@ steps:
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
+  - task: DownloadPipelineArtifact@2
+    displayName: Download Terraform Plan
+    inputs:
+      artifact: terraform-plan
+      targetPath: ${{parameters.terraformDirectory}}
+
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
     displayName: Terraform Apply
@@ -65,7 +71,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'apply'
-      commandOptions: '-input=false'
+      commandOptions: 'main.tfplan'
       workingDirectory: ${{parameters.terraformDirectory}}
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
