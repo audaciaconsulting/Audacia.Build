@@ -38,6 +38,11 @@ parameters:
     default: ''
 
 steps:
+  # Pause deployment and wait for manual intervention.
+  - task: ManualIntervention@8
+    inputs:
+    instructions: Please approve.
+    
   # Install the specified version of Terraform.
   - task: TerraformInstaller@1
     displayName: Terraform Install
