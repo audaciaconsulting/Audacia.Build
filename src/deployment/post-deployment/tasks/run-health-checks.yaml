@@ -22,7 +22,9 @@ steps:
       script: |
         # Combine 'url' and 'urls' parameters into a single array of URLs
         $singleUrl = "${{parameters.url}}"
-        $urlList = @${{parameters.urls}}
+        
+        # Convert urls array passed from the parameters to a powershell object
+        $urlList = '${{convertToJson(parameters.urls)}}' | ConvertFrom-Json;
 
         $urls = @()
         
