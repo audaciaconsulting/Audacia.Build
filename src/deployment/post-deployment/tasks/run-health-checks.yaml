@@ -5,6 +5,7 @@ parameters:
   - name: url # The fully qualified url of the health check endpoint
     default: ''
   - name: urls # An array of fully qualified URLs for health checks
+    type: object
     default: []
   - name: maxAttempts # The maximum amount of times to check is an app is health or not
     default: 3
