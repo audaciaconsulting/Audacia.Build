@@ -4,6 +4,8 @@ parameters:
     default: ''
   - name: url # The fully qualified url of the health check endpoint
     default: ''
+  - name: urls # An array of fully qualified URLs for health checks
+    default: []
   - name: maxAttempts # The maximum amount of times to check is an app is health or not
     default: 3
   - name: sleepSeconds # The amount of seconds to sleep in between retry attempts
@@ -17,8 +19,25 @@ steps:
       errorActionPreference: 'stop'
       failOnStderr: true
       script: |
-        $url = "${{parameters.url}}"
-        Write-Host "Running health checks on url $url"
+        # Combine 'url' and 'urls' parameters into a single array of URLs
+        $singleUrl = "${{parameters.url}}"
+        $urlList = @${{parameters.urls}}
+
+        $urls = @()
+        
+        # Add the single URL to the list if provided
+        if ($singleUrl -ne '') {
+            $urls += $singleUrl
+        }
+
+        # Add multiple URLs if provided
+        if ($urlList.Count -gt 0) {
+            $urls += $urlList
+        }
+
+        if ($urls.Count -eq 0) {
+            throw "No URL(s) provided for health checks. Please specify 'url' or 'urls'."
+        }
 
         function Invoke-RestMethodWithRetry {
             param(
@@ -28,9 +47,9 @@ steps:
             $maxAttempts = ${{parameters.maxAttempts}}
             $attemptNumber = 1
 
-            while ($retryCount -le $maxAttempts) {
+            while ($true) {
                 try {
-                    Write-Host "Checking health - attempt #$attemptNumber"
+                    Write-Host "Checking health of $Uri - attempt #$attemptNumber"
                     $response = Invoke-RestMethod -Uri $Uri -Method Get -ContentType "application/json"
                     return $response
                 }
@@ -40,44 +59,50 @@ steps:
                       throw
                     }
 
-                    Write-Warning "Request failed. Retrying in $sleepSeconds seconds..."
+                    Write-Warning "Request to $Uri failed. Retrying in $sleepSeconds seconds..."
                     Start-Sleep -Seconds $sleepSeconds
                     $attemptNumber++
                 }
             }
         }
+        
+        foreach ($url in $urls) {
+          Write-Host "Running health checks on URL: $url"
 
-        try
-        {
-          $result = Invoke-RestMethodWithRetry -Uri $url
-          # Exceptions are thrown if the status isn't 200, so hitting this line is an indication of success.
-          Write-Host 'The system is healthy'
-          Exit 0
-        }
-        catch
-        {
-          Write-Warning "The system is not healthy"
-          $responseStatus = $_.Exception.Response.StatusCode
-          Write-Warning "Response status $responseStatus"
-
-          # Failed health checks also result in a 503, along with standard service unavailable errors.
-          if ($responseStatus -eq 503 -and $_.ErrorDetails -ne $null)
+          try
           {
-            $responseDetails = $_.ErrorDetails | ConvertFrom-Json
-            foreach ($entry in $responseDetails.entries.psobject.Properties)
-            {
-                Write-Host ''
-                $name = $entry.Name
-                $value = $entry.Value
-                if ($value.status -eq "Healthy")
-                {
-                    Write-Host "$name - $value"
-                }
-                else
-                {
-                    Write-Warning "$name - $value"
-                }
-            }
+            $result = Invoke-RestMethodWithRetry -Uri $url
+            # Exceptions are thrown if the status isn't 200, so hitting this line is an indication of success.
+            Write-Host "Health check succeeded for $url"
           }
-          Exit 1
+          catch
+          {
+            Write-Warning "Health check failed for $url"
+            $responseStatus = $_.Exception.Response.StatusCode
+            Write-Warning "Response status $responseStatus"
+  
+            # Failed health checks also result in a 503, along with standard service unavailable errors.
+            if ($responseStatus -eq 503 -and $_.ErrorDetails -ne $null)
+            {
+              $responseDetails = $_.ErrorDetails | ConvertFrom-Json
+              foreach ($entry in $responseDetails.entries.psobject.Properties)
+              {
+                  Write-Host ''
+                  $name = $entry.Name
+                  $value = $entry.Value
+                  if ($value.status -eq "Healthy")
+                  {
+                      Write-Host "$name - $value"
+                  }
+                  else
+                  {
+                      Write-Warning "$name - $value"
+                  }
+              }
+            }
+            Exit 1
+          }        
         }
+        
+        Write-Host "All health checks completed successfully."
+        Exit 0
