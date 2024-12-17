@@ -31,9 +31,9 @@ jobs:
             path: ${{parameters.path}}
             continueIfVulnerabilities: true
 
-      - template: /src/build/common/steps/license-checks.steps.yaml
+      - template: /src/build/common/steps/npm-license-check.steps.yaml
         parameters:
-          npmProjects: ${{parameters.path}}
+          projectPaths: ${{parameters.path}}
 
       - task: UpdateVersions@1
         name: UpdateVersions

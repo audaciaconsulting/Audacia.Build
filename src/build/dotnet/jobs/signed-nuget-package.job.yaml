@@ -67,9 +67,9 @@ jobs:
           configuration: ${{parameters.configuration}}
           msbuildArguments: /p:AssemblyOriginatorKeyFile=$(StrongNameCertificate.secureFilePath)
 
-      - template: /src/build/common/steps/license-checks.steps.yaml
+      - template: /src/build/common/steps/nuget-license-check.steps.yaml
         parameters:
-          projects: ${{parameters.projects}}
+          projectPaths: ${{parameters.projects}}
           
       - task: DotNetCoreCLI@2
         displayName: .NET Test
