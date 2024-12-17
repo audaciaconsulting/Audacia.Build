@@ -21,7 +21,6 @@ steps:
       command: restore
       projects: ${{ coalesce(parameters.startupProject, parameters.efProject) }}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
-      arguments: --warnaserror:none
 
   - task: PowerShell@2
     displayName: Build EF Core Migration Bundle
