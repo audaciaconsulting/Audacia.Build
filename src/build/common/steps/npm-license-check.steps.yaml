@@ -1,6 +1,7 @@
 # Steps to run npm license checks 
 parameters:
-  projectPaths: 
+  - name: projectPaths
+    type: object
     default: []
 
 steps:
