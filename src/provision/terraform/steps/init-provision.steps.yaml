@@ -1,0 +1,106 @@
+# This YAML file defines the steps to initialise the provision of an environment with Terraform.
+
+parameters:
+  # Directory where Terraform configuration files are located.
+  - name: terraformDirectory
+    default: $(System.DefaultWorkingDirectory)
+  
+  # Version of Terraform to install.
+  - name: terraformVersion
+    default: 'latest'
+  
+  # Name of the environment in Azure (e.g: qa, uat, production).
+  - name: environmentId
+    default: ''
+  
+  # Name of the service connection to connect to the Terraform state storage.
+  # Previously called: backendSubscription
+  - name: terraformStateServiceConnectionName
+    default: ''
+  
+  # Resource group containing the Terraform state storage.
+  # Previously called: backendResourceGroup
+  - name: terraformStateResourceGroup
+    default: ''
+  
+  # Storage account containing the Terraform state storage.
+  # Previously called: backendStorageAccount
+  - name: terraformStateStorageAccount
+    default: ''
+  
+  # Prefix to use for the Terraform state storage.
+  - name: terraformStateStoragePrefix
+    default: ''
+  
+  # Object array of variables to set for Terraform; objects should have 'variableName' and 'variableValue' properties.
+  # Environment variables prefixed with TF_VAR_ are preferred over this.
+  - name: terraformInputVariables
+    type: object
+    default: []
+
+  # Name of the service connection used to provision resources.
+  # Previously called: environmentSubscription
+  - name: provisioningServiceConnectionName
+    default: ''
+
+steps:
+  # Loop through each variable in terraformInputVariables and set them using the set-variable.yaml template.
+  - ${{ each variable in parameters.terraformInputVariables }}:
+    - template: /src/provision/terraform/tasks/set-variable.yaml
+      parameters:
+        terraformDirectory: ${{ parameters.terraformDirectory }}
+        variableName: ${{ variable.variableName }}
+        variableValue: ${{ variable.variableValue }}
+
+  # Create a storage container for the Terraform state using the create-storage-container.yaml template.
+  - template: /src/provision/azure/tasks/create-storage-container.yaml
+    parameters:
+      storageContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      serviceConnectionName: ${{parameters.terraformStateServiceConnectionName}}
+      storageAccountName: ${{parameters.terraformStateStorageAccount}}
+
+  # Install the specified version of Terraform.
+  - task: TerraformInstaller@1
+    displayName: Terraform Install
+    inputs:
+      terraformVersion: ${{parameters.terraformVersion}}
+
+  # Initialize Terraform with the specified backend configuration.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    name: TerraformInit
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
+  # Validates the Terraform Init task.
+  - task: TerraformTaskV4@4
+    enabled: true
+    displayName: Terraform Validate
+    inputs:
+      provider: 'azurerm'
+      command: 'validate'
+      workingDirectory: ${{parameters.terraformDirectory}}
+
+  - task: TerraformTaskV4@4
+    name: terraformPlan
+    displayName: Create Terraform Plan
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      commandOptions: '-out main.tfplan -input=false'
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  # Save the Terraform plan as an artifact.
+  - task: PublishPipelineArtifact@1
+    displayName: Publish Terraform Plan
+    inputs:
+      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
+      artifact: terraform-plan

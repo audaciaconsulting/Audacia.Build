@@ -1,0 +1,92 @@
+# This YAML file defines the steps to apply the provision of an environment with Terraform.
+
+parameters:
+  # Directory where Terraform configuration files are located.
+  - name: terraformDirectory
+    default: $(System.DefaultWorkingDirectory)
+
+  # Name of the environment in Azure (e.g: qa, uat, production).
+  - name: environmentId
+    default: ''
+
+  # Version of Terraform to install.
+  - name: terraformVersion
+    default: 'latest'
+
+  # Name of the service connection to connect to the Terraform state storage.
+  # Previously called: backendSubscription
+  - name: terraformStateServiceConnectionName
+    default: ''
+
+  # Resource group containing the Terraform state storage.
+  # Previously called: backendResourceGroup
+  - name: terraformStateResourceGroup
+    default: ''
+
+  # Storage account containing the Terraform state storage.
+  # Previously called: backendStorageAccount
+  - name: terraformStateStorageAccount
+    default: ''
+
+  # Name of the service connection used to provision resources.
+  # Previously called: environmentSubscription
+  - name: provisioningServiceConnectionName
+    default: ''
+
+  # Prefix to use for the Terraform state storage.
+  - name: terraformStateStoragePrefix
+    default: ''
+
+steps:
+  # Install the specified version of Terraform.
+  - task: TerraformInstaller@1
+    displayName: Terraform Install
+    inputs:
+      terraformVersion: ${{parameters.terraformVersion}}
+
+  # Initialize Terraform with the specified backend configuration.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    name: TerraformInit
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
+  # Download terraform plan from the artifact
+  - task: DownloadPipelineArtifact@2
+    displayName: Download Terraform Plan
+    inputs:
+      artifact: terraform-plan
+      targetPath: ${{parameters.terraformDirectory}}
+
+  # Apply the Terraform configuration to provision resources.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Apply
+    name: TerraformApply
+    inputs:
+      provider: 'azurerm'
+      command: 'apply'
+      commandOptions: '-input=false main.tfplan'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+
+  # Retrieve the output from the Terraform state.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Output
+    name: TerraformOutput
+    inputs:
+      provider: 'azurerm'
+      command: 'output'
+      workingDirectory: ${{parameters.terraformDirectory}}
+      environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+      outputFormat: json
+      outputTo: file
+
+  # Expand variables using the expand-variables.yaml template.
+  - template: /src/provision/terraform/tasks/expand-variables.yaml
