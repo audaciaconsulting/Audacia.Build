@@ -72,7 +72,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'apply'
-      commandOptions: 'main.tfplan'
+      commandOptions: 'main.tfplan -input=false'
       workingDirectory: ${{parameters.terraformDirectory}}
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 

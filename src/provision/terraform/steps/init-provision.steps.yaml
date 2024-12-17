@@ -95,7 +95,7 @@ steps:
       provider: 'azurerm'
       command: 'plan'
       workingDirectory: ${{parameters.terraformDirectory}}
-      commandOptions: '-out main.tfplan'
+      commandOptions: '-out main.tfplan -input=false'
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
   # Save the Terraform plan as an artifact.
