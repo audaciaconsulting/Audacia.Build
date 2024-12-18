@@ -8,7 +8,7 @@ steps:
   - script: |
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
-      $jsonString = '${{ convertToJson(parameters.projectPaths) }}'
+      $jsonString = ConvertTo-Json -InputObject ${{parameters.projectPaths}}
       Write-Host $jsonString
     displayName: Install license check dotnet tool
   - task: PowerShell@1
