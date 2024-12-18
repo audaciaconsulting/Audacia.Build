@@ -8,8 +8,6 @@ steps:
   - script: |
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
-      $jsonString = '${{ convertToJson(parameters.projectPaths) }}'
-      Write-Output $jsonString
     displayName: Install license check dotnet tool
   - task: PowerShell@1
     displayName: "Process Allowed Licenses and Mappings"
@@ -18,6 +16,9 @@ steps:
       scriptType: inlineScript
       inlineScript: |
         $jsonString = '${{ convertToJson(parameters.projectPaths) }}'
+
+        Write-Output $jsonString
+
         $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
         $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
