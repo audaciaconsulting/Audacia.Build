@@ -1,7 +1,7 @@
 # Steps to run nuget license checks 
 parameters:
   - name: projectPaths
-    type: string
+    type: object
     default: []
 
 steps:

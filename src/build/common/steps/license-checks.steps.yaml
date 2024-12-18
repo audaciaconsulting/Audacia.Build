@@ -1,9 +1,9 @@
 parameters:
   - name: dotnetProjects
-    type: string  
+    type: object  
     default: []
   - name: npmProjects   
-    type: string  
+    type: object  
     default: []
 
 steps: 
