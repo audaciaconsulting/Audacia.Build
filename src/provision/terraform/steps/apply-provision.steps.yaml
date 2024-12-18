@@ -38,6 +38,12 @@ parameters:
     default: ''
 
 steps:
+  # Install the specified version of Terraform.
+  - task: TerraformInstaller@1
+    displayName: Terraform Install
+    inputs:
+      terraformVersion: ${{parameters.terraformVersion}}
+
   # Download terraform directory from the artifact
   - task: DownloadPipelineArtifact@2
     displayName: Download Terraform Directory
