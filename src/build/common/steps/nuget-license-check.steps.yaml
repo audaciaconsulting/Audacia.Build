@@ -9,30 +9,30 @@ steps:
       dotnet tool install dotnet-project-licenses
     displayName: Install license check dotnet tool
   - ${{ if gt(length(parameters.projectPaths), 0) }}:
-  - task: PowerShell@1
-    displayName: "Process Allowed Licenses and Mappings"
-    inputs:
-      scriptType: inlineScript
-      inlineScript: |
+    - task: PowerShell@1
+      displayName: "Process Allowed Licenses and Mappings"
+      inputs:
+        scriptType: inlineScript
+        inlineScript: |
 
-        $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
-        $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
-        $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
-        $licenseMappings = @{ 
-            "https://www.bouncycastle.org/csharp/licence.html" = "X11"
-            "https://raw.githubusercontent.com/DotNetAnalyzers/DocumentationAnalyzers/489c06575b/LICENSE" = "MIT"
-            "https://github.com/dotnet/standard/blob/master/LICENSE.TXT" = "MIT"
-            "https://raw.githubusercontent.com/aspnet/AspNetCore/2.0.0/LICENSE.txt" = "Apache-2.0"
-            "https://github.com/dotnet/core-setup/blob/master/LICENSE.TXT" = "MIT"
-            "https://raw.githubusercontent.com/Microsoft/OpenAPI.NET/master/LICENSE" = "MIT" }
-        
-        $licenseMappingsPath = "$(Agent.TempDirectory)/license-mappings.json"
-        $licenseMappings | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licenseMappingsPath
-        $nugetExcludedPackages = @(    
-          "Microsoft.Data.SqlClient.SNI.runtime",
-          "Microsoft.DotNet.PlatformAbstractions",
-          "Microsoft.Extensions.DependencyModel")
-        $nugetExcludedPackagesPath = "$(Agent.TempDirectory)/nuget-excluded-packages.json"
-        $nugetExcludedPackages | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $nugetExcludedPackagesPath
- 
-        dotnet tool run dotnet-project-licenses -i ${{parameters.projectPath}} -t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath"
+          $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
+          $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
+          $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
+          $licenseMappings = @{ 
+              "https://www.bouncycastle.org/csharp/licence.html" = "X11"
+              "https://raw.githubusercontent.com/DotNetAnalyzers/DocumentationAnalyzers/489c06575b/LICENSE" = "MIT"
+              "https://github.com/dotnet/standard/blob/master/LICENSE.TXT" = "MIT"
+              "https://raw.githubusercontent.com/aspnet/AspNetCore/2.0.0/LICENSE.txt" = "Apache-2.0"
+              "https://github.com/dotnet/core-setup/blob/master/LICENSE.TXT" = "MIT"
+              "https://raw.githubusercontent.com/Microsoft/OpenAPI.NET/master/LICENSE" = "MIT" }
+          
+          $licenseMappingsPath = "$(Agent.TempDirectory)/license-mappings.json"
+          $licenseMappings | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licenseMappingsPath
+          $nugetExcludedPackages = @(    
+            "Microsoft.Data.SqlClient.SNI.runtime",
+            "Microsoft.DotNet.PlatformAbstractions",
+            "Microsoft.Extensions.DependencyModel")
+          $nugetExcludedPackagesPath = "$(Agent.TempDirectory)/nuget-excluded-packages.json"
+          $nugetExcludedPackages | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $nugetExcludedPackagesPath
+  
+          dotnet tool run dotnet-project-licenses -i ${{parameters.projectPath}} -t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath"
