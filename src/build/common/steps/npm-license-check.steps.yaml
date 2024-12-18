@@ -1,21 +1,17 @@
 # Steps to run npm license checks 
 parameters:
-  - name: projectPaths
-    type: object
-    default: []
+  - name: projectPath
+    default: ''
 
 steps:
   - script: npm install -g license-checker
     displayName: Install license checker
+  - ${{ if gt(length(parameters.projectPath), 0) }}:
+    - task: PowerShell@2
+      displayName: Run Npm license check
+      inputs:
+        targetType: inline
+        pwsh: true
 
-  - task: PowerShell@2
-    displayName: Run Npm license check
-    condition: and(succeeded(), ne(variables['parameters.projectPaths'], ''))
-    inputs:
-      targetType: inline
-      pwsh: true
-      script: | 
-        $projects = ${{parameters.projectPaths.path}}
-        foreach( $projectPath in $projects ) {
-        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
-        }
+        script: | 
+          license-checker --start ${{parameters.projectPath}} --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"

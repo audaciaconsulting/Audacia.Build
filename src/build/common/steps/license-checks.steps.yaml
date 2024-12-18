@@ -1,16 +1,14 @@
 parameters:
   - name: dotnetProjects
-    type: object  
-    default: []
-  - name: npmProjects   
-    type: object  
-    default: []
+    default: ''
+  - name: npmProjects    
+    default: ''
 
 steps: 
   - template: ./nuget-license-check.steps.yaml
     parameters:
-      projectPaths: ${{ parameters.dotnetProjects }}
+      projectPath: ${{ parameters.dotnetProjects }}
 
   - template: ./npm-license-check.steps.yaml
     parameters:
-      projectPaths: ${{ parameters.npmProjects }}
+      projectPath: ${{ parameters.npmProjects }}
