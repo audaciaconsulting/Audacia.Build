@@ -103,11 +103,5 @@ steps:
     displayName: Publish Terraform Directory
     inputs:
       targetPath: ${{parameters.terraformDirectory}}
+      publishLocation: 'pipeline'
       artifact: terraform-directory
-
-  - task: Bash@3
-    displayName: List Terraform Directory Contents
-    inputs:
-      targetType: 'inline'
-      script: |
-        echo "Checking contents of ${{parameters.terraformDirectory}}"

@@ -48,8 +48,9 @@ steps:
   - task: DownloadPipelineArtifact@2
     displayName: Download Terraform Directory
     inputs:
-      artifact: terraform-directory
-      targetPath: ${{parameters.terraformDirectory}}
+      buildType: 'current'
+      artifactName: terraform-directory
+      targetPath: '$(Pipeline.Workspace)'
 
   - task: Bash@3
     displayName: List Terraform Directory Contents
@@ -57,7 +58,7 @@ steps:
       targetType: 'inline'
       script: |
         echo "Checking contents of Terraform Directory:"
-        ls -la ${{parameters.terraformDirectory}}
+        ls -la $(Pipeline.Workspace)
 
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
