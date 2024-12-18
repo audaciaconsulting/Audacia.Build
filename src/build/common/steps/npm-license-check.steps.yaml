@@ -14,11 +14,9 @@ steps:
     inputs:
       targetType: inline
       pwsh: true
-      projectPaths: ${{ parameters.projectPaths }}
+
       script: | 
-        param (
-          [array]$projectPaths
-        )
-        foreach( $projectPath in $projectPaths ) {
-        license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
+        $jsonString = '${{ convertToJson(parameters.projectPaths) }}'
+        foreach( $projectPath in $jsonString ) {
+        license-checker --start "$projectPath" --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
         }
