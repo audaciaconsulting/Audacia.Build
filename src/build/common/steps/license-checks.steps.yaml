@@ -7,8 +7,6 @@ parameters:
     default: []
 
 steps: 
-  - script: | 
-      Write-Host ${{dotnetProjects}}
   - template: ./nuget-license-check.steps.yaml
     parameters:
       projectPaths: ${{ parameters.dotnetProjects }}
