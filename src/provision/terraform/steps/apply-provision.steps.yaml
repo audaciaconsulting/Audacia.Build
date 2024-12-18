@@ -44,6 +44,13 @@ steps:
     inputs:
       terraformVersion: ${{parameters.terraformVersion}}
 
+  # Download terraform directory from the artifact
+  - task: DownloadPipelineArtifact@2
+    displayName: Download Terraform Directory
+    inputs:
+      artifact: terraform-directory
+      targetPath: ${{parameters.terraformDirectory}}
+
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
     displayName: Terraform Init
@@ -57,13 +64,6 @@ steps:
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
-
-  # Download terraform directory from the artifact
-  - task: DownloadPipelineArtifact@2
-    displayName: Download Terraform Directory
-    inputs:
-      artifact: terraform-directory
-      targetPath: ${{parameters.terraformDirectory}}
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
