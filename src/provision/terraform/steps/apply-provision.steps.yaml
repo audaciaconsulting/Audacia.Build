@@ -38,12 +38,6 @@ parameters:
     default: ''
 
 steps:
-  # Install the specified version of Terraform.
-  - task: TerraformInstaller@1
-    displayName: Terraform Install
-    inputs:
-      terraformVersion: ${{parameters.terraformVersion}}
-
   # Download terraform directory from the artifact
   - task: DownloadPipelineArtifact@2
     displayName: Download Terraform Directory
@@ -51,20 +45,6 @@ steps:
       buildType: 'current'
       artifactName: terraform-directory
       targetPath: $(Pipeline.Workspace)/terraform
-
-  # Initialize Terraform with the specified backend configuration.
-#  - task: TerraformTaskV4@4
-#    displayName: Terraform Init
-#    name: TerraformInit
-#    inputs:
-#      provider: 'azurerm'
-#      command: 'init'
-#      workingDirectory: $(Pipeline.Workspace)/terraform
-#      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
-#      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
-#      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
-#      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-#      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
