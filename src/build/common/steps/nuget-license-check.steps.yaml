@@ -14,7 +14,7 @@ steps:
     condition: and(succeeded(), ne(variables['parameters.projectPaths'], ''))
     inputs:
       scriptType: inlineScript
-      projects: ${{ parameters.projectPaths }}
+      arguments: '-projectPaths ${{ parameters.projectPaths }}'
       inlineScript: |
         $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
@@ -36,8 +36,8 @@ steps:
         $nugetExcludedPackagesPath = "$(Agent.TempDirectory)/nuget-excluded-packages.json"
         $nugetExcludedPackages | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $nugetExcludedPackagesPath
  
-         param (
-          [array]$projects
+        param (
+          [array]$projectPaths
         )
-        foreach( $projectPath in $projects ) {
+        foreach( $projectPath in $projectPaths ) {
         dotnet tool run dotnet-project-licenses -i '$projectPath' -t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath" }
