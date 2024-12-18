@@ -52,6 +52,21 @@ steps:
       artifactName: terraform-directory
       targetPath: $(Pipeline.Workspace)/terraform
 
+#   Initialize Terraform with the specified backend configuration.
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    name: TerraformInit
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      commandOptions: '-reconfigure'
+      workingDirectory: $(Pipeline.Workspace)/terraform
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
     displayName: Terraform Apply
