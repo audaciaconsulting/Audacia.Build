@@ -50,7 +50,7 @@ steps:
     inputs:
       buildType: 'current'
       artifactName: terraform-directory
-      targetPath: ${{parameters.terraformDirectory}}
+      targetPath: $(Pipeline.Workspace)/terraform
 
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
@@ -59,7 +59,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'init'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: $(Pipeline.Workspace)/terraform
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
@@ -74,7 +74,7 @@ steps:
       provider: 'azurerm'
       command: 'apply'
       commandOptions: '-input=false main.tfplan'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: $(Pipeline.Workspace)/terraform
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
   # Retrieve the output from the Terraform state.
@@ -84,7 +84,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'output'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: $(Pipeline.Workspace)/terraform
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
       outputFormat: json
       outputTo: file
