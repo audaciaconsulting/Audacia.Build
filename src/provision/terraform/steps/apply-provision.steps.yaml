@@ -56,8 +56,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        echo "Checking contents of Terraform Directory:"
-        ls -la ${{parameters.terraformDirectory}}
+        echo "Checking contents of ${{parameters.terraformDirectory}}"
 
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4

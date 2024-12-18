@@ -110,5 +110,4 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        echo "Checking contents of Terraform Directory:"
-        ls -la ${{parameters.terraformDirectory}}
+        echo "Checking contents of ${{parameters.terraformDirectory}}"
