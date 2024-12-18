@@ -14,4 +14,4 @@ steps:
         pwsh: true
 
         script: | 
-          license-checker --start ${{parameters.projectPath}} --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicensed;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
+          license-checker --start ${{parameters.projectPath}} --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;UNLICENSED;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
