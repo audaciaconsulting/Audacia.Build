@@ -103,5 +103,6 @@ steps:
     displayName: Publish Terraform Directory
     inputs:
       targetPath: ${{parameters.terraformDirectory}}
+      includeRootFolder: true
       publishLocation: 'pipeline'
       artifact: terraform-directory
