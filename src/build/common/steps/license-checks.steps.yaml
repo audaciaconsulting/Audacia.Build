@@ -1,5 +1,7 @@
 parameters:
-  - dotnetProjects: []
+  - name: dotnetProjects
+    type: object  
+    default: []
   - name: npmProjects   
     type: object  
     default: []

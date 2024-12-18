@@ -1,6 +1,8 @@
 # Steps to run nuget license checks 
 parameters:
-  - projectPaths: []
+  - name: projectPaths
+    type: object
+    default: []
 
 steps:
   - script: |
@@ -13,8 +15,7 @@ steps:
     inputs:
       scriptType: inlineScript
       inlineScript: |
-        Write-Host $projectPaths
-        $projectPaths = ${{ parameters.projectPaths }}
+        $jsonString = '${{ convertToJson(parameters.projectPaths) }}'
         $licenses = @("MIT","Apache-2.0","BSD-3-Clause","Apache-2.0 OR MPL-2.0","MS-EULA","X11","Unlicense","0BSD","BSD-2-Clause")
         $licensesPath = "$(Agent.TempDirectory)/allowed-licenses.json"
         $licenses | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $licensesPath
@@ -35,6 +36,6 @@ steps:
         $nugetExcludedPackagesPath = "$(Agent.TempDirectory)/nuget-excluded-packages.json"
         $nugetExcludedPackages | ConvertTo-Json -Depth 100 | Out-File -Encoding UTF8 $nugetExcludedPackagesPath
  
-        foreach ($path in $projectPaths) {
-        dotnet tool run dotnet-project-licenses -i "$projectPaths"-t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath"
+        foreach ($path in $jsonString) {
+        dotnet tool run dotnet-project-licenses -i "$path"-t --use-project-assets-json --allowed-license-types "$licensesPath" --licenseurl-to-license-mappings "$licenseMappingsPath" --packages-filter "$nugetExcludedPackagesPath"
         }
