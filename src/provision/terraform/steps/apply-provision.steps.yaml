@@ -3,7 +3,7 @@
 parameters:
   # Directory where Terraform configuration files are located.
   - name: terraformDirectory
-    default: $(System.DefaultWorkingDirectory)
+    default: $(System.DefaultWorkingDirectory)/tf-directory
 
   # Name of the environment in Azure (e.g: qa, uat, production).
   - name: environmentId
@@ -49,7 +49,7 @@ steps:
     displayName: Download Terraform Directory
     inputs:
       artifact: terraform-directory
-      targetPath: ${{parameters.terraformDirectory}}
+      targetPath: ${{parameters.terraformDirectory}}/tf-directory
 
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
@@ -58,7 +58,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'init'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: ${{parameters.terraformDirectory}}/tf-directory
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
@@ -73,7 +73,7 @@ steps:
       provider: 'azurerm'
       command: 'apply'
       commandOptions: '-input=false main.tfplan'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: ${{parameters.terraformDirectory}}/tf-directory
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
   # Retrieve the output from the Terraform state.
@@ -83,7 +83,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'output'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: ${{parameters.terraformDirectory}}/tf-directory
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
       outputFormat: json
       outputTo: file
