@@ -98,9 +98,9 @@ steps:
       commandOptions: '-out main.tfplan -input=false'
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
-  # Save the Terraform plan as an artifact.
+  # Save the Terraform directory as an artifact.
   - task: PublishPipelineArtifact@1
-    displayName: Publish Terraform Plan
+    displayName: Publish Terraform Directory
     inputs:
-      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
-      artifact: terraform-plan
+      targetPath: ${{parameters.terraformDirectory}}
+      artifact: terraform-directory

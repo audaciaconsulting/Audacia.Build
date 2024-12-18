@@ -58,11 +58,11 @@ steps:
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
-  # Download terraform plan from the artifact
+  # Download terraform directory from the artifact
   - task: DownloadPipelineArtifact@2
-    displayName: Download Terraform Plan
+    displayName: Download Terraform Directory
     inputs:
-      artifact: terraform-plan
+      artifact: terraform-directory
       targetPath: ${{parameters.terraformDirectory}}
 
   # Apply the Terraform configuration to provision resources.
