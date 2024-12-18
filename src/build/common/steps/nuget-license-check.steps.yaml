@@ -8,7 +8,7 @@ steps:
       dotnet new tool-manifest
       dotnet tool install dotnet-project-licenses
     displayName: Install license check dotnet tool
-  - ${{ if gt(length(parameters.projectPaths), 0) }}:
+  - ${{ if gt(length(parameters.projectPath), 0) }}:
     - task: PowerShell@1
       displayName: "Process Allowed Licenses and Mappings"
       inputs:

@@ -6,7 +6,7 @@ parameters:
 steps:
   - script: npm install -g license-checker
     displayName: Install license checker
-  - ${{ if gt(length(parameters.projectPaths), 0) }}:
+  - ${{ if gt(length(parameters.projectPath), 0) }}:
     - task: PowerShell@2
       displayName: Run Npm license check
       inputs:
