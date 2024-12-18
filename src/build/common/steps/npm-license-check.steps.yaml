@@ -1,6 +1,7 @@
-# Job template to deploy to a specific environment
+# Steps to run npm license checks 
 parameters:
-  projectPaths: 
+  - name: projectPaths
+    type: object
     default: []
 
 steps:
@@ -14,6 +15,7 @@ steps:
       targetType: inline
       pwsh: true
       script: | 
-        foreach( $projectPath in ${{ parameters.projectPaths.path }} ) {
+        $projects = ${{parameters.projectPaths.path}}
+        foreach( $projectPath in $projects ) {
         license-checker --start '${{ parameters.projectPath }}' --production --onlyAllow "MIT;Apache-2.0;BSD-3-Clause;Apache-2.0 OR MPL-2.0;MS-EULA;X11;Unlicense;0BSD;BSD-2-Clause" --excludePackages "@audacia/base-url-interceptor@1.0.0"
         }

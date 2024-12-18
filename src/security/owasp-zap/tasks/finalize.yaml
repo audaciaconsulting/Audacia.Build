@@ -1,6 +1,6 @@
 # Fails or passes pipeline based on results and removes temporary folders
 steps:
-  # Fail if any of the scans railes alerts (and therefore have failed tests)
+  # Fail if any of the scans raise alerts (and therefore have failed tests)
   - task: Bash@3
     inputs:
       targetType: 'inline'

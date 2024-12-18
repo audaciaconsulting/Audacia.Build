@@ -1,10 +1,16 @@
 # Task to check if a storage container exists, and if not creates it
 # This task uses AzureAD to authenticate, so ensure you have the correct RBAC permissions setup for the service connection
+
 parameters:
+  # Name of the storage container to check or create
   - name: storageContainerName
     type: string
+  # Name of the storage account where the container resides
+  # Previously called: backendStorageAccount
   - name: storageAccountName
     type: string
+  # Name of the service connection used for authentication
+  # Previously called: backendSubscription
   - name: serviceConnectionName
     type: string
 
@@ -15,6 +21,7 @@ steps:
       azureSubscription: ${{parameters.serviceConnectionName}}
       scriptType: 'pscore'
       scriptLocation: inlineScript
+      # Inline script to check if the storage container exists and create it if it does not
       inlineScript: |
         $storageContainerName="${{parameters.storageContainerName}}"
         $backendStorageAccount="${{parameters.storageAccountName}}"

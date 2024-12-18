@@ -1,4 +1,4 @@
-# Steps to run a .NET depdendency check
+# Steps to run a .NET dependency check
 parameters:
   - name: projectName
     default: 'Build .NET'
