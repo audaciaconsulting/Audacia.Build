@@ -59,7 +59,6 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'init'
-      commandOptions: '-reconfigure'
       workingDirectory: $(Pipeline.Workspace)/terraform
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
