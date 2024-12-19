@@ -85,5 +85,5 @@ steps:
             --value $varValue `
             --secret $isSecret;
         }
-      env:
-        AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
