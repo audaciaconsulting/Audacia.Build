@@ -62,7 +62,7 @@ steps:
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-      backendAzureRmKey: $(Pipeline.Workspace)/terraform/.terraform/terraform.tfstate
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
 
   # Apply the Terraform configuration to provision resources.
