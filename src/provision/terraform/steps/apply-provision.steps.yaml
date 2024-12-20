@@ -57,13 +57,12 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'init'
-      commandOptions: '-backend-config="key=terraform.tfstate"'
       workingDirectory: $(Pipeline.Workspace)/terraform
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+      backendAzureRmKey: $(Pipeline.Workspace)/terraform/.terraform/terraform.tfstate
 
 
   # Apply the Terraform configuration to provision resources.
