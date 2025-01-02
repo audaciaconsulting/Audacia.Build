@@ -58,7 +58,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'init'
-      commandOptions: '-state=$(Pipeline.Workspace)/terraform/.terraform/terraform.tfstate'
+      commandOptions: '-reconfigure'
       workingDirectory: $(Pipeline.Workspace)/terraform
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
