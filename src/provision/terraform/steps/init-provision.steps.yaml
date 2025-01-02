@@ -78,6 +78,7 @@ steps:
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+      backendAzureRmUseEnvironmentVariablesForAuthentication: true
 
   # Validates the Terraform Init task.
   - task: TerraformTaskV4@4
