@@ -53,7 +53,7 @@ steps:
       targetPath: $(Pipeline.Workspace)/terraform
 
   - task: PowerShell@2
-    displayName: 'Save ${{parameters.variableGroupName}} variables'
+    displayName: 'log params'
     inputs:
       targetType: 'inline'
       script: |
