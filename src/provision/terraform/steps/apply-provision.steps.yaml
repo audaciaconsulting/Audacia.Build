@@ -52,18 +52,13 @@ steps:
       artifactName: terraform-directory
       targetPath: $(Pipeline.Workspace)/terraform
 
-  - script: |
-      ls -R $(Pipeline.Workspace)/terraform
-    displayName: Validate Artifact Files
-
-
   - task: TerraformTaskV4@4
     displayName: Reinitialize Terraform Backend
     name: TerraformInit
     inputs:
       provider: 'azurerm'
       command: 'init'
-      commandOptions: '-input=false'
+      commandOptions: '-state=$(Pipeline.Workspace)/terraform/.terraform/terraform.tfstate'
       workingDirectory: $(Pipeline.Workspace)/terraform
       backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
       backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
