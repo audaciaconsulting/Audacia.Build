@@ -52,27 +52,18 @@ steps:
       artifactName: terraform-directory
       targetPath: $(Pipeline.Workspace)/terraform
 
-#  - task: TerraformTaskV4@4
-#    displayName: Reinitialize Terraform Backend
-#    inputs:
-#      provider: 'azurerm'
-#      command: 'init'
-#      workingDirectory: $(Pipeline.Workspace)/terraform
-#      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
-#      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
-#      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
-#      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-#      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
-
-  - task: AzureCLI@2
-    displayName: Azure CLI Login
+  - task: TerraformTaskV4@4
+    displayName: Reinitialize Terraform Backend
     inputs:
-      azureSubscription: ${{parameters.provisioningServiceConnectionName}}
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        echo "Logged in to Azure CLI"
-
+      provider: 'azurerm'
+      command: 'init'
+      commandOptions: '-input=false'
+      workingDirectory: $(Pipeline.Workspace)/terraform
+      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
