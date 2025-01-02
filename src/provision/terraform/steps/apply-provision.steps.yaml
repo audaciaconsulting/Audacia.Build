@@ -64,6 +64,15 @@ steps:
 #      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
 #      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
+  - task: AzureCLI@2
+    displayName: Azure CLI Login
+    inputs:
+      azureSubscription: ${{parameters.provisioningServiceConnectionName}}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "Logged in to Azure CLI"
+
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
