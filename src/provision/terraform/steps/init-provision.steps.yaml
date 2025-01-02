@@ -65,6 +65,17 @@ steps:
     inputs:
       terraformVersion: ${{parameters.terraformVersion}}
 
+  - task: PowerShell@2
+    displayName: 'log params'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "${{parameters.terraformStateServiceConnectionName}}";
+        Write-Host "${{parameters.terraformStateResourceGroup}}";
+        Write-Host "${{parameters.terraformStateStorageAccount}}";
+        Write-Host "${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}";
+        Write-Host "${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate";
+
   # Initialize Terraform with the specified backend configuration.
   - task: TerraformTaskV4@4
     displayName: Terraform Init

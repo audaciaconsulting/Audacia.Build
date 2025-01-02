@@ -61,7 +61,6 @@ steps:
           Write-Host "${{parameters.terraformStateResourceGroup}}";
           Write-Host "${{parameters.terraformStateStorageAccount}}";
           Write-Host "${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}";
-          Write-Host "${{parameters.terraformStateServiceConnectionName}}";
           Write-Host "${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate";
 
   - task: TerraformTaskV4@4
