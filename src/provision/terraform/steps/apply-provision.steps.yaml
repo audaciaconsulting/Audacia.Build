@@ -66,14 +66,21 @@ steps:
 #      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
 
   - task: AzureCLI@2
-    displayName: Azure CLI Login
+    displayName: Azure CLI Login and Export Credentials
     inputs:
       azureSubscription: ${{parameters.terraformStateServiceConnectionName}}
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        az account get-access-token --resource=https://management.azure.com
-        echo "Azure CLI token refreshed"
+        # Login and export access token details
+        ACCESS_TOKEN=$(az account get-access-token --resource=https://management.azure.com --query accessToken -o tsv)
+        echo "##vso[task.setvariable variable=ARM_ACCESS_TOKEN]$ACCESS_TOKEN"
+        TENANT_ID=$(az account show --query tenantId -o tsv)
+        echo "##vso[task.setvariable variable=ARM_TENANT_ID]$TENANT_ID"
+        SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+        echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$SUBSCRIPTION_ID"
+        CLIENT_ID=$(az account show --query user.name -o tsv)
+        echo "##vso[task.setvariable variable=ARM_CLIENT_ID]$CLIENT_ID"
 
 
   # Apply the Terraform configuration to provision resources.
@@ -86,6 +93,11 @@ steps:
       commandOptions: '-input=false main.tfplan'
       workingDirectory: $(Pipeline.Workspace)/terraform
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
+    env:
+      ARM_ACCESS_TOKEN: $(ARM_ACCESS_TOKEN)
+      ARM_TENANT_ID: $(ARM_TENANT_ID)
+      ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+      ARM_CLIENT_ID: $(ARM_CLIENT_ID)
 
   # Retrieve the output from the Terraform state.
   - task: TerraformTaskV4@4
