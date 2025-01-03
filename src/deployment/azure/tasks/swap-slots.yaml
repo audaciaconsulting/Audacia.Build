@@ -14,34 +14,51 @@ steps:
     displayName: 'Swap Slots'
     inputs:
       azureSubscription: ${{parameters.serviceConnectionName}}
-      scriptType: ps
+      scriptType: pscore
       scriptLocation: inlineScript
       inlineScript: |
-        $count = 0
-        $direction = 1
         $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
-        Do
-        {
+        $ResourceGroupName = '${{parameters.resourceGroupName}}'
+        $slotName = '${{parameters.slotName}}'
+        $slotSwapCompleted = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        $slotSwapErrored = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+
+        $ResourceNames | ForEach-Object -Parallel {
+            $target = $_
             try {
-                $target = $ResourceNames[$count]
-                "Starting ($count) $target"
-                az webapp deployment slot swap -g '${{parameters.resourceGroupName}}' -n $target --slot ${{parameters.slotName}} --target-slot production | ConvertFrom-Json
-                if (!$?) {
-                    $direction = -1
-                    "$target failed. Reverting previous slot swaps"
+                Write-Host "Starting swap for $target"
+                az webapp deployment slot swap -g $using:ResourceGroupName -n $target --slot $using:slotName --target-slot production | ConvertFrom-Json
+        
+                if (!$?) 
+                {
+                    throw "Swap failed for $target"            
+                } 
+                else 
+                {
+                    ($using:slotSwapCompleted).Add($target)
+                    Write-Host "Completed swap for $target successfully"
                 }
-                else {
-                    "Completed ($count) $target successfully"
-                }
+            } 
+            catch 
+            {
+                Write-Host "Exception during swap for $($target): $_"
+                ($using:slotSwapErrored).Add($target)
             }
-            finally {
-                $count = $count + $direction
-            }
-        } while (($count -gt -1) -and ($count -lt $ResourceNames.count))
-        if ($count -lt 0) {
-            write-error "failed slot swapping"
-            exit 1
         }
-        else {
+
+        Write-Host "Slots swapped successfully: $($slotSwapCompleted.Count)"
+        Write-Host "Slot swap errors: $($slotSwapErrored.Count)"
+
+        if($slotSwapErrored.Count -gt 0)
+        {
+            $slotSwapCompleted | ForEach-Object {
+                $target = $_
+                Write-Host "Reversing slot swap for $target"
+                az webapp deployment slot swap -g $ResourceGroupName -n $target --slot $slotName --target-slot production | ConvertFrom-Json
+            }
+            exit 1
+        } 
+        else 
+        {
             exit 0
         }
