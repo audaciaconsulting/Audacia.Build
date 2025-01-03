@@ -52,20 +52,20 @@ steps:
       artifactName: terraform-directory
       targetPath: $(Pipeline.Workspace)/terraform
 
-  - task: TerraformTaskV4@4
-    displayName: Reinitialize Terraform Backend
-    name: TerraformInit
-    inputs:
-      provider: 'azurerm'
-      command: 'init'
-      commandOptions: '-input=false'
-      workingDirectory: $(Pipeline.Workspace)/terraform
-      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
-      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
-      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
-      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
-      backendAzureRmUseEnvironmentVariablesForAuthentication: true
+#  - task: TerraformTaskV4@4
+#    displayName: Reinitialize Terraform Backend
+#    name: TerraformInit
+#    inputs:
+#      provider: 'azurerm'
+#      command: 'init'
+#      commandOptions: '-input=false'
+#      workingDirectory: $(Pipeline.Workspace)/terraform
+#      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
+#      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
+#      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
+#      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
+#      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+#      backendAzureRmUseEnvironmentVariablesForAuthentication: true
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
