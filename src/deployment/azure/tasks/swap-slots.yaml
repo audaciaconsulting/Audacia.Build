@@ -28,7 +28,7 @@ steps:
             try {
                 Write-Host "Starting swap for $target"
                 az webapp deployment slot swap -g $using:ResourceGroupName -n $target --slot $using:slotName --target-slot production | ConvertFrom-Json
-                
+        
                 if (!$?) 
                 {
                     throw "Swap failed for $target"            
@@ -41,7 +41,7 @@ steps:
             } 
             catch 
             {
-                Write-Error "Exception during swap for $($target): $_"
+                Write-Host "Exception during swap for $($target): $_"
                 ($using:slotSwapErrored).Add($target)
             }
         }
@@ -51,8 +51,7 @@ steps:
 
         if($slotSwapErrored.Count -gt 0)
         {
-            $slotSwapCompleted | ForEach-Object 
-            {
+            $slotSwapCompleted | ForEach-Object {
                 $target = $_
                 Write-Host "Reversing slot swap for $target"
                 az webapp deployment slot swap -g $ResourceGroupName -n $target --slot $slotName --target-slot production | ConvertFrom-Json
