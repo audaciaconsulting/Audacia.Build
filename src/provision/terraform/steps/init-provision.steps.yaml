@@ -78,6 +78,7 @@ steps:
       backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
       backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
       backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
+      backendAzureRmUseEnvironmentVariablesForAuthentication: true
 
   # Validates the Terraform Init task.
   - task: TerraformTaskV4@4
@@ -98,9 +99,11 @@ steps:
       commandOptions: '-out main.tfplan -input=false'
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
-  # Save the Terraform plan as an artifact.
+  # Save the Terraform directory as an artifact.
   - task: PublishPipelineArtifact@1
-    displayName: Publish Terraform Plan
+    displayName: Publish Terraform Directory
     inputs:
-      targetPath: ${{parameters.terraformDirectory}}/main.tfplan
-      artifact: terraform-plan
+      targetPath: ${{parameters.terraformDirectory}}
+      includeRootFolder: true
+      publishLocation: 'pipeline'
+      artifact: terraform-directory

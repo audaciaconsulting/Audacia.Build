@@ -44,26 +44,13 @@ steps:
     inputs:
       terraformVersion: ${{parameters.terraformVersion}}
 
-  # Initialize Terraform with the specified backend configuration.
-  - task: TerraformTaskV4@4
-    displayName: Terraform Init
-    name: TerraformInit
-    inputs:
-      provider: 'azurerm'
-      command: 'init'
-      workingDirectory: ${{parameters.terraformDirectory}}
-      backendServiceArm: ${{parameters.terraformStateServiceConnectionName}}
-      backendAzureRmResourceGroupName: ${{parameters.terraformStateResourceGroup}}
-      backendAzureRmStorageAccountName: ${{parameters.terraformStateStorageAccount}}
-      backendAzureRmContainerName: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}
-      backendAzureRmKey: ${{parameters.terraformStateStoragePrefix}}-${{parameters.environmentId}}.tfstate
-
-  # Download terraform plan from the artifact
+  # Download terraform directory from the artifact
   - task: DownloadPipelineArtifact@2
-    displayName: Download Terraform Plan
+    displayName: Download Terraform Directory
     inputs:
-      artifact: terraform-plan
-      targetPath: ${{parameters.terraformDirectory}}
+      buildType: 'current'
+      artifactName: terraform-directory
+      targetPath: $(Pipeline.Workspace)/terraform
 
   # Apply the Terraform configuration to provision resources.
   - task: TerraformTaskV4@4
@@ -73,7 +60,7 @@ steps:
       provider: 'azurerm'
       command: 'apply'
       commandOptions: '-input=false main.tfplan'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: $(Pipeline.Workspace)/terraform
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
 
   # Retrieve the output from the Terraform state.
@@ -83,7 +70,7 @@ steps:
     inputs:
       provider: 'azurerm'
       command: 'output'
-      workingDirectory: ${{parameters.terraformDirectory}}
+      workingDirectory: $(Pipeline.Workspace)/terraform
       environmentServiceNameAzureRM: ${{parameters.provisioningServiceConnectionName}}
       outputFormat: json
       outputTo: file
