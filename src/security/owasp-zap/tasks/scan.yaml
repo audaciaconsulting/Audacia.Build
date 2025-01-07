@@ -149,7 +149,7 @@ steps:
         # --rm will remove container if it already exists
         # --mount will mount $(workingTempDirectory) so that it appears as /zap/wrk/ (standard zap2docker working directory) to the docker container
         ls -R "$(System.DefaultWorkingDirectory/home/vsts/work/1/s/pipelines/security/api)"
-        baseCommand="docker run --rm -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw -v $(System.DefaultWorkingDirectory):/zap/report/ -t softwaresecurityproject/zap-stable zap.sh -cmd -autorun /zap/wrk/config.yaml"
+        baseCommand="docker run --rm -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw -v $(System.DefaultWorkingDirectory):/zap/report/ -t softwaresecurityproject/zap-stable zap.sh -cmd -autorun /zap/wrk/home/vsts/work/1/s/pipelines/security/api/config.yaml"
 
         eval "$baseCommand"
 
