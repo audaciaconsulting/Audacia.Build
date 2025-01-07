@@ -1,0 +1,42 @@
+env:
+  contexts:
+    - name: "Default Context"
+      urls:
+        - "${targetUrl}"
+      includePaths: []
+      excludePaths: []
+      authentication:
+        parameters:
+          loginPageUrl: "${loginPageUrl}"
+          loginRequestUrl: "${loginRequestUrl}"
+          loginRequestBody: 'Email={{USERNAME}}&Password={{PASSWORD}}'
+        verification:
+          method: "response"
+          loggedInRegex: ''
+          loggedOutRegex: 'Log in'
+      sessionManagement:
+        method: "cookie"
+        parameters: {}
+      technology:
+        exclude: []
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+  vars: {}
+jobs:
+  - parameters:
+      scanOnlyInScope: true
+      enableTags: false
+      disableAllRules: false
+    rules: []
+    name: "passiveScan-config"
+    type: "passiveScan-config"
+  - parameters: {}
+    policyDefinition:
+      rules: []
+    name: "activeScan"
+    type: "activeScan"
+  - parameters: {}
+    name: "passiveScan-wait"
+    type: "passiveScan-wait"
