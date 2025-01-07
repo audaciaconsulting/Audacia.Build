@@ -6,6 +6,10 @@ parameters:
     default: ''
   - name: targetUrl # REQUIRED: Either url to attack for baseline/full scans, or the /swagger.json open API definition url for API scans
     default: ''
+  - name: loginPageUrl
+    default: ''
+  - name: loginRequestUrl
+    default: ''
   - name: authorizationHeaderName # OPTIONAL: Used to override the name of an authorization header (e.g. "MY-API-AUTH-KEY" instead of "Authorization")
     default: ''
   - name: authorizationHeaderValue # OPTIONAL: A value to use as the value of the authorization header
@@ -132,16 +136,10 @@ steps:
     displayName: '${{parameters.name}}: Run OWASP ZAP Scan'
     env:
       ScanUrl: ${{parameters.targetUrl}}
-      ScanType: ${{parameters.scanType}}
-      AuthorizationHeaderName: ${{parameters.authorizationHeaderName}}
-      AuthorizationHeaderValue: ${{parameters.authorizationHeaderValue}}
-      ZapContextLocation: ${{parameters.zapContextLocation}}
-      AuthenticationScriptType: ${{parameters.authenticationScriptType}}
-      AuthenticationScriptLocation: ${{parameters.authenticationScriptLocation}}
-      UserName: ${{parameters.username}}
-      UseAjaxSpider: ${{parameters.useAjaxSpider}}
-      MaxPassiveScanTime: ${{parameters.maxPassiveScanTime}}
-      MaxSpiderCrawlTime: ${{parameters.maxSpiderCrawlTime}}
+      LoginPageUrl: ${{parameters.loginPageUrl}}
+      LoginRequestUrl: ${{parameters.loginRequestUrl}}
+      Username: ${{parameters.username}}
+      Password: ${{parameters.password}}
     inputs:
       targetType: 'inline'
       script: |
@@ -152,6 +150,7 @@ steps:
         baseCommand="docker run --rm -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw -v $(System.DefaultWorkingDirectory):/zap/report/ -t softwaresecurityproject/zap-stable zap.sh -cmd -autorun /zap/wrk/pipelines/security/api/config.yaml"
 
         eval "$baseCommand"
+        
 
   - task: PowerShell@2
     displayName: '${{parameters.name}}: Run OWASP to NUnit XSLT Transformation'
