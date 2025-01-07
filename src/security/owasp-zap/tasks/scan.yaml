@@ -149,31 +149,6 @@ steps:
         baseCommand="docker run --rm --env ScanUrl=${{parameters.targetUrl}} -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw -v $(System.DefaultWorkingDirectory):/zap/report/ -t softwaresecurityproject/zap-stable zap.sh -cmd -autorun /zap/wrk/pipelines/security/api/config.yaml"
 
         eval "$baseCommand"
-        
-
-  - task: PowerShell@2
-    displayName: '${{parameters.name}}: Run OWASP to NUnit XSLT Transformation'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
-        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
-        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-        $XslTransform.Load($XslPath)
-
-        echo "Transforming OWASP Report.xml into an NUnit3 format"
-
-        # Transform OWASP ZAP XML results to NUnit3 format
-        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
-
-  - ${{ if eq(parameters.createBugsForFailures, true) }}:
-    - template: ./create-bugs.yaml
-      parameters:
-        parentCardId: ${{parameters.parentCardId}}
-        organisationUri: ${{parameters.organisationUri}}
-        projectName: ${{parameters.projectName}}
-        name: ${{parameters.name}}
 
   - task: PublishBuildArtifacts@1
     inputs:
