@@ -150,11 +150,11 @@ steps:
 
         eval "$baseCommand"
         
-        ls -R "$(System.DefaultWorkingDirectory)"
+        ls -R "$(System.DefaultWorkingDirectory)/pipelines/security/api"
 
   - task: PublishBuildArtifacts@1
     displayName: '${{parameters.name}}: Publish HTML Report as Build Artifact'
     inputs:
-      pathtoPublish: '$(System.DefaultWorkingDirectory)/reports/test-report.html'
+      pathtoPublish: $(System.DefaultWorkingDirectory)/pipelines/security/api/reports/test-report.html
       artifactName: ${{parameters.name}}
       publishLocation: 'Container'
