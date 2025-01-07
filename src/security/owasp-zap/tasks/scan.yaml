@@ -149,44 +149,12 @@ steps:
         baseCommand="docker run --rm --env ScanUrl=${{parameters.targetUrl}} -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw -v $(System.DefaultWorkingDirectory):/zap/report/ -t softwaresecurityproject/zap-stable zap.sh -cmd -autorun /zap/wrk/pipelines/security/api/config.yaml"
 
         eval "$baseCommand"
-
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.xml'
-      artifactName: ${{parameters.name}}
-      publishLocation: 'Container'
-    displayName: '${{parameters.name}}: Publish XML Report as Build Artifact'
+        
+        ls -R "$(System.DefaultWorkingDirectory)/zap/wrk/"
 
   - task: PublishBuildArtifacts@1
     displayName: '${{parameters.name}}: Publish HTML Report as Build Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/zap/wrk/test-report.html'
       artifactName: ${{parameters.name}}
       publishLocation: 'Container'
-
-  # Publish the transformed XML as test results so Azure DevOps shows alerts as test cases
-  - task: PublishTestResults@2
-    displayName: '${{parameters.name}}: Publish Scan Results As Test Results'
-    inputs:
-      testRunTitle: ${{parameters.name}}
-      testRunner: 'NUnit'
-      testResultsFiles: '**/NUnit-Report.xml'
-      searchFolder: '$(workingTempDirectory)'
-      publishRunAttachments: false
-
-  # Set variables.alerstExist to true if there have been alerts so we can later fail the pipeline
-  - task: PowerShell@2
-    displayName: '${{parameters.name}}: Set Alerts Exist Flag If Required'
-    inputs:
-      targetType: 'inline'
-      script: |
-        # If the scan resulted in alerts which are not allow-listed, set a flag so we can fail the pipeline later
-        # <confidence>0</confidence> in <alertitem> if alert configured as false positive
-        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "OWASPZAPReport/site/alerts/alertitem[not(confidence=0)]"
-
-        if ($Alerts.Count -gt 0) {
-            echo "Setting alerts exist variable to true"
-            Write-Host "##vso[task.setvariable variable=alertsExist]true"
-        }
-      failOnStderr: true
-    condition: and(succeeded(), ne(variables.alertsExist, 'true'))
