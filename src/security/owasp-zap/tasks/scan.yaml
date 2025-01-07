@@ -148,7 +148,7 @@ steps:
         # A new docker run command
         # --rm will remove container if it already exists
         # --mount will mount $(workingTempDirectory) so that it appears as /zap/wrk/ (standard zap2docker working directory) to the docker container
-        baseCommand="docker run --rm --mount type=bind,source=\"$(workingTempDirectory)\",target=/zap/wrk/"
+        baseCommand="docker run -v %cd%:/zap/wrk:rw -t owasp/zap2docker-stable zap.sh -cmd -autogen /zap/wrk/scan-test.yaml"
         redactedCommand=$baseCommand
 
         if [ "$AuthorizationHeaderName" != '' ]; then
