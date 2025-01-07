@@ -150,11 +150,11 @@ steps:
 
         eval "$baseCommand"
         
-        ls -R "$(System.DefaultWorkingDirectory)/zap/wrk/"
+        ls -R "$(System.DefaultWorkingDirectory)"
 
   - task: PublishBuildArtifacts@1
     displayName: '${{parameters.name}}: Publish HTML Report as Build Artifact'
     inputs:
-      pathtoPublish: '$(System.DefaultWorkingDirectory)/zap/wrk/test-report.html'
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/test-report.html'
       artifactName: ${{parameters.name}}
       publishLocation: 'Container'
