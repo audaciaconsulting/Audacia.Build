@@ -1,0 +1,143 @@
+# zap-automation-all-in-one.yaml
+---
+# Documentation:
+# This single YAML file replaces the previous 3-step approach (initialize, scan, finalize)
+# by using the OWASP ZAP Automation Framework in one consolidated file.
+# It references the same environment variables/parameters used previously.
+
+# ================================
+# 1) Environment Variables
+# ================================
+env:
+  # Retain all old parameters to ensure minimal pipeline changes
+  target_url: "https://example.com"
+  zap_api_key: "CHANGE_ME"
+  username: "test_user"                # If your scan involves authentication
+  password: "test_password"            # If your scan involves authentication
+
+  fail_on_error: "false"
+  warn_on_warning: "false"
+  stats_enable: "true"
+  pscan_max_alerts: "100"
+
+  spider_max_duration: "5"   # minutes
+  ascan_max_duration: "10"   # minutes
+
+  context_file: "/zap/wrk/DefaultContext.context"   # If you have a .context file
+  report_formats: "html,json"                       # Example formats (comma-separated)
+  report_dir: "/zap/wrk/reports"
+  session_file: "/zap/wrk/session/FinalSession.session"
+  shutdown_zap: "false"         # Set to "true" if you want to shut down ZAP at the end
+
+# ================================
+# 2) Global Options
+# ================================
+options:
+  # Map old fail_on_error / warn_on_warning parameters
+  failOnError: "${fail_on_error}"
+  warnOnWarning: "${warn_on_warning}"
+  # debug: true   # Enable if you want more verbose logs
+
+# ================================
+# 3) Context Definitions
+# ================================
+contexts:
+  - name: "DefaultContext"
+    includePaths:
+      - "\Q${target_url}\E.*"
+    # Uncomment or add authentication details as needed
+    # authentication:
+    #   method: "formBased"
+    #   loggedInIndicator: "Welcome"
+    #   loggedOutIndicator: "Login"
+    #   parameters:
+    #     loginUrl: "${target_url}/login"
+    #     loginRequestData: "username=${username}&password=${password}"
+
+# ================================
+# 4) Jobs (All in one file)
+# ================================
+jobs:
+  # ---------------------------------------------------------------
+  # 4.1 Initialize Phase
+  # ---------------------------------------------------------------
+  - type: parameters
+    name: "Set Global ZAP Parameters"
+    parameters:
+      config:
+        # This job replicates old "initialize" tasks, e.g. enabling stats
+        - "stats.enable=${stats_enable}"
+        - "pscan.rules.maxAlertsPerRule=${pscan_max_alerts}"
+
+  # Optionally load external context if you rely on a .context file
+  - type: load
+    name: "Load Context File"
+    parameters:
+      file: "${context_file}"
+      overwrite: true
+
+  # Optionally perform authentication if needed:
+  # - type: auth
+  #   name: "Authenticate"
+  #   parameters:
+  #     context: "DefaultContext"
+  #     username: "${username}"
+  #     password: "${password}"
+  #     pollForComplete: true
+
+  # Add a small delay to let passive scanning or other systems initialize
+  - type: delay
+    name: "Wait for Passive Scanner Initialization"
+    parameters:
+      seconds: 5
+
+  # ---------------------------------------------------------------
+  # 4.2 Spider Phase
+  # ---------------------------------------------------------------
+  - type: spider
+    name: "Spider the Target"
+    parameters:
+      context: "DefaultContext"
+      url: "${target_url}"
+      maxDuration: "${spider_max_duration}"   # minutes, from old param
+
+  - type: delay
+    name: "Wait between Spider and Active Scan"
+    parameters:
+      seconds: 5
+
+  # ---------------------------------------------------------------
+  # 4.3 Active Scan
+  # ---------------------------------------------------------------
+  - type: ascan
+    name: "Active Scan"
+    parameters:
+      context: "DefaultContext"
+      policy: "Default Policy"     # Or a custom policy if needed
+      recurse: true
+      maxDuration: "${ascan_max_duration}"  # minutes, from old param
+
+  # ---------------------------------------------------------------
+  # 4.4 Finalize Phase
+  # ---------------------------------------------------------------
+  - type: report
+    name: "Generate Reports"
+    parameters:
+      # We parse the 'report_formats' param. The simplest approach is to
+      # hardcode them if you don't need dynamic parsing. For demonstration:
+      formats:
+        - "html"
+        - "json"
+      reportDir: "${report_dir}"
+
+  - type: save
+    name: "Save the ZAP Session"
+    parameters:
+      file: "${session_file}"
+      overwrite: true
+
+  # Optionally shut down ZAP if the old param says so.
+  # The Automation Framework doesn't do conditional runs by default, so
+  # you'd either remove this if `shutdown_zap` is false or handle externally.
+  - type: shutdown
+    name: "Shutdown ZAP"
