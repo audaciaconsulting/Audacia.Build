@@ -64,8 +64,14 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        # Build the configuration as an array of lines.
-        # Choose between a quick-scan configuration and an API scan configuration.
+        # Convert the useAjaxSpider boolean parameter to a lowercase string for YAML
+        if ('${{ parameters.useAjaxSpider }}' -eq 'True') { 
+            $ajaxValue = "true" 
+        } else { 
+            $ajaxValue = "false" 
+        }
+        
+        # Build the configuration based on the scanType
         if ('${{ parameters.scanType }}' -eq 'API') {
             # API scan: include authorization header and context file if provided.
             $actionBlock = @(
@@ -82,11 +88,11 @@ steps:
                 "  - type: quick-scan",
                 "    parameters:",
                 "      target: '${{ parameters.targetUrl }}'",
-                "      useAjaxSpider: $([bool]${{ parameters.useAjaxSpider }})",
+                "      useAjaxSpider: $ajaxValue",
                 "      maxScanTime: ${{ parameters.maxScanTime }}"
             )
         }
-
+        
         $configLines = @(
             "# ZAP Automation Framework configuration (dynamically generated)",
             "version: '2.0'",
@@ -100,7 +106,7 @@ steps:
             "  - type: xml",
             "    fileName: Report.xml"
         )
-        # Join the lines with a newline character
+        # Join the lines with newline characters
         $configContent = $configLines -join "`n"
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
