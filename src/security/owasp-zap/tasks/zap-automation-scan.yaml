@@ -57,8 +57,7 @@
         script: |
           # Generate the automation framework configuration.
           # This example uses a quick scan action with parameters for target URL, optional Ajax spider use, and maximum scan time.
-          $configContent =
-@"
+          $configContent = @"
             # ZAP Automation Framework configuration (dynamically generated)
             version: '2.0'
             env:
@@ -74,7 +73,7 @@
                 fileName: Report.html
               - type: xml
                 fileName: Report.xml
-    "@
+"@
     $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
     $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
     Write-Output "Generated zap-automation.yaml at $configFilePath"
