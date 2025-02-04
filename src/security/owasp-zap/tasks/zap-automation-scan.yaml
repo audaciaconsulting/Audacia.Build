@@ -71,13 +71,13 @@ steps:
             $ajaxValue = "false" 
         }
         
-        # Build the configuration based on the scanType
+        # Build the action block based on the scanType
         if ('${{ parameters.scanType }}' -eq 'API') {
-            # API scan: include authorization header and context file if provided.
+            # API scan: include context name, authorization header, and context file if provided.
             $actionBlock = @(
                 "  - type: api-scan",
                 "    parameters:",
-                "      target: '${{ parameters.targetUrl }}'",
+                "      contextName: 'APIContext'",
                 "      authorizationHeaderValue: '${{ parameters.authorizationHeaderValue }}'",
                 "      zapContextLocation: '${{ parameters.zapContextLocation }}'",
                 "      maxScanTime: ${{ parameters.maxScanTime }}"
@@ -93,9 +93,24 @@ steps:
             )
         }
         
+        # Start building the configuration file content
         $configLines = @(
             "# ZAP Automation Framework configuration (dynamically generated)",
-            "version: '2.0'",
+            "version: '2.0'"
+        )
+        
+        # If it's an API scan, add a contexts block
+        if ('${{ parameters.scanType }}' -eq 'API') {
+            $configLines += @(
+                "contexts:",
+                "  - name: APIContext",
+                "    urls:",
+                "      - '${{ parameters.targetUrl }}'"
+            )
+        }
+        
+        # Append the environment, actions, and reports sections
+        $configLines += @(
             "env:",
             "  targetUrl: '${{ parameters.targetUrl }}'",
             "actions:"
@@ -106,6 +121,7 @@ steps:
             "  - type: xml",
             "    fileName: Report.xml"
         )
+        
         # Join the lines with newline characters
         $configContent = $configLines -join "`n"
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
