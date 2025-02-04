@@ -124,7 +124,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null"
+        docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
     
     
     # Run the OWASP ZAP Automation scan via Docker
