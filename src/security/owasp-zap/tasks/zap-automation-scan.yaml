@@ -118,8 +118,8 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        # Mount the working directory and run ZAP with the dynamically generated config file.
-        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk/ ghcr.io/zaproxy/zaproxy:stable zap.sh -cmd -autorun zap-automation.yaml
+        # Mount the working directory, set it as the container's working directory, and run ZAP with the config file.
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk/ -w /zap/wrk/ ghcr.io/zaproxy/zaproxy:stable zap.sh -cmd -autorun zap-automation.yaml
 
   # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
   - task: PowerShell@2
