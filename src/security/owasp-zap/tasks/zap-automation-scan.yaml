@@ -6,12 +6,21 @@ parameters:
   - name: targetUrl
     type: string
     default: ''
+  - name: scanType
+    type: string
+    default: 'quick-scan'   # Accepts "quick-scan" or "API"
   - name: useAjaxSpider
     type: boolean
     default: false
   - name: maxScanTime
     type: number
     default: 15  # in minutes, for example
+  - name: authorizationHeaderValue
+    type: string
+    default: ''  # used only for API scans
+  - name: zapContextLocation
+    type: string
+    default: ''  # used only for API scans (for alert filters etc.)
   - name: createBugsForFailures
     type: boolean
     default: false
@@ -55,18 +64,36 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        # Build the configuration as an array of lines
+        # Build the configuration as an array of lines.
+        # Choose between a quick-scan configuration and an API scan configuration.
+        if ('${{ parameters.scanType }}' -eq 'API') {
+            # API scan: include authorization header and context file if provided.
+            $actionBlock = @(
+                "  - type: api-scan",
+                "    parameters:",
+                "      target: '${{ parameters.targetUrl }}'",
+                "      authorizationHeaderValue: '${{ parameters.authorizationHeaderValue }}'",
+                "      zapContextLocation: '${{ parameters.zapContextLocation }}'",
+                "      maxScanTime: ${{ parameters.maxScanTime }}"
+            )
+        } else {
+            # Quick scan configuration.
+            $actionBlock = @(
+                "  - type: quick-scan",
+                "    parameters:",
+                "      target: '${{ parameters.targetUrl }}'",
+                "      useAjaxSpider: $([bool]${{ parameters.useAjaxSpider }})",
+                "      maxScanTime: ${{ parameters.maxScanTime }}"
+            )
+        }
+
         $configLines = @(
             "# ZAP Automation Framework configuration (dynamically generated)",
             "version: '2.0'",
             "env:",
             "  targetUrl: '${{ parameters.targetUrl }}'",
-            "actions:",
-            "  - type: quick-scan",
-            "    parameters:",
-            "      target: '${{ parameters.targetUrl }}'",
-            "      useAjaxSpider: $([bool]${{ parameters.useAjaxSpider }})",
-            "      maxScanTime: ${{ parameters.maxScanTime }}",
+            "actions:"
+        ) + $actionBlock + @(
             "reports:",
             "  - type: html",
             "    fileName: Report.html",
@@ -78,7 +105,7 @@ steps:
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
         Write-Output "Generated zap-automation.yaml at $configFilePath"
-  
+
   # Run the OWASP ZAP Automation scan via Docker
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
@@ -87,7 +114,7 @@ steps:
       script: |
         # Mount the working directory and run ZAP with the dynamically generated config file.
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk/ ghcr.io/zaproxy/zaproxy:stable zap.sh -cmd -autorun zap-automation.yaml
-  
+
   # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
@@ -101,7 +128,7 @@ steps:
         $XslTransform.Load($XslPath)
         Write-Output "Transforming Report.xml into NUnit-Report.xml"
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
-  
+
   # Create bug work items if configured (reusing your existing create-bugs template)
   - ${{ if eq(parameters.createBugsForFailures, true) }}:
       - template: ./create-bugs.yaml
@@ -110,7 +137,7 @@ steps:
           organisationUri: ${{ parameters.organisationUri }}
           projectName: ${{ parameters.projectName }}
           name: ${{ parameters.name }}
-  
+
   # Publish the raw XML and HTML reports as build artifacts
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
@@ -125,7 +152,7 @@ steps:
       pathtoPublish: '$(workingTempDirectory)/Report.html'
       artifactName: '${{ parameters.name }}-HTML'
       publishLocation: 'Container'
-  
+
   # Publish the transformed report as test results so that alerts are visible as test failures
   - task: PublishTestResults@2
     displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
@@ -135,7 +162,7 @@ steps:
       testResultsFiles: '**/NUnit-Report.xml'
       searchFolder: '$(workingTempDirectory)'
       publishRunAttachments: false
-  
+
   # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml)
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
