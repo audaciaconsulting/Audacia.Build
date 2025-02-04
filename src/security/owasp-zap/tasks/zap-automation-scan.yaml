@@ -1,4 +1,3 @@
-# zap-automation-scan.yaml
 parameters:
   - name: name
     type: string
@@ -138,6 +137,23 @@ steps:
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
         Write-Output "Generated zap-automation.yaml at $configFilePath"
+  
+  # Option 1: Publish the generated configuration file as a build artifact
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+      artifactName: 'zap-automation-config'
+      publishLocation: 'Container'
+
+  # Option 2: Log the configuration file for debugging purposes
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Log ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Output "Contents of zap-automation.yaml:"
+        Get-Content "$(workingTempDirectory)/zap-automation.yaml" | Write-Output
 
   - task: Bash@3
     displayName: 'Debug: List mounted directory'
@@ -145,16 +161,15 @@ steps:
       targetType: 'inline'
       script: |
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap -w /zap alpine ls -l /zap
-        
+
   - task: Bash@3
     displayName: 'Debug: Find zap.sh location'
     inputs:
       targetType: 'inline'
       script: |
         docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
-    
-    
-    # Run the OWASP ZAP Automation scan via Docker
+  
+  # Run the OWASP ZAP Automation scan via Docker
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     inputs:
