@@ -73,7 +73,7 @@ steps:
         
         # Build the action block based on the scanType
         if ('${{ parameters.scanType }}' -eq 'API') {
-            # API scan: include context name, authorization header, and context file if provided.
+            # API scan: include contextName, authorization header, and context file if provided.
             $actionBlock = @(
                 "  - type: api-scan",
                 "    parameters:",
@@ -109,12 +109,23 @@ steps:
             )
         }
         
-        # Append the environment, actions, and reports sections
-        $configLines += @(
-            "env:",
-            "  targetUrl: '${{ parameters.targetUrl }}'",
-            "actions:"
-        ) + $actionBlock + @(
+        # Build the environment block. For API scans, also specify the context to use.
+        if ('${{ parameters.scanType }}' -eq 'API') {
+            $envBlock = @(
+                "env:",
+                "  targetUrl: '${{ parameters.targetUrl }}'",
+                "  context: 'APIContext'"
+            )
+        } else {
+            $envBlock = @(
+                "env:",
+                "  targetUrl: '${{ parameters.targetUrl }}'"
+            )
+        }
+        
+        # Append the env block, actions and reports sections
+        $configLines += $envBlock
+        $configLines += @("actions:") + $actionBlock + @(
             "reports:",
             "  - type: html",
             "    fileName: Report.html",
