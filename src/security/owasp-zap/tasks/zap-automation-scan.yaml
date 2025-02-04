@@ -91,52 +91,79 @@ steps:
                 "      maxScanTime: ${{ parameters.maxScanTime }}"
             )
         }
-        
-        # Start building the configuration file content
-        $configLines = @(
-            "# ZAP Automation Framework configuration (dynamically generated)",
-            "version: '2.0'"
-        )
-        
-        # If it's an API scan, add a contexts block
-        if ('${{ parameters.scanType }}' -eq 'API') {
-            $configLines += @(
-                "contexts:",
-                "  - name: APIContext",
-                "    urls:",
-                "      - '${{ parameters.targetUrl }}'"
-            )
-        }
-        
-        # Build the environment block. For API scans, also specify the context to use.
-        if ('${{ parameters.scanType }}' -eq 'API') {
-            $envBlock = @(
-                "env:",
-                "  targetUrl: '${{ parameters.targetUrl }}'",
+                
+        # Start building the configuration file content with version and env blocks first.
+          $configLines = @(
+          "# ZAP Automation Framework configuration (dynamically generated)",
+          "version: '2.0'"
+          )
+          
+          # Build the environment block.
+          if ('${{ parameters.scanType }}' -eq 'API') {
+          $envBlock = @(
+          "env:",
+          "  targetUrl: '${{ parameters.targetUrl }}'",
                 "  context: 'APIContext'"
             )
         } else {
             $envBlock = @(
                 "env:",
-                "  targetUrl: '${{ parameters.targetUrl }}'"
-            )
+          "  targetUrl: '${{ parameters.targetUrl }}'"
+          )
+        }
+          $configLines += $envBlock
+          
+          # If it's an API scan, add a contexts block after env.
+          if ('${{ parameters.scanType }}' -eq 'API') {
+          $contextsBlock = @(
+          "contexts:",
+          "  - name: APIContext",
+          "    urls:",
+          "      - '${{ parameters.targetUrl }}'"
+          )
+          $configLines += $contextsBlock
         }
         
-        # Append the env block, actions and reports sections
-        $configLines += $envBlock
-        $configLines += @("actions:") + $actionBlock + @(
-            "reports:",
-            "  - type: html",
-            "    fileName: Report.html",
-            "  - type: xml",
-            "    fileName: Report.xml"
-        )
+        # Build the action block based on the scanType.
+          if ('${{ parameters.scanType }}' -eq 'API') {
+          $actionBlock = @(
+          "  - type: api-scan",
+          "    parameters:",
+          "      contextName: 'APIContext'",
+          "      authorizationHeaderValue: '${{ parameters.authorizationHeaderValue }}'",
+          "      zapContextLocation: '${{ parameters.zapContextLocation }}'",
+          "      maxScanTime: ${{ parameters.maxScanTime }}"
+          )
+        } else {
+          # Convert the useAjaxSpider boolean parameter to a lowercase string for YAML
+          if ('${{ parameters.useAjaxSpider }}' -eq 'True') {
+          $ajaxValue = "true"
+        } else {
+          $ajaxValue = "false"
+        }
+          $actionBlock = @(
+          "  - type: quick-scan",
+          "    parameters:",
+          "      target: '${{ parameters.targetUrl }}'",
+          "      useAjaxSpider: $ajaxValue",
+          "      maxScanTime: ${{ parameters.maxScanTime }}"
+          )
+        }
         
-        # Join the lines with newline characters
-        $configContent = $configLines -join "`n"
-        $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
-        $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
-        Write-Output "Generated zap-automation.yaml at $configFilePath"
+        # Append actions and reports sections.
+          $configLines += @("actions:") + $actionBlock + @(
+          "reports:",
+          "  - type: html",
+          "    fileName: Report.html",
+          "  - type: xml",
+          "    fileName: Report.xml"
+          )
+          
+          # Join the lines with newline characters and write to file.
+          $configContent = $configLines -join "`n"
+          $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
+          $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
+          Write-Output "Generated zap-automation.yaml at $configFilePath"
   
   # Option 1: Publish the generated configuration file as a build artifact
   - task: PublishBuildArtifacts@1
