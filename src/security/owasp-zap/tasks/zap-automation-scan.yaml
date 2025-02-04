@@ -1,148 +1,150 @@
 # zap-automation-scan.yaml
-  parameters:
-    - name: name
-      type: string
-      default: ''
-    - name: targetUrl
-      type: string
-      default: ''
-    - name: useAjaxSpider
-      type: boolean
-      default: false
-    - name: maxScanTime
-      type: number
-      default: 15  # in minutes, for example
-    - name: createBugsForFailures
-      type: boolean
-      default: false
-    - name: parentCardId
-      type: string
-      default: ''
-    - name: organisationUri
-      type: string
-      default: '$(System.TeamFoundationCollectionUri)'
-    - name: projectName
-      type: string
-      default: '$(System.TeamProject)'
+parameters:
+  - name: name
+    type: string
+    default: ''
+  - name: targetUrl
+    type: string
+    default: ''
+  - name: useAjaxSpider
+    type: boolean
+    default: false
+  - name: maxScanTime
+    type: number
+    default: 15  # in minutes, for example
+  - name: createBugsForFailures
+    type: boolean
+    default: false
+  - name: parentCardId
+    type: string
+    default: ''
+  - name: organisationUri
+    type: string
+    default: '$(System.TeamFoundationCollectionUri)'
+  - name: projectName
+    type: string
+    default: '$(System.TeamProject)'
 
-  steps:
-    # Verify that the initialize step has run (e.g. the parent working directory exists)
-    - task: PowerShell@2
-      displayName: '${{ parameters.name }}: Verify Initialization'
-      inputs:
-        targetType: 'inline'
-        script: |
-          if (-not (Test-Path -Path "$(parentWorkingTempDirectory)")) {
-              throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
-          }
+steps:
+  # Verify that the initialize step has run (e.g. the parent working directory exists)
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Verify Initialization'
+    inputs:
+      targetType: 'inline'
+      script: |
+        if (-not (Test-Path -Path "$(parentWorkingTempDirectory)")) {
+            throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
+        }
 
-    # Create a working directory for this scan
-    - task: PowerShell@2
-      displayName: '${{ parameters.name }}: Create Scan Working Directory'
-      inputs:
-        targetType: 'inline'
-        script: |
-          New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
-          $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
-          Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
-          # Ensure the directory is writable so Docker can write into it
-          chmod a+w "$NewDirectoryFullPath"
-          Write-Output "Created working folder at $NewDirectoryFullPath"
+  # Create a working directory for this scan
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Create Scan Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
+        $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
+        Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
+        # Ensure the directory is writable so Docker can write into it
+        chmod a+w "$NewDirectoryFullPath"
+        Write-Output "Created working folder at $NewDirectoryFullPath"
 
-    # Dynamically generate the zap-automation.yaml configuration file
-    - task: PowerShell@2
-      displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
-      inputs:
-        targetType: 'inline'
-        script: |
-          # Generate the automation framework configuration.
-          # This example uses a quick scan action with parameters for target URL, optional Ajax spider use, and maximum scan time.
-          $configContent = @"
-            # ZAP Automation Framework configuration (dynamically generated)
-            version: '2.0'
-            env:
-              targetUrl: "${{ parameters.targetUrl }}"
-            actions:
-              - type: quick-scan
-                parameters:
-                  target: "${{ parameters.targetUrl }}"
-                  useAjaxSpider: ${{ parameters.useAjaxSpider }}
-                  maxScanTime: ${{ parameters.maxScanTime }}
-            reports:
-              - type: html
-                fileName: Report.html
-              - type: xml
-                fileName: Report.xml
-"@
-    $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
-    $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
-    Write-Output "Generated zap-automation.yaml at $configFilePath"
+  # Dynamically generate the zap-automation.yaml configuration file
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Build the configuration as an array of lines
+        $configLines = @(
+            "# ZAP Automation Framework configuration (dynamically generated)",
+            "version: '2.0'",
+            "env:",
+            "  targetUrl: '${{ parameters.targetUrl }}'",
+            "actions:",
+            "  - type: quick-scan",
+            "    parameters:",
+            "      target: '${{ parameters.targetUrl }}'",
+            "      useAjaxSpider: $([bool]${{ parameters.useAjaxSpider }})",
+            "      maxScanTime: ${{ parameters.maxScanTime }}",
+            "reports:",
+            "  - type: html",
+            "    fileName: Report.html",
+            "  - type: xml",
+            "    fileName: Report.xml"
+        )
+        # Join the lines with a newline character
+        $configContent = $configLines -join "`n"
+        $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
+        $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
+        Write-Output "Generated zap-automation.yaml at $configFilePath"
+  
+  # Run the OWASP ZAP Automation scan via Docker
+  - task: Bash@3
+    displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Mount the working directory and run ZAP with the dynamically generated config file.
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk/ ghcr.io/zaproxy/zaproxy:stable zap.sh -cmd -autorun zap-automation.yaml
+  
+  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+        $XslTransform.Load($XslPath)
+        Write-Output "Transforming Report.xml into NUnit-Report.xml"
+        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+  
+  # Create bug work items if configured (reusing your existing create-bugs template)
+  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+      - template: ./create-bugs.yaml
+        parameters:
+          parentCardId: ${{ parameters.parentCardId }}
+          organisationUri: ${{ parameters.organisationUri }}
+          projectName: ${{ parameters.projectName }}
+          name: ${{ parameters.name }}
+  
+  # Publish the raw XML and HTML reports as build artifacts
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish XML Report Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      artifactName: '${{ parameters.name }}-XML'
+      publishLocation: 'Container'
 
-    # Run the OWASP ZAP Automation scan via Docker
-    - task: Bash@3
-      displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
-      inputs:
-        targetType: 'inline'
-        script: |
-          # Mount the working directory and run ZAP with the dynamically generated config file.
-          docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk/ ghcr.io/zaproxy/zaproxy:stable zap.sh -cmd -autorun zap-automation.yaml
-
-    # (Optional) Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
-    - task: PowerShell@2
-      displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
-      inputs:
-        targetType: 'inline'
-        script: |
-          $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-          $XmlInputPath = "$(workingTempDirectory)/Report.xml"
-          $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
-          $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-          $XslTransform.Load($XslPath)
-          Write-Output "Transforming Report.xml into NUnit-Report.xml"
-          $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
-
-    # Create bug work items if configured (reusing your existing create-bugs template)
-    - ${{ if eq(parameters.createBugsForFailures, true) }}:
-        - template: ./create-bugs.yaml
-          parameters:
-            parentCardId: ${{ parameters.parentCardId }}
-            organisationUri: ${{ parameters.organisationUri }}
-            projectName: ${{ parameters.projectName }}
-            name: ${{ parameters.name }}
-
-    # Publish the raw XML and HTML reports as build artifacts
-    - task: PublishBuildArtifacts@1
-      displayName: '${{ parameters.name }}: Publish XML Report Artifact'
-      inputs:
-        pathtoPublish: '$(workingTempDirectory)/Report.xml'
-        artifactName: '${{ parameters.name }}-XML'
-        publishLocation: 'Container'
-
-    - task: PublishBuildArtifacts@1
-      displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
-      inputs:
-        pathtoPublish: '$(workingTempDirectory)/Report.html'
-        artifactName: '${{ parameters.name }}-HTML'
-        publishLocation: 'Container'
-
-    # Publish the transformed report as test results so that alerts are visible as test failures
-    - task: PublishTestResults@2
-      displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
-      inputs:
-        testRunTitle: '${{ parameters.name }}'
-        testRunner: 'NUnit'
-        testResultsFiles: '**/NUnit-Report.xml'
-        searchFolder: '$(workingTempDirectory)'
-        publishRunAttachments: false
-
-    # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml)
-    - task: PowerShell@2
-      displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
-      inputs:
-        targetType: 'inline'
-        script: |
-          $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
-          if ($Alerts.Count -gt 0) {
-              Write-Output "Alerts detected; setting alertsExist variable to true."
-              Write-Host "##vso[task.setvariable variable=alertsExist]true"
-      condition: and(succeeded(), ne(variables.alertsExist, 'true'))
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      artifactName: '${{ parameters.name }}-HTML'
+      publishLocation: 'Container'
+  
+  # Publish the transformed report as test results so that alerts are visible as test failures
+  - task: PublishTestResults@2
+    displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
+    inputs:
+      testRunTitle: '${{ parameters.name }}'
+      testRunner: 'NUnit'
+      testResultsFiles: '**/NUnit-Report.xml'
+      searchFolder: '$(workingTempDirectory)'
+      publishRunAttachments: false
+  
+  # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml)
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
+        if ($Alerts.Count -gt 0) {
+            Write-Output "Alerts detected; setting alertsExist variable to true."
+            Write-Host "##vso[task.setvariable variable=alertsExist]true"
+        }
+    condition: and(succeeded(), ne(variables.alertsExist, 'true'))
