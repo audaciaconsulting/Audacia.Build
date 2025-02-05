@@ -154,7 +154,15 @@ steps:
         $configContent += "  - parameters: {}"
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
-        # Now include two separate report jobs: one XML and one HTML.
+        # Insert active scan job.
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'activeScan'"
+        $configContent += "    type: 'activeScan'"
+        $configContent += "    policyDefinition: {}"
+        # Optionally, add an exitStatus job.
+        $configContent += "  - type: 'exitStatus'"
+        $configContent += "    parameters: {}"
+        # Then add the two report jobs.
         $configContent += "  - parameters:"
         $configContent += "      template: 'traditional-xml-plus'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
