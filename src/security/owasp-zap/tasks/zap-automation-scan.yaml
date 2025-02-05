@@ -211,6 +211,27 @@ steps:
       script: |
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
+  - task: PowerShell@2
+    displayName: 'Rename ZAP XML Report'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Search recursively in the working directory for a file that contains 'ZAP-Report' and ends with '.xml'
+        $files = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
+        if ($files.Count -eq 0) {
+            Write-Error "No ZAP XML report file was found."
+            exit 1
+        }
+        # Pick the first matching file (or add logic if you expect more than one)
+        $reportFile = $files[0].FullName
+        Write-Output "Found report file: $reportFile"
+        
+        # Copy or rename it to a fixed name in the working directory root
+        $dest = Join-Path "$(workingTempDirectory)" "Report.xml"
+        Copy-Item -Path $reportFile -Destination $dest -Force
+        Write-Output "Renamed report file to: $dest"
+
+
 #  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
 #  - task: PowerShell@2
 #    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
@@ -234,14 +255,12 @@ steps:
 #          projectName: ${{ parameters.projectName }}
 #          name: ${{ parameters.name }}
 
-  # 9. Publish the raw XML and HTML reports as build artifacts.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/**/*Report-*.xml'
+      pathtoPublish: '$(workingTempDirectory)/Report.xml'
       artifactName: '${{ parameters.name }}-XML'
       publishLocation: 'Container'
-
 
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
