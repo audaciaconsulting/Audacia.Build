@@ -257,6 +257,17 @@ steps:
         $XslTransform.Load($XslPath)
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
+  # Count and report the number of passing tests.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Count and Report Passing Tests'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $nunitReportPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        [xml]$nunitReport = Get-Content $nunitReportPath
+        $passingTests = $nunitReport.SelectNodes("//test-case[@result='Passed']").Count
+        Write-Output "Number of successfully passing tests: $passingTests"
+
   # Create bug work items if configured.
   - ${{ if eq(parameters.createBugsForFailures, true) }}:
       - template: ./create-bugs.yaml
