@@ -249,6 +249,29 @@ steps:
         Copy-Item -Path $htmlReport -Destination $destHtml -Force
         Write-Output "Renamed HTML report file to: $destHtml"
 
+  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+        Write-Output "Transforming Report.xml into NUnit-Report.xml"
+        $XslTransform.Load($XslPath)
+        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+
+  # 8. Create bug work items if configured.
+  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+      - template: ./create-bugs.yaml
+        parameters:
+          parentCardId: ${{ parameters.parentCardId }}
+          organisationUri: ${{ parameters.organisationUri }}
+          projectName: ${{ parameters.projectName }}
+          name: ${{ parameters.name }}
+
   # 8. Publish the raw XML and HTML reports as build artifacts.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
