@@ -7,7 +7,7 @@ parameters:
     default: ''
   - name: scanType
     type: string
-    default: 'quick-scan'   # Accepts "quick-scan" or "API"
+    default: 'quick-scan'   # Allowed values: "quick-scan" or "API"
   - name: useAjaxSpider
     type: boolean
     default: false
@@ -16,10 +16,10 @@ parameters:
     default: 15  # in minutes
   - name: authorizationHeaderValue
     type: string
-    default: ''  # used only for API scans; if empty, will use the JWT access_token
+    default: ''  # Used for API scans; if empty, the JWT access token will be used
   - name: zapContextLocation
     type: string
-    default: ''  # used only for API scans (for alert filters etc.)
+    default: ''  # Used only for API scans (for alert filters etc.)
   - name: createBugsForFailures
     type: boolean
     default: false
@@ -34,17 +34,17 @@ parameters:
     default: '$(System.TeamProject)'
 
 steps:
-  # Verify that the initialization step has run (for example, that the parent working directory exists)
+  # 1. Verify that the initialization step has run.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Verify Initialization'
     inputs:
       targetType: 'inline'
       script: |
         if (-not (Test-Path -Path "$(parentWorkingTempDirectory)")) {
-            throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
+          throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
         }
 
-  # Create a working directory for this scan
+  # 2. Create a working directory for this scan.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Create Scan Working Directory'
     inputs:
@@ -53,111 +53,117 @@ steps:
         New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
         $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
         Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
-        # Ensure the directory is writable so Docker can write into it
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # Dynamically generate the ZAP Automation Framework configuration file
+  # 3. Dynamically generate the ZAP Automation Framework configuration file.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
     inputs:
       targetType: 'inline'
       script: |
-        # Determine if this is an API scan based on the parameter
-        $isApiScan = ('${{ parameters.scanType }}' -eq 'API')
-        
-        # For API scans, set up the authentication header.
-        # If authorizationHeaderValue is provided use it; otherwise, use the JWT access token variable.
-        if ($isApiScan) {
-            if ('${{ parameters.authorizationHeaderValue }}' -ne '') {
-                $authHeader = '${{ parameters.authorizationHeaderValue }}'
-            } else {
-                $authHeader = "Bearer $(access_token)"
-            }
+        # Determine the base URL. If the targetUrl contains '/swagger', remove that portion.
+        $target = '${{ parameters.targetUrl }}'
+        if ($target -match "/swagger") {
+            $baseUrl = $target -replace "/swagger.*", ""
+        } else {
+            $baseUrl = $target
         }
         
-        # Build the configuration file content as an array of lines.
+        # Begin building the configuration file content.
         $configContent = @()
-        $configContent += "# ZAP Automation Framework configuration (dynamically generated)"
-        $configContent += "version: '2.0'"
-        $configContent += ""
-        
-        # Environment block: always include the target URL.
+        $configContent += "---"
         $configContent += "env:"
-        $configContent += "  targetUrl: '${{ parameters.targetUrl }}'"
-        if ($isApiScan) {
-            $configContent += "  contexts:"
-            $configContent += "    - APIContext"
+        # For API scans with a bearer token, add the token as a global HTTP header.
+        if ('${{ parameters.scanType }}' -eq 'API' -and '${{ parameters.authorizationHeaderValue }}' -ne '') {
+            $configContent += "  httpHeaders:"
+            $configContent += "  - name: Authorization"
+            $configContent += "    value: '${{ parameters.authorizationHeaderValue }}'"
         }
-        $configContent += ""
-        
-        # For API scans, include a contexts block that injects the header-based authentication.
-        if ($isApiScan) {
-            $configContent += "contexts:"
-            $configContent += "  - name: APIContext"
-            $configContent += "    urls:"
-            $configContent += "      - '${{ parameters.targetUrl }}'"
-            $configContent += "    includePaths:"
-            $configContent += "      - '${{ parameters.targetUrl }}.*'"
+        $configContent += "  contexts:"
+        $configContent += "  - name: 'Authentication Test'"
+        $configContent += "    urls:"
+        $configContent += "    - '$baseUrl'"
+        $configContent += "    includePaths:"
+        $configContent += "    - '$baseUrl.*'"
+        $configContent += "    excludePaths: []"
+        # For non-API scans, you might include an authentication block.
+        if ('${{ parameters.scanType }}' -ne 'API') {
             $configContent += "    authentication:"
-            $configContent += "      method: header"
-            $configContent += "      header:"
-            $configContent += "        name: Authorization"
-            $configContent += "        value: '$authHeader'"
-            $configContent += "    sessionManagement:"
-            $configContent += "      method: cookie"
-            $configContent += "    technology: {}"
-            $configContent += "    structure: {}"
-            $configContent += ""
+            $configContent += "      method: 'browser'"
+            $configContent += "      parameters:"
+            $configContent += "        loginPageUrl: '$baseUrl/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize...'"
+            $configContent += "        loginPageWait: 2"
+            $configContent += "        browserId: 'firefox'"
+            $configContent += "    verification:"
+            $configContent += "      method: 'poll'"
+            $configContent += "      loggedInRegex: '\\Q 200 OK\\E'"
+            $configContent += "      loggedOutRegex: '\\Q 401 Unauthorized\\E'"
+            $configContent += "      pollFrequency: 60"
+            $configContent += "      pollUnits: 'requests'"
+            $configContent += "      pollUrl: '$baseUrl/connect/userinfo'"
+            $configContent += "      pollPostData: ''"
+            $configContent += "      pollAdditionalHeaders:"
+            $configContent += "      - header: 'content-type'"
+            $configContent += "        value: 'application/x-www-form-urlencoded'"
         }
+        $configContent += "    sessionManagement:"
+        $configContent += "      method: 'headers'"
+        $configContent += "      parameters:"
+        $configContent += "        Cookie: '.AspNetCore.Antiforgery.cdV5uW_Ejgc={%cookie:.AspNetCore.Antiforgery.cdV5uW_Ejgc%}; ARRAffinity=REDACTED; ARRAffinitySameSite=REDACTED'"
+        $configContent += "    technology:"
+        $configContent += "      exclude: []"
+        # The users block has been removed – for a bearer token this is unnecessary.
+        $configContent += "  parameters:"
+        $configContent += "    failOnError: true"
+        $configContent += "    failOnWarning: false"
+        $configContent += "    progressToStdout: true"
+        $configContent += "  vars: {}"
         
-        # Jobs block: define the sequence of actions.
         $configContent += "jobs:"
-        $configContent += "  - type: passiveScan-config"
-        $configContent += "    parameters: {}"
+        $configContent += "  - parameters:"
+        $configContent += "      scanOnlyInScope: true"
+        $configContent += "      enableTags: false"
+        $configContent += "      disableAllRules: false"
+        $configContent += "    rules: []"
+        $configContent += "    name: 'passiveScan-config'"
+        $configContent += "    type: 'passiveScan-config'"
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'spider'"
+        $configContent += "    type: 'spider'"
+        $configContent += "    tests:"
+        $configContent += "    - onFail: 'INFO'"
+        $configContent += "      statistic: 'automation.spider.urls.added'"
+        $configContent += "      site: ''"
+        $configContent += "      operator: '>='"
+        $configContent += "      value: 100"
+        $configContent += "      type: 'stats'"
+        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "  - parameters:"
+        $configContent += "      maxDuration: ${{ parameters.maxScanTime }}"
+        $configContent += "      maxCrawlDepth: 10"
+        $configContent += "      numberOfBrowsers: 32"
+        $configContent += "      inScopeOnly: true"
+        $configContent += "    name: 'spiderAjax'"
+        $configContent += "    type: 'spiderAjax'"
+        $configContent += "    tests:"
+        $configContent += "    - onFail: 'INFO'"
+        $configContent += "      statistic: 'spiderAjax.urls.added'"
+        $configContent += "      site: ''"
+        $configContent += "      operator: '>='"
+        $configContent += "      value: 100"
+        $configContent += "      type: 'stats'"
+        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'passiveScan-wait'"
+        $configContent += "    type: 'passiveScan-wait'"
+        $configContent += "  - parameters:"
+        $configContent += "      template: 'risk-confidence-html'"
+        $configContent += "      reportTitle: 'ZAP Scanning Report'"
+        $configContent += "      reportDescription: ''"
+        $configContent += "    name: 'report'"
+        $configContent += "    type: 'report'"
         
-        if ($isApiScan) {
-            # For an API scan, use spider and spiderAjax jobs with a max scan time.
-            $configContent += "  - type: spider"
-            $configContent += "    parameters:"
-            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
-            $configContent += "    tests:"
-            $configContent += "      - name: At least 100 URLs found"
-            $configContent += "        type: stats"
-            $configContent += "        onFail: INFO"
-            $configContent += "        statistic: automation.spider.urls.added"
-            $configContent += "        operator: '>='"
-            $configContent += "        value: 100"
-            $configContent += "  - type: spiderAjax"
-            $configContent += "    parameters:"
-            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
-            $configContent += "    tests:"
-            $configContent += "      - name: At least 100 URLs found"
-            $configContent += "        type: stats"
-            $configContent += "        onFail: INFO"
-            $configContent += "        statistic: spiderAjax.urls.added"
-            $configContent += "        operator: '>='"
-            $configContent += "        value: 100"
-        }
-        else {
-            # For a quick scan, assume a quick-scan job type is available.
-            $ajaxFlag = ([string]::IsTrue('${{ parameters.useAjaxSpider }}')).ToLower()
-            $configContent += "  - type: quick-scan"
-            $configContent += "    parameters:"
-            $configContent += "      target: '${{ parameters.targetUrl }}'"
-            $configContent += "      useAjaxSpider: $ajaxFlag"
-            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
-        }
-        
-        $configContent += "  - type: passiveScan-wait"
-        $configContent += "    parameters: {}"
-        $configContent += "  - type: report"
-        $configContent += "    parameters:"
-        $configContent += "      reportTitle: 'ZAP by Checkmarx Scanning Report'"
-        $configContent += "  - type: exitStatus"
-        $configContent += "    parameters: {}"
-        
-        # Write out the configuration file to the working directory.
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $finalConfig = $configContent -join "`n"
         $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
@@ -165,7 +171,7 @@ steps:
         Write-Output "Configuration content:"
         Write-Output $finalConfig
 
-  # Publish the generated configuration file as a build artifact
+  # 4. Publish the generated configuration file as a build artifact.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
     inputs:
@@ -173,7 +179,7 @@ steps:
       artifactName: 'zap-automation-config'
       publishLocation: 'Container'
 
-  # Log the configuration file for debugging purposes
+  # 5. Log the configuration file for debugging purposes.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Log ZAP Automation Config'
     inputs:
@@ -196,7 +202,7 @@ steps:
       script: |
         docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
 
-  # Run the OWASP ZAP Automation scan via Docker
+  # 6. Run the OWASP ZAP Automation scan via Docker.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     inputs:
@@ -204,7 +210,7 @@ steps:
       script: |
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
-  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps
+  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
     inputs:
@@ -214,11 +220,11 @@ steps:
         $XmlInputPath = "$(workingTempDirectory)/Report.xml"
         $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
         $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-        $XslTransform.Load($XslPath)
         Write-Output "Transforming Report.xml into NUnit-Report.xml"
+        $XslTransform.Load($XslPath)
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
-  # Create bug work items if configured
+  # 8. Create bug work items if configured.
   - ${{ if eq(parameters.createBugsForFailures, true) }}:
       - template: ./create-bugs.yaml
         parameters:
@@ -227,7 +233,7 @@ steps:
           projectName: ${{ parameters.projectName }}
           name: ${{ parameters.name }}
 
-  # Publish the raw XML and HTML reports as build artifacts
+  # 9. Publish the raw XML and HTML reports as build artifacts.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
     inputs:
@@ -242,7 +248,7 @@ steps:
       artifactName: '${{ parameters.name }}-HTML'
       publishLocation: 'Container'
 
-  # Publish the transformed report as test results so that alerts are visible as test failures
+  # 10. Publish the transformed report as test results so that alerts are visible as test failures.
   - task: PublishTestResults@2
     displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
     inputs:
@@ -252,7 +258,7 @@ steps:
       searchFolder: '$(workingTempDirectory)'
       publishRunAttachments: false
 
-  # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml)
+  # 11. Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml).
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
     inputs:
@@ -260,7 +266,7 @@ steps:
       script: |
         $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
         if ($Alerts.Count -gt 0) {
-            Write-Output "Alerts detected; setting alertsExist variable to true."
-            Write-Host "##vso[task.setvariable variable=alertsExist]true"
+          Write-Output "Alerts detected; setting alertsExist variable to true."
+          Write-Host "##vso[task.setvariable variable=alertsExist]true"
         }
     condition: and(succeeded(), ne(variables.alertsExist, 'true'))
