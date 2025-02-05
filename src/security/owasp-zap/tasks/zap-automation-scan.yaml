@@ -157,9 +157,8 @@ steps:
         $configContent += "  - parameters: {}"
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
-        # Here we use the XML report template so that Report.xml is produced.
         $configContent += "  - parameters:"
-        $configContent += "      template: 'risk-confidence-xml'"
+        $configContent += "      template: 'risk-confidence-html'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'report'"
@@ -211,28 +210,28 @@ steps:
       script: |
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
-  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
-  - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
-        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
-        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-        Write-Output "Transforming Report.xml into NUnit-Report.xml"
-        $XslTransform.Load($XslPath)
-        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
-
-  # 8. Create bug work items if configured.
-  - ${{ if eq(parameters.createBugsForFailures, true) }}:
-      - template: ./create-bugs.yaml
-        parameters:
-          parentCardId: ${{ parameters.parentCardId }}
-          organisationUri: ${{ parameters.organisationUri }}
-          projectName: ${{ parameters.projectName }}
-          name: ${{ parameters.name }}
+#  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+#  - task: PowerShell@2
+#    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+#    inputs:
+#      targetType: 'inline'
+#      script: |
+#        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+#        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+#        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+#        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+#        Write-Output "Transforming Report.xml into NUnit-Report.xml"
+#        $XslTransform.Load($XslPath)
+#        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+#
+#  # 8. Create bug work items if configured.
+#  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+#      - template: ./create-bugs.yaml
+#        parameters:
+#          parentCardId: ${{ parameters.parentCardId }}
+#          organisationUri: ${{ parameters.organisationUri }}
+#          projectName: ${{ parameters.projectName }}
+#          name: ${{ parameters.name }}
 
   # 9. Publish the raw XML and HTML reports as build artifacts.
   - task: PublishBuildArtifacts@1
