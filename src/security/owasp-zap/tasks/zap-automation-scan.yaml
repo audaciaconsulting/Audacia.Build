@@ -158,7 +158,7 @@ steps:
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
         $configContent += "  - parameters:"
-        $configContent += "      template: 'risk-confidence-html'"
+        $configContent += "      template: 'risk-confidence-xml'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'report'"
