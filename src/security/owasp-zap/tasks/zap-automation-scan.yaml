@@ -307,4 +307,5 @@ steps:
         if ($Alerts.Count -gt 0) {
           Write-Output "Alerts detected; setting alertsExist variable to true."
           Write-Host "##vso[task.setvariable variable=alertsExist]true"
+        }
     condition: and(succeeded(), ne(variables.alertsExist, 'true'))
