@@ -69,7 +69,7 @@ steps:
         } else {
             $ajaxValue = "false"
         }
-
+        
         # Build the action block based on the scanType.
         if ('${{ parameters.scanType }}' -eq 'API') {
             $actionBlock = @(
@@ -89,13 +89,13 @@ steps:
                 "      maxScanTime: ${{ parameters.maxScanTime }}"
             )
         }
-
+        
         # Build the configuration in the order recommended by the documentation.
         $configLines = @(
             "# ZAP Automation Framework configuration (dynamically generated)",
             "version: '2.0'"
         )
-
+        
         # First, build the environment block.
         if ('${{ parameters.scanType }}' -eq 'API') {
             $envBlock = @(
@@ -111,7 +111,7 @@ steps:
             )
         }
         $configLines += $envBlock
-
+        
         # For API scans, add the top-level contexts block next.
         if ('${{ parameters.scanType }}' -eq 'API') {
             $contextsBlock = @(
@@ -122,7 +122,7 @@ steps:
             )
             $configLines += $contextsBlock
         }
-
+        
         # Append the actions and reports sections.
         $configLines += @("actions:") + $actionBlock + @(
             "reports:",
@@ -131,14 +131,13 @@ steps:
             "  - type: xml",
             "    fileName: Report.xml"
         )
-
+        
         # Join the lines with newline characters and write the configuration file.
         $configContent = $configLines -join "`n"
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
         Write-Output "Generated zap-automation.yaml at $configFilePath"
 
-  
   # Option 1: Publish the generated configuration file as a build artifact
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
