@@ -200,20 +200,6 @@ steps:
         Write-Output "Contents of zap-automation.yaml:"
         Get-Content "$(workingTempDirectory)/zap-automation.yaml" | Write-Output
 
-  - task: Bash@3
-    displayName: 'Debug: List mounted directory'
-    inputs:
-      targetType: 'inline'
-      script: |
-        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap -w /zap alpine ls -l /zap
-
-  - task: Bash@3
-    displayName: 'Debug: Find zap.sh location'
-    inputs:
-      targetType: 'inline'
-      script: |
-        docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
-
   # Run the OWASP ZAP Automation scan via Docker.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
