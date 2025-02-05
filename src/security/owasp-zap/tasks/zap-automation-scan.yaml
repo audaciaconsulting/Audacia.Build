@@ -34,7 +34,7 @@ parameters:
     default: '$(System.TeamProject)'
 
 steps:
-  # 1. Verify that the initialization step has run.
+  # Verify that the initialization step has run.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Verify Initialization'
     inputs:
@@ -44,7 +44,7 @@ steps:
           throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
         }
 
-  # 2. Create a working directory for this scan.
+  # Create a working directory for this scan.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Create Scan Working Directory'
     inputs:
@@ -56,7 +56,7 @@ steps:
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # 3. Dynamically generate the ZAP Automation Framework configuration file.
+  # Dynamically generate the ZAP Automation Framework configuration file.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
     inputs:
@@ -69,7 +69,7 @@ steps:
         } else {
             $baseUrl = $target
         }
-        
+
         # Begin building the configuration file content.
         $configContent = @()
         $configContent += "---"
@@ -167,7 +167,7 @@ steps:
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'reportHtml'"
         $configContent += "    type: 'report'"
-        
+
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $finalConfig = $configContent -join "`n"
         $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
@@ -175,7 +175,7 @@ steps:
         Write-Output "Configuration content:"
         Write-Output $finalConfig
 
-  # 4. Publish the generated configuration file as a build artifact.
+  # Publish the generated configuration file as a build artifact.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
     inputs:
@@ -183,7 +183,7 @@ steps:
       artifactName: 'zap-automation-config'
       publishLocation: 'Container'
 
-  # 5. Log the configuration file for debugging purposes.
+  # Log the configuration file for debugging purposes.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Log ZAP Automation Config'
     inputs:
@@ -206,7 +206,7 @@ steps:
       script: |
         docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
 
-  # 6. Run the OWASP ZAP Automation scan via Docker.
+  # Run the OWASP ZAP Automation scan via Docker.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     inputs:
@@ -214,7 +214,7 @@ steps:
       script: |
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
-  # 7. Rename the generated report files to fixed names.
+  # Rename the generated report files to fixed names.
   - task: PowerShell@2
     displayName: 'Rename ZAP XML Report'
     inputs:
@@ -249,7 +249,7 @@ steps:
         Copy-Item -Path $htmlReport -Destination $destHtml -Force
         Write-Output "Renamed HTML report file to: $destHtml"
 
-  # 7. Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
     inputs:
@@ -263,7 +263,7 @@ steps:
         $XslTransform.Load($XslPath)
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
-  # 8. Create bug work items if configured.
+  # Create bug work items if configured.
   - ${{ if eq(parameters.createBugsForFailures, true) }}:
       - template: ./create-bugs.yaml
         parameters:
@@ -272,7 +272,7 @@ steps:
           projectName: ${{ parameters.projectName }}
           name: ${{ parameters.name }}
 
-  # 8. Publish the raw XML and HTML reports as build artifacts.
+  # Publish the raw XML and HTML reports as build artifacts.
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
     inputs:
@@ -287,7 +287,7 @@ steps:
       artifactName: '${{ parameters.name }}-HTML'
       publishLocation: 'Container'
 
-  # 9. Publish the transformed report as test results so that alerts are visible as test failures.
+  # Publish the transformed report as test results so that alerts are visible as test failures.
   - task: PublishTestResults@2
     displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
     inputs:
@@ -297,7 +297,7 @@ steps:
       searchFolder: '$(workingTempDirectory)'
       publishRunAttachments: false
 
-  # 10. Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml).
+  # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml).
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
     inputs:
@@ -307,5 +307,4 @@ steps:
         if ($Alerts.Count -gt 0) {
           Write-Output "Alerts detected; setting alertsExist variable to true."
           Write-Host "##vso[task.setvariable variable=alertsExist]true"
-        }
     condition: and(succeeded(), ne(variables.alertsExist, 'true'))
