@@ -157,6 +157,7 @@ steps:
         $configContent += "  - parameters: {}"
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
+        # Here we use the XML report template so that Report.xml is produced.
         $configContent += "  - parameters:"
         $configContent += "      template: 'risk-confidence-xml'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
