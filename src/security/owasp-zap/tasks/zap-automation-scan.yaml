@@ -238,9 +238,10 @@ steps:
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      pathtoPublish: '$(workingTempDirectory)/**/*Report-*.xml'
       artifactName: '${{ parameters.name }}-XML'
       publishLocation: 'Container'
+
 
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
