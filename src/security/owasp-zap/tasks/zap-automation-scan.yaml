@@ -158,11 +158,12 @@ steps:
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
         $configContent += "  - parameters:"
-        $configContent += "      template: 'risk-confidence-html'"
+        $configContent += "      template: 'traditional-xml-plus'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'report'"
         $configContent += "    type: 'report'"
+
         
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $finalConfig = $configContent -join "`n"
