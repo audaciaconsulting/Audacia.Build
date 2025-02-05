@@ -10,19 +10,19 @@ parameters:
     default: 'quick-scan'   # Accepts "quick-scan" or "API"
   - name: useAjaxSpider
     type: boolean
-    default: 'false'
+    default: false
   - name: maxScanTime
     type: number
-    default: '15'  # in minutes, for example
+    default: 15  # in minutes
   - name: authorizationHeaderValue
     type: string
-    default: ''  # used only for API scans
+    default: ''  # used only for API scans; if empty, will use the JWT access_token
   - name: zapContextLocation
     type: string
     default: ''  # used only for API scans (for alert filters etc.)
   - name: createBugsForFailures
     type: boolean
-    default: 'false'
+    default: false
   - name: parentCardId
     type: string
     default: ''
@@ -34,7 +34,7 @@ parameters:
     default: '$(System.TeamProject)'
 
 steps:
-  # Verify that the initialize step has run (e.g. the parent working directory exists)
+  # Verify that the initialization step has run (for example, that the parent working directory exists)
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Verify Initialization'
     inputs:
@@ -57,88 +57,115 @@ steps:
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # Dynamically generate the zap-automation.yaml configuration file
+  # Dynamically generate the ZAP Automation Framework configuration file
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
     inputs:
       targetType: 'inline'
       script: |
-        # Convert the useAjaxSpider boolean parameter to a lowercase string for YAML
-        if ('${{ parameters.useAjaxSpider }}' -eq 'True') {
-            $ajaxValue = "true"
-        } else {
-            $ajaxValue = "false"
+        # Determine if this is an API scan based on the parameter
+        $isApiScan = ('${{ parameters.scanType }}' -eq 'API')
+        
+        # For API scans, set up the authentication header.
+        # If authorizationHeaderValue is provided use it; otherwise, use the JWT access token variable.
+        if ($isApiScan) {
+            if ('${{ parameters.authorizationHeaderValue }}' -ne '') {
+                $authHeader = '${{ parameters.authorizationHeaderValue }}'
+            } else {
+                $authHeader = "Bearer $(access_token)"
+            }
         }
         
-        # Build the action block based on the scanType.
-        if ('${{ parameters.scanType }}' -eq 'API') {
-            $actionBlock = @(
-                "  - type: api-scan",
-                "    parameters:",
-                "      contextName: 'APIContext'",
-                "      authorizationHeaderValue: '${{ parameters.authorizationHeaderValue }}'",
-                "      zapContextLocation: '${{ parameters.zapContextLocation }}'",
-                "      maxScanTime: ${{ parameters.maxScanTime }}"
-            )
-        } else {
-            $actionBlock = @(
-                "  - type: quick-scan",
-                "    parameters:",
-                "      target: '${{ parameters.targetUrl }}'",
-                "      useAjaxSpider: $ajaxValue",
-                "      maxScanTime: ${{ parameters.maxScanTime }}"
-            )
+        # Build the configuration file content as an array of lines.
+        $configContent = @()
+        $configContent += "# ZAP Automation Framework configuration (dynamically generated)"
+        $configContent += "version: '2.0'"
+        $configContent += ""
+        
+        # Environment block: always include the target URL.
+        $configContent += "env:"
+        $configContent += "  targetUrl: '${{ parameters.targetUrl }}'"
+        if ($isApiScan) {
+            $configContent += "  contexts:"
+            $configContent += "    - APIContext"
+        }
+        $configContent += ""
+        
+        # For API scans, include a contexts block that injects the header-based authentication.
+        if ($isApiScan) {
+            $configContent += "contexts:"
+            $configContent += "  - name: APIContext"
+            $configContent += "    urls:"
+            $configContent += "      - '${{ parameters.targetUrl }}'"
+            $configContent += "    includePaths:"
+            $configContent += "      - '${{ parameters.targetUrl }}.*'"
+            $configContent += "    authentication:"
+            $configContent += "      method: header"
+            $configContent += "      header:"
+            $configContent += "        name: Authorization"
+            $configContent += "        value: '$authHeader'"
+            $configContent += "    sessionManagement:"
+            $configContent += "      method: cookie"
+            $configContent += "    technology: {}"
+            $configContent += "    structure: {}"
+            $configContent += ""
         }
         
-        # Build the configuration in the order recommended by the documentation.
-        $configLines = @(
-            "# ZAP Automation Framework configuration (dynamically generated)",
-            "version: '2.0'"
-        )
+        # Jobs block: define the sequence of actions.
+        $configContent += "jobs:"
+        $configContent += "  - type: passiveScan-config"
+        $configContent += "    parameters: {}"
         
-        # First, build the environment block.
-        if ('${{ parameters.scanType }}' -eq 'API') {
-            $envBlock = @(
-                "env:",
-                "  targetUrl: '${{ parameters.targetUrl }}'",
-                "  contexts:",
-                "    - APIContext"
-            )
-        } else {
-            $envBlock = @(
-                "env:",
-                "  targetUrl: '${{ parameters.targetUrl }}'"
-            )
+        if ($isApiScan) {
+            # For an API scan, use spider and spiderAjax jobs with a max scan time.
+            $configContent += "  - type: spider"
+            $configContent += "    parameters:"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
+            $configContent += "    tests:"
+            $configContent += "      - name: At least 100 URLs found"
+            $configContent += "        type: stats"
+            $configContent += "        onFail: INFO"
+            $configContent += "        statistic: automation.spider.urls.added"
+            $configContent += "        operator: '>='"
+            $configContent += "        value: 100"
+            $configContent += "  - type: spiderAjax"
+            $configContent += "    parameters:"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
+            $configContent += "    tests:"
+            $configContent += "      - name: At least 100 URLs found"
+            $configContent += "        type: stats"
+            $configContent += "        onFail: INFO"
+            $configContent += "        statistic: spiderAjax.urls.added"
+            $configContent += "        operator: '>='"
+            $configContent += "        value: 100"
         }
-        $configLines += $envBlock
-        
-        # For API scans, add the top-level contexts block next.
-        if ('${{ parameters.scanType }}' -eq 'API') {
-            $contextsBlock = @(
-                "contexts:",
-                "  - name: APIContext",
-                "    urls:",
-                "      - '${{ parameters.targetUrl }}'"
-            )
-            $configLines += $contextsBlock
+        else {
+            # For a quick scan, assume a quick-scan job type is available.
+            $ajaxFlag = ([string]::IsTrue('${{ parameters.useAjaxSpider }}')).ToLower()
+            $configContent += "  - type: quick-scan"
+            $configContent += "    parameters:"
+            $configContent += "      target: '${{ parameters.targetUrl }}'"
+            $configContent += "      useAjaxSpider: $ajaxFlag"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
         }
         
-        # Append the actions and reports sections.
-        $configLines += @("actions:") + $actionBlock + @(
-            "reports:",
-            "  - type: html",
-            "    fileName: Report.html",
-            "  - type: xml",
-            "    fileName: Report.xml"
-        )
+        $configContent += "  - type: passiveScan-wait"
+        $configContent += "    parameters: {}"
+        $configContent += "  - type: report"
+        $configContent += "    parameters:"
+        $configContent += "      reportTitle: 'ZAP by Checkmarx Scanning Report'"
+        $configContent += "  - type: exitStatus"
+        $configContent += "    parameters: {}"
         
-        # Join the lines with newline characters and write the configuration file.
-        $configContent = $configLines -join "`n"
+        # Write out the configuration file to the working directory.
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
-        $configContent | Out-File -FilePath $configFilePath -Encoding UTF8
+        $finalConfig = $configContent -join "`n"
+        $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
         Write-Output "Generated zap-automation.yaml at $configFilePath"
+        Write-Output "Configuration content:"
+        Write-Output $finalConfig
 
-  # Option 1: Publish the generated configuration file as a build artifact
+  # Publish the generated configuration file as a build artifact
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
     inputs:
@@ -146,7 +173,7 @@ steps:
       artifactName: 'zap-automation-config'
       publishLocation: 'Container'
 
-  # Option 2: Log the configuration file for debugging purposes
+  # Log the configuration file for debugging purposes
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Log ZAP Automation Config'
     inputs:
@@ -168,17 +195,16 @@ steps:
       targetType: 'inline'
       script: |
         docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
-  
+
   # Run the OWASP ZAP Automation scan via Docker
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     inputs:
       targetType: 'inline'
       script: |
-        # Mount the working directory to /zap/wrk, then run zap.sh from /zap using the config file in /zap/wrk.
         docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
-  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
     inputs:
@@ -192,7 +218,7 @@ steps:
         Write-Output "Transforming Report.xml into NUnit-Report.xml"
         $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
-  # Create bug work items if configured (reusing your existing create-bugs template)
+  # Create bug work items if configured
   - ${{ if eq(parameters.createBugsForFailures, true) }}:
       - template: ./create-bugs.yaml
         parameters:
