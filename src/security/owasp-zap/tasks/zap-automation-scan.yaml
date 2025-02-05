@@ -1,78 +1,266 @@
 parameters:
-  - name: configFileName
-    default: 'zap-automation.yaml'
-  - name: contextName
-    default: 'DefaultContext'
+  - name: name
+    type: string
+    default: ''
   - name: targetUrl
+    type: string
     default: ''
-  - name: includePath
+  - name: scanType
+    type: string
+    default: 'quick-scan'   # Accepts "quick-scan" or "API"
+  - name: useAjaxSpider
+    type: boolean
+    default: false
+  - name: maxScanTime
+    type: number
+    default: 15  # in minutes
+  - name: authorizationHeaderValue
+    type: string
+    default: ''  # used only for API scans; if empty, will use the JWT access_token
+  - name: zapContextLocation
+    type: string
+    default: ''  # used only for API scans (for alert filters etc.)
+  - name: createBugsForFailures
+    type: boolean
+    default: false
+  - name: parentCardId
+    type: string
     default: ''
+  - name: organisationUri
+    type: string
+    default: '$(System.TeamFoundationCollectionUri)'
+  - name: projectName
+    type: string
+    default: '$(System.TeamProject)'
 
 steps:
-  - task: Bash@3
-    displayName: 'Generate ZAP Automation Config File'
+  # Verify that the initialization step has run (for example, that the parent working directory exists)
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Verify Initialization'
     inputs:
       targetType: 'inline'
       script: |
-        # Set the output file location
-        CONFIG_FILE="$(Build.ArtifactStagingDirectory)/${{ parameters.configFileName }}"
-        mkdir -p "$(Build.ArtifactStagingDirectory)"
+        if (-not (Test-Path -Path "$(parentWorkingTempDirectory)")) {
+            throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
+        }
+
+  # Create a working directory for this scan
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Create Scan Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
+        $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
+        Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
+        # Ensure the directory is writable so Docker can write into it
+        chmod a+w "$NewDirectoryFullPath"
+        Write-Output "Created working folder at $NewDirectoryFullPath"
+
+  # Dynamically generate the ZAP Automation Framework configuration file
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Determine if this is an API scan based on the parameter
+        $isApiScan = ('${{ parameters.scanType }}' -eq 'API')
         
-        # Build the configuration file line by line
-        echo "env:" > "$CONFIG_FILE"
-        echo "  contexts:" >> "$CONFIG_FILE"
-        echo "  - name: '${{ parameters.contextName }}'" >> "$CONFIG_FILE"
-        echo "    urls:" >> "$CONFIG_FILE"
-        echo "      - '${{ parameters.targetUrl }}'" >> "$CONFIG_FILE"
-        echo "    includePaths:" >> "$CONFIG_FILE"
-        echo "      - '${{ parameters.includePath }}'" >> "$CONFIG_FILE"
-        echo "    authentication:" >> "$CONFIG_FILE"
-        echo "      verification:" >> "$CONFIG_FILE"
-        echo "        method: response" >> "$CONFIG_FILE"
-        echo "        pollFrequency: 60" >> "$CONFIG_FILE"
-        echo "        pollUnits: requests" >> "$CONFIG_FILE"
-        echo "        pollUrl: \"\"" >> "$CONFIG_FILE"
-        echo "        pollPostData: \"\"" >> "$CONFIG_FILE"
-        echo "    sessionManagement:" >> "$CONFIG_FILE"
-        echo "      method: cookie" >> "$CONFIG_FILE"
-        echo "    technology: {}" >> "$CONFIG_FILE"
-        echo "    structure: {}" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
-        echo "jobs:" >> "$CONFIG_FILE"
-        echo "- type: passiveScan-config" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
-        echo "- type: spider" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
-        echo "  tests:" >> "$CONFIG_FILE"
-        echo "  - name: 'At least 100 URLs found'" >> "$CONFIG_FILE"
-        echo "    type: stats" >> "$CONFIG_FILE"
-        echo "    onFail: INFO" >> "$CONFIG_FILE"
-        echo "    statistic: automation.spider.urls.added" >> "$CONFIG_FILE"
-        echo "    operator: '>='" >> "$CONFIG_FILE"
-        echo "    value: 100" >> "$CONFIG_FILE"
-        echo "- type: spiderAjax" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
-        echo "  tests:" >> "$CONFIG_FILE"
-        echo "  - name: 'At least 100 URLs found'" >> "$CONFIG_FILE"
-        echo "    type: stats" >> "$CONFIG_FILE"
-        echo "    onFail: INFO" >> "$CONFIG_FILE"
-        echo "    statistic: spiderAjax.urls.added" >> "$CONFIG_FILE"
-        echo "    operator: '>='" >> "$CONFIG_FILE"
-        echo "    value: 100" >> "$CONFIG_FILE"
-        echo "- type: passiveScan-wait" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
-        echo "- type: report" >> "$CONFIG_FILE"
-        echo "  parameters:" >> "$CONFIG_FILE"
-        echo "    reportTitle: 'OWASP ZAP Automation Scan Report'" >> "$CONFIG_FILE"
-        echo "- type: exitStatus" >> "$CONFIG_FILE"
-        echo "  parameters: {}" >> "$CONFIG_FILE"
+        # For API scans, set up the authentication header.
+        # If authorizationHeaderValue is provided use it; otherwise, use the JWT access token variable.
+        if ($isApiScan) {
+            if ('${{ parameters.authorizationHeaderValue }}' -ne '') {
+                $authHeader = '${{ parameters.authorizationHeaderValue }}'
+            } else {
+                $authHeader = "Bearer $(access_token)"
+            }
+        }
         
-        # Log the generated file to the console
-        echo "Generated ZAP Automation configuration file:"
-        cat "$CONFIG_FILE"
+        # Build the configuration file content as an array of lines.
+        $configContent = @()
+        $configContent += "# ZAP Automation Framework configuration (dynamically generated)"
+        $configContent += "version: '2.0'"
+        $configContent += ""
+        
+        # Environment block: always include the target URL.
+        $configContent += "env:"
+        $configContent += "  targetUrl: '${{ parameters.targetUrl }}'"
+        if ($isApiScan) {
+            $configContent += "  contexts:"
+            $configContent += "    - APIContext"
+        }
+        $configContent += ""
+        
+        # For API scans, include a contexts block that injects the header-based authentication.
+        if ($isApiScan) {
+            $configContent += "contexts:"
+            $configContent += "  - name: APIContext"
+            $configContent += "    urls:"
+            $configContent += "      - '${{ parameters.targetUrl }}'"
+            $configContent += "    includePaths:"
+            $configContent += "      - '${{ parameters.targetUrl }}.*'"
+            $configContent += "    authentication:"
+            $configContent += "      method: header"
+            $configContent += "      header:"
+            $configContent += "        name: Authorization"
+            $configContent += "        value: '$authHeader'"
+            $configContent += "    sessionManagement:"
+            $configContent += "      method: cookie"
+            $configContent += "    technology: {}"
+            $configContent += "    structure: {}"
+            $configContent += ""
+        }
+        
+        # Jobs block: define the sequence of actions.
+        $configContent += "jobs:"
+        $configContent += "  - type: passiveScan-config"
+        $configContent += "    parameters: {}"
+        
+        if ($isApiScan) {
+            # For an API scan, use spider and spiderAjax jobs with a max scan time.
+            $configContent += "  - type: spider"
+            $configContent += "    parameters:"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
+            $configContent += "    tests:"
+            $configContent += "      - name: At least 100 URLs found"
+            $configContent += "        type: stats"
+            $configContent += "        onFail: INFO"
+            $configContent += "        statistic: automation.spider.urls.added"
+            $configContent += "        operator: '>='"
+            $configContent += "        value: 100"
+            $configContent += "  - type: spiderAjax"
+            $configContent += "    parameters:"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
+            $configContent += "    tests:"
+            $configContent += "      - name: At least 100 URLs found"
+            $configContent += "        type: stats"
+            $configContent += "        onFail: INFO"
+            $configContent += "        statistic: spiderAjax.urls.added"
+            $configContent += "        operator: '>='"
+            $configContent += "        value: 100"
+        }
+        else {
+            # For a quick scan, assume a quick-scan job type is available.
+            $ajaxFlag = ([string]::IsTrue('${{ parameters.useAjaxSpider }}')).ToLower()
+            $configContent += "  - type: quick-scan"
+            $configContent += "    parameters:"
+            $configContent += "      target: '${{ parameters.targetUrl }}'"
+            $configContent += "      useAjaxSpider: $ajaxFlag"
+            $configContent += "      maxScanTime: ${{ parameters.maxScanTime }}"
+        }
+        
+        $configContent += "  - type: passiveScan-wait"
+        $configContent += "    parameters: {}"
+        $configContent += "  - type: report"
+        $configContent += "    parameters:"
+        $configContent += "      reportTitle: 'ZAP by Checkmarx Scanning Report'"
+        $configContent += "  - type: exitStatus"
+        $configContent += "    parameters: {}"
+        
+        # Write out the configuration file to the working directory.
+        $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
+        $finalConfig = $configContent -join "`n"
+        $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
+        Write-Output "Generated zap-automation.yaml at $configFilePath"
+        Write-Output "Configuration content:"
+        Write-Output $finalConfig
+
+  # Publish the generated configuration file as a build artifact
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+      artifactName: 'zap-automation-config'
+      publishLocation: 'Container'
+
+  # Log the configuration file for debugging purposes
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Log ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Output "Contents of zap-automation.yaml:"
+        Get-Content "$(workingTempDirectory)/zap-automation.yaml" | Write-Output
+
+  - task: Bash@3
+    displayName: 'Debug: List mounted directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap -w /zap alpine ls -l /zap
+
+  - task: Bash@3
+    displayName: 'Debug: Find zap.sh location'
+    inputs:
+      targetType: 'inline'
+      script: |
+        docker run --rm ghcr.io/zaproxy/zaproxy:stable sh -c "find / -name zap.sh 2>/dev/null || true"
+
+  # Run the OWASP ZAP Automation scan via Docker
+  - task: Bash@3
+    displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
+    inputs:
+      targetType: 'inline'
+      script: |
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
+
+  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+        $XslTransform.Load($XslPath)
+        Write-Output "Transforming Report.xml into NUnit-Report.xml"
+        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+
+  # Create bug work items if configured
+  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+      - template: ./create-bugs.yaml
+        parameters:
+          parentCardId: ${{ parameters.parentCardId }}
+          organisationUri: ${{ parameters.organisationUri }}
+          projectName: ${{ parameters.projectName }}
+          name: ${{ parameters.name }}
+
+  # Publish the raw XML and HTML reports as build artifacts
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish XML Report Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      artifactName: '${{ parameters.name }}-XML'
+      publishLocation: 'Container'
 
   - task: PublishBuildArtifacts@1
-    displayName: 'Publish ZAP Automation Config File'
+    displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
     inputs:
-      pathtoPublish: '$(Build.ArtifactStagingDirectory)'
-      artifactName: 'zap-automation-config'
+      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      artifactName: '${{ parameters.name }}-HTML'
+      publishLocation: 'Container'
+
+  # Publish the transformed report as test results so that alerts are visible as test failures
+  - task: PublishTestResults@2
+    displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
+    inputs:
+      testRunTitle: '${{ parameters.name }}'
+      testRunner: 'NUnit'
+      testResultsFiles: '**/NUnit-Report.xml'
+      searchFolder: '$(workingTempDirectory)'
+      publishRunAttachments: false
+
+  # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml)
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
+        if ($Alerts.Count -gt 0) {
+            Write-Output "Alerts detected; setting alertsExist variable to true."
+            Write-Host "##vso[task.setvariable variable=alertsExist]true"
+        }
+    condition: and(succeeded(), ne(variables.alertsExist, 'true'))
