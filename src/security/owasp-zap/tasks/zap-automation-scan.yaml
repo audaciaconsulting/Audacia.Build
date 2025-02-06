@@ -8,18 +8,12 @@ parameters:
   - name: scanType
     type: string
     default: 'quick-scan'   # Allowed values: "quick-scan" or "API"
-  - name: useAjaxSpider
-    type: boolean
-    default: 'false'
   - name: maxScanTime
     type: number
     default: '15'  # in minutes
   - name: authorizationHeaderValue
     type: string
     default: ''  # Used for API scans; if empty, the JWT access token will be used
-  - name: zapContextLocation
-    type: string
-    default: ''  # Used only for API scans (for alert filters etc.)
   - name: createBugsForFailures
     type: boolean
     default: 'false'
