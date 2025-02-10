@@ -10,9 +10,9 @@ parameters:
     default: {}   # Example: { runDotnet: false, downloadArtifact: true }
 
 jobs:
-  - template: sbom-generation.yaml
+  - template: /src/security/sbom/jobs/sbom-generation.yaml
     parameters: ${{ parameters.generation }}
 
-  - template: sbom-analysis.yaml
+  - template: /src/security/sbom/jobs/sbom-analysis.yaml
     parameters: ${{ parameters.analysis }}
     dependsOn: GenerateSBOM
