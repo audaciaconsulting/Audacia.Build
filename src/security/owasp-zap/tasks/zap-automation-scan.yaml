@@ -185,15 +185,6 @@ steps:
       artifactName: 'zap-automation-config'
       publishLocation: 'Container'
 
-  # Log the configuration file for debugging purposes.
-  - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Log ZAP Automation Config'
-    inputs:
-      targetType: 'inline'
-      script: |
-        Write-Output "Contents of zap-automation.yaml:"
-        Get-Content "$(workingTempDirectory)/zap-automation.yaml" | Write-Output
-
   # Run the OWASP ZAP Automation scan via Docker.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
