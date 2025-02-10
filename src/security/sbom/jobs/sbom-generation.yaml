@@ -1,10 +1,10 @@
 parameters:
-  # Indicates whether to generate an SBOM for NPM dependencies (set to false if your project has no npm component).
+  # Indicates whether to generate an SBOM for NPM dependencies (set to false if the project has no npm component).
   - name: runNpm
     type: boolean
     default: 'true'
 
-  # Indicates whether to generate an SBOM for .NET dependencies (set to false if your project has no .NET component).
+  # Indicates whether to generate an SBOM for .NET dependencies (set to false if the project has no .NET component).
   - name: runDotnet
     type: boolean
     default: 'true'
@@ -45,35 +45,34 @@ parameters:
     type: string
     default: 'https://raw.githubusercontent.com/anchore/syft/main/install.sh'
 
-jobs:
-  - job: GenerateSBOM
-    displayName: 'Generate SBOM'
-    steps:
-      - download: current
-        displayName: 'Download Source Code'
+job: GenerateSBOM
+displayName: 'Generate SBOM'
+steps:
+  - download: current
+    displayName: 'Download Source Code'
 
-      - script: mkdir "${{ parameters.outputFolder }}"
-        displayName: 'Create SBOM Folder'
+  - script: mkdir "${{ parameters.outputFolder }}"
+    displayName: 'Create SBOM Folder'
 
+  - script: |
+      curl -sSfL ${{ parameters.syftInstallUrl }} | sh -s -- -b $(Agent.TempDirectory)
+    displayName: 'Install Syft (SBOM Generator)'
+
+  # Generate the NPM SBOM if enabled.
+  - ${{ if eq(parameters.runNpm, true) }}:
       - script: |
-          curl -sSfL ${{ parameters.syftInstallUrl }} | sh -s -- -b $(Agent.TempDirectory)
-        displayName: 'Install Syft (SBOM Generator)'
-      
-      # Generate the NPM SBOM if enabled.
-      - ${{ if eq(parameters.runNpm, true) }}:
-          - script: |
-              "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.npmSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-npm-file.json" "${{ parameters.npmScanDirectory }}"
-            displayName: 'Generate NPM SBOM'
-      
-      # Generate the .NET SBOM if enabled.
-      - ${{ if eq(parameters.runDotnet, true) }}:
-          - script: |
-              "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.dotnetSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-dotnet-file.json" "${{ parameters.dotnetScanDirectory }}"
-            displayName: 'Generate .NET SBOM'
+          "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.npmSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-npm-file.json" "${{ parameters.npmScanDirectory }}"
+        displayName: 'Generate NPM SBOM'
 
-      - task: PublishPipelineArtifact@1
-        displayName: 'Publish SBOM Output'
-        inputs:
-          targetPath: ${{ parameters.outputFolder }}
-          publishLocation: 'pipeline'
-          artifact: ${{ parameters.artifactName }}
+  # Generate the .NET SBOM if enabled.
+  - ${{ if eq(parameters.runDotnet, true) }}:
+      - script: |
+          "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.dotnetSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-dotnet-file.json" "${{ parameters.dotnetScanDirectory }}"
+        displayName: 'Generate .NET SBOM'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish SBOM Output'
+    inputs:
+      targetPath: ${{ parameters.outputFolder }}
+      publishLocation: 'pipeline'
+      artifact: ${{ parameters.artifactName }}
