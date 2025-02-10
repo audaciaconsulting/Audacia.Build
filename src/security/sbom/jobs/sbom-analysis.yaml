@@ -75,7 +75,7 @@ jobs:
   - job: AnalyzeSBOM
     displayName: 'Analyze SBOM'
     steps:
-      ${{ if eq(parameters.downloadArtifact, true) }}:
+      - ${{ if eq(parameters.downloadArtifact, true) }}:
         - task: DownloadPipelineArtifact@2
           displayName: 'Download SBOM Artifact'
           inputs:
