@@ -1,16 +1,15 @@
 parameters:
-  # Indicates whether to generate an SBOM for NPM dependencies (set to false if the project has no npm component).
+  # Indicates whether to generate an SBOM for NPM dependencies.
   - name: runNpm
     type: boolean
-    default: 'true'
+    default: true
 
-  # Indicates whether to generate an SBOM for .NET dependencies (set to false if the project has no .NET component).
+  # Indicates whether to generate an SBOM for .NET dependencies.
   - name: runDotnet
     type: boolean
-    default: 'true'
+    default: true
 
   # The output format for the NPM SBOM.
-  # Accepts any valid Syft output format (e.g., cyclonedx-json, spdx-json, json, table).
   - name: npmSbomOutputFormat
     type: string
     default: 'cyclonedx-json'
@@ -45,7 +44,7 @@ parameters:
     type: string
     default: 'https://raw.githubusercontent.com/anchore/syft/main/install.sh'
 
-job: GenerateSBOM
+# The following keys will be merged into a job definition provided by the caller.
 displayName: 'Generate SBOM'
 steps:
   - download: current
