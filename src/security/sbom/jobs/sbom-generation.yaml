@@ -44,7 +44,7 @@ parameters:
     type: string
     default: 'https://raw.githubusercontent.com/anchore/syft/main/install.sh'
 
-# The following keys will be merged into a job definition provided by the caller.
+job: GenerateSBOM
 displayName: 'Generate SBOM'
 steps:
   - download: current
