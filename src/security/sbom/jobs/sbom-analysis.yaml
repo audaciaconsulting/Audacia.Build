@@ -1,53 +1,75 @@
 parameters:
+  # Indicates whether to analyze the NPM SBOM (set to false if your project has no npm component).
   - name: runNpm
     type: boolean
     default: 'true'
+
+  # Indicates whether to analyze the .NET SBOM (set to false if your project has no .NET component).
   - name: runDotnet
     type: boolean
     default: 'true'
+
+  # If true, downloads an existing SBOM artifact produced by a generation job.
+  # Otherwise, assumes the SBOM files are already present in the local sbomDirectory.
   - name: downloadArtifact
     type: boolean
-    default: 'false'           # Set true to download an SBOM artifact produced by a generation job.
+    default: 'false'
+
+  # The name of the published artifact that contains the SBOM files.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # Local directory where the SBOM files are stored.
   - name: sbomDirectory
     type: string
     default: '$(Agent.TempDirectory)\sbom'
+
+  # File name for the NPM SBOM.
   - name: npmSbomFileName
     type: string
     default: 'sbom-npm-file.json'
+
+  # File name for the .NET SBOM.
   - name: dotnetSbomFileName
     type: string
     default: 'sbom-dotnet-file.json'
+
+  # The output format for the Grype scan (vulnerability report).
+  # Accepts any valid Grype output format (e.g., cyclonedx-json, spdx-json, json, table).
   - name: grypeOutputFormat
     type: string
-    default: 'cyclonedx-json'   # (Other valid output types are accepted per Grype docs.)
+    default: 'cyclonedx-json'
+
+  # File name for the vulnerability report generated from the NPM SBOM scan.
   - name: npmVulnOutputFile
     type: string
     default: 'vuln-npm.json'
+
+  # File name for the vulnerability report generated from the .NET SBOM scan.
   - name: dotnetVulnOutputFile
     type: string
     default: 'vuln-dotnet.json'
+
+  # Severity threshold that determines whether the pipeline should fail if vulnerabilities are detected.
   - name: failOnSeverity
     type: string
     default: 'low'
+
+  # URL for the Grype installation script used to perform vulnerability analysis.
   - name: grypeInstallUrl
     type: string
     default: 'https://raw.githubusercontent.com/anchore/grype/main/install.sh'
+
+  # Local folder to store the vulnerability reports.
   - name: vulnFolder
     type: string
     default: '$(Agent.TempDirectory)\vuln'
+
+  # The name of the artifact to publish that contains the vulnerability reports.
   - name: vulnArtifactName
     type: string
     default: 'vuln-files'
-  # These parameters let you specify the SBOM input specifier (defaults to "sbom:" for Grype).
-  - name: npmSbomInputSpecifier
-    type: string
-    default: 'sbom:'
-  - name: dotnetSbomInputSpecifier
-    type: string
-    default: 'sbom:'
 
 jobs:
   - job: AnalyzeSBOM
@@ -75,7 +97,7 @@ jobs:
             script: |
               mkdir "${{ parameters.vulnFolder }}"
         
-        # Run Grype on the NPM SBOM if enabled.
+        # Analyze the NPM SBOM if enabled.
         - ${{ if eq(parameters.runNpm, true) }}:
             - task: PowerShell@2
               displayName: 'Run Grype on NPM SBOM'
@@ -97,7 +119,8 @@ jobs:
                   
                   for ($i = 0; $i -lt $retryCount; $i++) {
                     try {
-                      & "$(Agent.TempDirectory)\grype.exe" "${{ parameters.npmSbomInputSpecifier }}${{ parameters.sbomDirectory }}\${{ parameters.npmSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.npmVulnOutputFile }}" -o table
+                      # Always prepend "sbom:" to indicate that the file is an SBOM.
+                      & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.npmSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.npmVulnOutputFile }}" -o table
                       $success = $true
                       break
                     } catch {
@@ -131,7 +154,7 @@ jobs:
                   }
                 continueOnError: true
         
-        # Run Grype on the .NET SBOM if enabled.
+        # Analyze the .NET SBOM if enabled.
         - ${{ if eq(parameters.runDotnet, true) }}:
             - task: PowerShell@2
               displayName: 'Run Grype on .NET SBOM'
@@ -139,7 +162,7 @@ jobs:
               inputs:
                 targetType: 'inline'
                 script: |
-                  & "$(Agent.TempDirectory)\grype.exe" "${{ parameters.dotnetSbomInputSpecifier }}${{ parameters.sbomDirectory }}\${{ parameters.dotnetSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.dotnetVulnOutputFile }}" -o table
+                  & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.dotnetSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.dotnetVulnOutputFile }}" -o table
                   $exitDotnet = $LASTEXITCODE
                   Write-Host "Grype .NET Exit Code: $exitDotnet"
                   Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
@@ -157,7 +180,7 @@ jobs:
           inputs:
             targetType: 'inline'
             script: |
-              # If an analysis step was executed and its exit code is non-zero, fail the pipeline.
+              # If any analysis step reported a non-zero exit code, fail the pipeline.
               $fail = $false
               if ('${{ parameters.runNpm }}' -eq 'true' -and $(GrypeNpmExitCode) -and ([int]$(GrypeNpmExitCode) -ne 0)) {
                 Write-Host "NPM vulnerabilities detected."

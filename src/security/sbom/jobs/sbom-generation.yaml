@@ -1,28 +1,46 @@
 parameters:
+  # Indicates whether to generate an SBOM for NPM dependencies (set to false if your project has no npm component).
   - name: runNpm
     type: boolean
     default: 'true'
+
+  # Indicates whether to generate an SBOM for .NET dependencies (set to false if your project has no .NET component).
   - name: runDotnet
     type: boolean
     default: 'true'
+
+  # The output format for the NPM SBOM.
+  # Accepts any valid Syft output format (e.g., cyclonedx-json, spdx-json, json, table).
   - name: npmSbomOutputFormat
     type: string
-    default: 'cyclonedx-json'   # (Other options per Syft: spdx-json, json, table, etc.)
+    default: 'cyclonedx-json'
+
+  # The output format for the .NET SBOM.
   - name: dotnetSbomOutputFormat
     type: string
     default: 'cyclonedx-json'
+
+  # Directory where NPM dependencies are located and should be scanned.
   - name: npmScanDirectory
     type: string
     default: '$(System.DefaultWorkingDirectory)/src/apps'
+
+  # Directory where .NET dependencies are located and should be scanned.
   - name: dotnetScanDirectory
     type: string
     default: '$(Pipeline.Workspace)/$(Build.DefinitionName)'
+
+  # Local folder to store the generated SBOM files.
   - name: outputFolder
     type: string
     default: '$(Agent.TempDirectory)\sbom'
+
+  # The name of the published artifact that contains the SBOM files.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # URL for the Syft installation script used to generate SBOMs.
   - name: syftInstallUrl
     type: string
     default: 'https://raw.githubusercontent.com/anchore/syft/main/install.sh'
