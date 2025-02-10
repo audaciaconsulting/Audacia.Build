@@ -1,10 +1,13 @@
 parameters:
+  # Object containing parameter overrides for the sbom-generation.yaml template.
   - name: generation
     type: object
-    default: {}   # Override parameters for sbom-generation.yaml here.
+    default: {}   # Example: { runDotnet: false, npmScanDirectory: '$(Build.SourcesDirectory)/my-npm-app' }
+
+  # Object containing parameter overrides for the sbom-analysis.yaml template.
   - name: analysis
     type: object
-    default: {}   # Override parameters for sbom-analysis.yaml here.
+    default: {}   # Example: { runDotnet: false, downloadArtifact: true }
 
 jobs:
   - template: sbom-generation.yaml@templates
