@@ -76,121 +76,121 @@ jobs:
     displayName: 'Analyze SBOM'
     steps:
       - ${{ if eq(parameters.downloadArtifact, true) }}:
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download SBOM Artifact'
-          inputs:
-            buildType: 'current'
-            artifact: ${{ parameters.artifactName }}
-            path: ${{ parameters.sbomDirectory }}
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download SBOM Artifact'
+            inputs:
+              buildType: 'current'
+              artifact: ${{ parameters.artifactName }}
+              path: ${{ parameters.sbomDirectory }}
 
-        - task: PowerShell@2
-          displayName: 'Install Grype'
-          inputs:
-            targetType: 'inline'
-            script: |
-              curl.exe -sSfL ${{ parameters.grypeInstallUrl }} | sh -s -- -b $(Agent.TempDirectory)
+          - task: PowerShell@2
+            displayName: 'Install Grype'
+            inputs:
+              targetType: 'inline'
+              script: |
+                curl.exe -sSfL ${{ parameters.grypeInstallUrl }} | sh -s -- -b $(Agent.TempDirectory)
 
-        - task: PowerShell@2
-          displayName: 'Create vulnerability folder'
-          inputs:
-            targetType: 'inline'
-            script: |
-              mkdir "${{ parameters.vulnFolder }}"
+          - task: PowerShell@2
+            displayName: 'Create vulnerability folder'
+            inputs:
+              targetType: 'inline'
+              script: |
+                mkdir "${{ parameters.vulnFolder }}"
         
         # Analyze the NPM SBOM if enabled.
-        - ${{ if eq(parameters.runNpm, true) }}:
-            - task: PowerShell@2
-              displayName: 'Run Grype on NPM SBOM'
-              name: GrypeNpm
-              inputs:
-                targetType: 'inline'
-                script: |
-                  # Check if any Grype process is already running.
-                  $existingGrype = Get-Process -Name "grype" -ErrorAction SilentlyContinue
-                  if ($existingGrype) {
-                      Write-Host "Grype process already running. Waiting..."
-                      Start-Sleep -Seconds 10
+      - ${{ if eq(parameters.runNpm, true) }}:
+          - task: PowerShell@2
+            displayName: 'Run Grype on NPM SBOM'
+            name: GrypeNpm
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Check if any Grype process is already running.
+                $existingGrype = Get-Process -Name "grype" -ErrorAction SilentlyContinue
+                if ($existingGrype) {
+                    Write-Host "Grype process already running. Waiting..."
+                    Start-Sleep -Seconds 10
+                }
+                
+                # Attempt the scan with retries.
+                $retryCount = 5
+                $retryDelay = 10
+                $success = $false
+                
+                for ($i = 0; $i -lt $retryCount; $i++) {
+                  try {
+                    # Always prepend "sbom:" to indicate that the file is an SBOM.
+                    & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.npmSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.npmVulnOutputFile }}" -o table
+                    $success = $true
+                    break
+                  } catch {
+                    Write-Host "Attempt $($i + 1) failed. Retrying in $retryDelay seconds..."
+                    Start-Sleep -Seconds $retryDelay
                   }
-                  
-                  # Attempt the scan with retries.
-                  $retryCount = 5
-                  $retryDelay = 10
-                  $success = $false
-                  
-                  for ($i = 0; $i -lt $retryCount; $i++) {
+                }
+                
+                if (-not $success) {
+                  Write-Error "Grype failed after $retryCount attempts."
+                  exit 1
+                }
+                
+                $exitNpm = $LASTEXITCODE
+                Write-Host "Grype NPM Exit Code: $exitNpm"
+                Write-Host "##vso[task.setvariable variable=GrypeNpmExitCode]$exitNpm"
+                
+                # Retry removal of temporary files.
+                $tempFilePath = "C:\Users\VSSADM~1\AppData\Local\Temp\grype-db-listing*"
+                $retryRemoveCount = 5
+                $removeDelay = 5
+                for ($j = 0; $j -lt $retryRemoveCount; $j++) {
                     try {
-                      # Always prepend "sbom:" to indicate that the file is an SBOM.
-                      & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.npmSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.npmVulnOutputFile }}" -o table
-                      $success = $true
-                      break
+                        Remove-Item -Path $tempFilePath -Force -ErrorAction Stop
+                        Write-Host "Removed Grype temp files."
+                        break
                     } catch {
-                      Write-Host "Attempt $($i + 1) failed. Retrying in $retryDelay seconds..."
-                      Start-Sleep -Seconds $retryDelay
+                        Write-Host "Removal attempt $($j + 1) failed. Retrying..."
+                        Start-Sleep -Seconds $removeDelay
                     }
-                  }
-                  
-                  if (-not $success) {
-                    Write-Error "Grype failed after $retryCount attempts."
-                    exit 1
-                  }
-                  
-                  $exitNpm = $LASTEXITCODE
-                  Write-Host "Grype NPM Exit Code: $exitNpm"
-                  Write-Host "##vso[task.setvariable variable=GrypeNpmExitCode]$exitNpm"
-                  
-                  # Retry removal of temporary files.
-                  $tempFilePath = "C:\Users\VSSADM~1\AppData\Local\Temp\grype-db-listing*"
-                  $retryRemoveCount = 5
-                  $removeDelay = 5
-                  for ($j = 0; $j -lt $retryRemoveCount; $j++) {
-                      try {
-                          Remove-Item -Path $tempFilePath -Force -ErrorAction Stop
-                          Write-Host "Removed Grype temp files."
-                          break
-                      } catch {
-                          Write-Host "Removal attempt $($j + 1) failed. Retrying..."
-                          Start-Sleep -Seconds $removeDelay
-                      }
-                  }
-                continueOnError: true
-        
-        # Analyze the .NET SBOM if enabled.
-        - ${{ if eq(parameters.runDotnet, true) }}:
-            - task: PowerShell@2
-              displayName: 'Run Grype on .NET SBOM'
-              name: GrypeDotnet
-              inputs:
-                targetType: 'inline'
-                script: |
-                  & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.dotnetSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.dotnetVulnOutputFile }}" -o table
-                  $exitDotnet = $LASTEXITCODE
-                  Write-Host "Grype .NET Exit Code: $exitDotnet"
-                  Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
-                continueOnError: true
+                }
+              continueOnError: true
+          
+          # Analyze the .NET SBOM if enabled.
+          - ${{ if eq(parameters.runDotnet, true) }}:
+              - task: PowerShell@2
+                displayName: 'Run Grype on .NET SBOM'
+                name: GrypeDotnet
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                    & "$(Agent.TempDirectory)\grype.exe" "sbom:${{ parameters.sbomDirectory }}\${{ parameters.dotnetSbomFileName }}" --fail-on ${{ parameters.failOnSeverity }} -o ${{ parameters.grypeOutputFormat }}="${{ parameters.vulnFolder }}\${{ parameters.dotnetVulnOutputFile }}" -o table
+                    $exitDotnet = $LASTEXITCODE
+                    Write-Host "Grype .NET Exit Code: $exitDotnet"
+                    Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
+                  continueOnError: true
 
-        - task: PublishPipelineArtifact@1
-          displayName: 'Publish vulnerability report'
-          inputs:
-            targetPath: ${{ parameters.vulnFolder }}
-            publishLocation: pipeline
-            artifact: ${{ parameters.vulnArtifactName }}
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish vulnerability report'
+            inputs:
+              targetPath: ${{ parameters.vulnFolder }}
+              publishLocation: pipeline
+              artifact: ${{ parameters.vulnArtifactName }}
 
-        - task: PowerShell@2
-          displayName: 'Fail pipeline if vulnerabilities found'
-          inputs:
-            targetType: 'inline'
-            script: |
-              # If any analysis step reported a non-zero exit code, fail the pipeline.
-              $fail = $false
-              if ('${{ parameters.runNpm }}' -eq 'true' -and $(GrypeNpmExitCode) -and ([int]$(GrypeNpmExitCode) -ne 0)) {
-                Write-Host "NPM vulnerabilities detected."
-                $fail = $true
-              }
-              if ('${{ parameters.runDotnet }}' -eq 'true' -and $(GrypeDotnetExitCode) -and ([int]$(GrypeDotnetExitCode) -ne 0)) {
-                Write-Host ".NET vulnerabilities detected."
-                $fail = $true
-              }
-              if ($fail) {
-                Write-Error "Dependency vulnerabilities detected. Failing pipeline."
-                exit 1
-              }
+          - task: PowerShell@2
+            displayName: 'Fail pipeline if vulnerabilities found'
+            inputs:
+              targetType: 'inline'
+              script: |
+                # If any analysis step reported a non-zero exit code, fail the pipeline.
+                $fail = $false
+                if ('${{ parameters.runNpm }}' -eq 'true' -and $(GrypeNpmExitCode) -and ([int]$(GrypeNpmExitCode) -ne 0)) {
+                  Write-Host "NPM vulnerabilities detected."
+                  $fail = $true
+                }
+                if ('${{ parameters.runDotnet }}' -eq 'true' -and $(GrypeDotnetExitCode) -and ([int]$(GrypeDotnetExitCode) -ne 0)) {
+                  Write-Host ".NET vulnerabilities detected."
+                  $fail = $true
+                }
+                if ($fail) {
+                  Write-Error "Dependency vulnerabilities detected. Failing pipeline."
+                  exit 1
+                }
