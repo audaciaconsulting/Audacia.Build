@@ -1,0 +1,15 @@
+parameters:
+  - name: generation
+    type: object
+    default: {}   # Override parameters for sbom-generation.yaml here.
+  - name: analysis
+    type: object
+    default: {}   # Override parameters for sbom-analysis.yaml here.
+
+jobs:
+  - template: sbom-generation.yaml@templates
+    parameters: ${{ parameters.generation }}
+
+  - template: sbom-analysis.yaml@templates
+    parameters: ${{ parameters.analysis }}
+    dependsOn: GenerateSBOM
