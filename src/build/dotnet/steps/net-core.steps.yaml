@@ -94,4 +94,4 @@ steps:
         displayName: 'Publish job lock/deps artifact'
         inputs:
           targetPath: '$(Agent.TempDirectory)/lock-deps'
-          artifact: '$(Build.JobName)-lock-deps'
+          artifact: "$(Agent.JobName)-lock-deps"
