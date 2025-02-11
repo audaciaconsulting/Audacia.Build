@@ -24,9 +24,6 @@ parameters:
   - name: grypeInstallDir
     type: string
     default: '$(Agent.TempDirectory)'            # Directory where Grype will be installed.
-  - name: failOnVulnerabilities
-    type: boolean
-    default: true                                # Fail the pipeline if vulnerabilities are found.
 
 steps:
   # Download the SBOM artifact if requested.
@@ -53,7 +50,7 @@ steps:
       script: |
         Write-Host "Creating vulnerability folder: ${{ parameters.vulnFolder }}"
         mkdir "${{ parameters.vulnFolder }}"
-  
+
   # Analyze the npm SBOM if enabled.
   - ${{ if eq(parameters.analyzeNpm, true) }}:
       - task: PowerShell@2
@@ -130,20 +127,25 @@ steps:
       # The vulnerability report artifact will be named by taking the SBOM artifact name and appending "-vuln-report".
       artifact: ${{ parameters.sbomArtifactName }}-vuln-report
   
-  # Optionally, fail the pipeline if vulnerabilities are detected.
-  - ${{ if eq(parameters.failOnVulnerabilities, true) }}:
-      - task: PowerShell@2
-        displayName: 'Fail pipeline if vulnerabilities found'
-        inputs:
-          targetType: 'inline'
-          script: |
-            if ("${{ parameters.analyzeNpm }}" -eq "true") {
-              Write-Host "Grype NPM Exit Code: $(GrypeNpmExitCode)"
-            }
-            if ("${{ parameters.analyzeDotnet }}" -eq "true") {
-              Write-Host "Grype .NET Exit Code: $(GrypeDotnetExitCode)"
-            }
-            if ((("$(GrypeNpmExitCode)" -ne "0") -and "${{ parameters.analyzeNpm }}" -eq "true") -or (("$(GrypeDotnetExitCode)" -ne "0") -and "${{ parameters.analyzeDotnet }}" -eq "true")) {
-              Write-Error "Dependency vulnerabilities detected. Failing pipeline."
-              exit 1
-            }
+  # Fail the pipeline if vulnerabilities are detected.
+  - task: PowerShell@2
+    displayName: 'Fail pipeline if vulnerabilities found'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Default exit codes to "0" if analysis was not run.
+        $exitNpm = "0"
+        if ("${{ parameters.analyzeNpm }}" -eq "true") {
+          $exitNpm = "$(GrypeNpmExitCode)"
+          Write-Host "Grype NPM Exit Code: $exitNpm"
+        }
+        $exitDotnet = "0"
+        if ("${{ parameters.analyzeDotnet }}" -eq "true") {
+          $exitDotnet = "$(GrypeDotnetExitCode)"
+          Write-Host "Grype .NET Exit Code: $exitDotnet"
+        }
+        
+        if (($exitNpm -ne "0") -or ($exitDotnet -ne "0")) {
+          Write-Error "Dependency vulnerabilities detected. Failing pipeline."
+          exit 1
+        }
