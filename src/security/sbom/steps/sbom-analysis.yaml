@@ -125,8 +125,8 @@ steps:
       targetPath: ${{ parameters.vulnFolder }}
       publishLocation: 'pipeline'
       # The vulnerability report artifact will be named by taking the SBOM artifact name and appending "-vuln-report".
-      artifact: ${{ parameters.sbomArtifactName }}-vuln-report
-  
+      artifact: $(Date:yyyyMMddHHmmss)-${{ parameters.sbomArtifactName }}-vuln-report
+      
   # Fail the pipeline if vulnerabilities are detected.
   - task: PowerShell@2
     displayName: 'Fail pipeline if vulnerabilities found'

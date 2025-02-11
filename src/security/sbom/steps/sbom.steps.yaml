@@ -23,8 +23,7 @@ parameters:
     default: false
   - name: publishGenerationArtifact
     type: boolean
-    default: true
-  # Use a single parameter for the SBOM artifact name.
+    default: true  # In composite runs you can override this to false.
   - name: sbomArtifactName
     type: string
     default: 'sbom-files'
