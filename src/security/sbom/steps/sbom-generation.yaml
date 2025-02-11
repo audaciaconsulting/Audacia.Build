@@ -1,0 +1,45 @@
+# sbom-generation.yaml
+parameters:
+  # The folder where SBOM files will be written.
+  sbomOutputDir: ''
+  # Directory to scan for NPM dependencies.
+  npmScanDir: ''
+  # Directory to scan for .NET dependencies.
+  dotnetScanDir: ''
+  # Output format (for example: cyclonedx-json); can be overridden.
+  outputFormat: 'cyclonedx-json'
+  # If true, publish the SBOM folder as an artifact.
+  publishArtifact: true
+  # Artifact name to use when publishing.
+  artifactName: 'sbom-files'
+  # Where to install Syft.
+  syftInstallDir: '$(Agent.TempDirectory)'
+
+steps:
+  - script: |
+      echo "Creating SBOM folder at: ${{ parameters.sbomOutputDir }}"
+      mkdir "${{ parameters.sbomOutputDir }}"
+    displayName: 'Create SBOM folder'
+
+  - script: |
+      echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
+    displayName: 'Install Syft (SBOM Generator)'
+
+  - script: |
+      echo "Generating NPM SBOM from directory: ${{ parameters.npmScanDir }}"
+      "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="${{ parameters.sbomOutputDir }}/sbom-npm-file.json" "${{ parameters.npmScanDir }}"
+    displayName: 'Generate NPM SBOM'
+
+  - script: |
+      echo "Generating .NET SBOM from directory: ${{ parameters.dotnetScanDir }}"
+      "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="${{ parameters.sbomOutputDir }}/sbom-dotnet-file.json" "${{ parameters.dotnetScanDir }}"
+    displayName: 'Generate .NET SBOM'
+
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish SBOM Artifact'
+        inputs:
+          targetPath: ${{ parameters.sbomOutputDir }}
+          publishLocation: 'pipeline'
+          artifact: ${{ parameters.artifactName }}

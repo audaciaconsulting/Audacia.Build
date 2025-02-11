@@ -1,0 +1,37 @@
+# sbom.steps.yaml
+parameters:
+  sbomOutputDir: '$(Agent.TempDirectory)/sbom'
+  npmScanDir: '$(System.DefaultWorkingDirectory)/src/apps'
+  dotnetScanDir: '$(Pipeline.Workspace)/$(Build.DefinitionName)'
+  outputFormat: 'cyclonedx-json'
+  vulnDir: '$(Agent.TempDirectory)/vuln'
+  analysisOutputFormat: 'cyclonedx-json'
+  downloadArtifact: false
+  publishGenerationArtifact: true
+  generationArtifactName: 'sbom-files'
+  publishAnalysisArtifact: true
+  analysisArtifactName: 'vuln-files'
+  failOnVulnerabilities: true
+  syftInstallDir: '$(Agent.TempDirectory)'
+  grypeInstallDir: '$(Agent.TempDirectory)'
+
+steps:
+  - template: sbom-generation.yaml@templates
+    parameters:
+      sbomOutputDir: ${{ parameters.sbomOutputDir }}
+      npmScanDir: ${{ parameters.npmScanDir }}
+      dotnetScanDir: ${{ parameters.dotnetScanDir }}
+      outputFormat: ${{ parameters.outputFormat }}
+      publishArtifact: ${{ parameters.publishGenerationArtifact }}
+      artifactName: ${{ parameters.generationArtifactName }}
+      syftInstallDir: ${{ parameters.syftInstallDir }}
+
+  - template: sbom-analysis.yaml@templates
+    parameters:
+      sbomDir: ${{ parameters.sbomOutputDir }}
+      analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
+      vulnDir: ${{ parameters.vulnDir }}
+      downloadArtifact: ${{ parameters.downloadArtifact }}
+      artifactName: ${{ parameters.analysisArtifactName }}
+      grypeInstallDir: ${{ parameters.grypeInstallDir }}
+      failOnVulnerabilities: ${{ parameters.failOnVulnerabilities }}
