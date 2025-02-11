@@ -27,6 +27,12 @@ steps:
       artifact: 'lock-deps-files'
       path: '$(Agent.TempDirectory)/lock-deps'
 
+  # Install Syft before generating SBOMs.
+  - script: |
+      echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
+    displayName: 'Install Syft (SBOM Generator)'
+
   - task: PowerShell@2
     displayName: 'Generate SBOM for Lock/Deps Files'
     inputs:
