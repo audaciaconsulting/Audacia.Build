@@ -10,6 +10,13 @@ parameters:
     default: 'Release'
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
+  - name: publishLockDepsArtifact      # Flag to enable publishing of lock/deps files artifact.
+    type: boolean
+    default: false  # Set to true to collect and publish package-lock.json and deps.json files.
+  - name: lockDepsArtifactName         # Name of the artifact containing lock/deps files.
+    default: 'lock-deps-files'
+  - name: lockDepsOutputDir            # Directory where lock/deps files will be collected.
+    default: '$(Agent.TempDirectory)/lock-deps'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -18,28 +25,28 @@ steps:
       command: restore
       ${{ if eq(parameters.runTests, true) }}:
         projects: |
-            ${{parameters.projects}}
-            ${{parameters.tests}}
+          ${{ parameters.projects }}
+          ${{ parameters.tests }}
       ${{ else }}:
-        projects: ${{parameters.projects}}
+        projects: ${{ parameters.projects }}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
 
   - task: DotNetCoreCLI@2
     displayName: .NET Build
     inputs:
       command: build
-      projects: ${{parameters.projects}}
+      projects: ${{ parameters.projects }}
       publishWebProjects: false
       arguments: >
-        --configuration ${{parameters.configuration}}
+        --configuration ${{ parameters.configuration }}
         --no-restore
 
   - task: DotNetCoreCLI@2
     displayName: .NET Test
-    condition: and(succeeded(), eq('${{parameters.runTests}}', true))
+    condition: and(succeeded(), eq('${{ parameters.runTests }}', true))
     inputs:
       command: test
-      projects: ${{parameters.tests}}
+      projects: ${{ parameters.tests }}
       arguments: >
         --collect "Code coverage"
       configuration: 'Release'
@@ -49,9 +56,9 @@ steps:
     inputs:
       command: publish
       publishWebProjects: false
-      projects: ${{parameters.projects}}
+      projects: ${{ parameters.projects }}
       arguments: >
-        --configuration ${{parameters.configuration}}
+        --configuration ${{ parameters.configuration }}
         --output $(Build.ArtifactStagingDirectory)
         --no-restore
         --no-build
@@ -61,4 +68,32 @@ steps:
   - template: /src/build/common/tasks/publish.yaml
     parameters:
       path: ''
-      artifactName: ${{parameters.artifactName}}
+      artifactName: ${{ parameters.artifactName }}
+
+  # Optional step: Collect and publish package-lock.json and deps.json files.
+  - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
+      - task: PowerShell@2
+        displayName: 'Collect package-lock.json and deps.json files'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "Collecting package-lock.json and deps.json files from the source directory..."
+            $outputDir = "${{ parameters.lockDepsOutputDir }}"
+            if (-Not (Test-Path $outputDir)) {
+              New-Item -ItemType Directory -Path $outputDir | Out-Null
+            }
+            # Recursively find the lock and deps files under the source directory.
+            Get-ChildItem -Path "$(Build.SourcesDirectory)" -Recurse -Include package-lock.json, deps.json | ForEach-Object {
+              $relativePath = $_.FullName.Substring($(Build.SourcesDirectory).Length)
+              $destination = Join-Path -Path $outputDir -ChildPath $relativePath
+              $destDir = Split-Path -Path $destination -Parent
+              if (-Not (Test-Path $destDir)) {
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+              }
+              Copy-Item -Path $_.FullName -Destination $destination -Force
+            }
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish package-lock and deps artifact'
+        inputs:
+          targetPath: ${{ parameters.lockDepsOutputDir }}
+          artifact: ${{ parameters.lockDepsArtifactName }}
