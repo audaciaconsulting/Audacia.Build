@@ -2,39 +2,40 @@
 parameters:
   - name: sbomDir
     type: string
-    default: '$(Agent.TempDirectory)/sbom'        # Directory containing the SBOM files.
+    default: '$(Agent.TempDirectory)/sbom'       # Directory containing the SBOM files.
   - name: analyzeNpm
     type: boolean
-    default: true                                 # Set to true to analyze the npm SBOM.
+    default: true                                # Analyze the npm SBOM if true.
   - name: analyzeDotnet
     type: boolean
-    default: true                                 # Set to true to analyze the .NET SBOM.
+    default: true                                # Analyze the .NET SBOM if true.
   - name: analysisOutputFormat
     type: string
-    default: 'cyclonedx-json'                     # Output format for Grype analysis.
+    default: 'cyclonedx-json'                    # Output format for Grype analysis.
   - name: vulnFolder
     type: string
-    default: '$(Agent.TempDirectory)/vuln'         # Local folder to store the vulnerability reports.
+    default: '$(Agent.TempDirectory)/vuln'        # Local folder to store vulnerability reports.
   - name: downloadArtifact
     type: boolean
-    default: false                                # Download SBOM artifact before analysis if set to true.
-  - name: artifactName
+    default: false                               # If true, download the SBOM artifact before analysis.
+  - name: sbomArtifactName
     type: string
-    default: 'vuln-files'                         # Artifact name to use when downloading/publishing vulnerability reports.
+    default: 'sbom-files'                        # The name of the SBOM artifact published in the generation stage.
   - name: grypeInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'             # Directory where Grype will be installed.
+    default: '$(Agent.TempDirectory)'            # Directory where Grype will be installed.
   - name: failOnVulnerabilities
     type: boolean
-    default: true                                 # Fail the pipeline if vulnerabilities are found.
+    default: true                                # Fail the pipeline if vulnerabilities are found.
 
 steps:
+  # Download the SBOM artifact if requested.
   - ${{ if eq(parameters.downloadArtifact, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download SBOM Artifact'
         inputs:
           buildType: 'current'
-          artifact: ${{ parameters.artifactName }}
+          artifact: ${{ parameters.sbomArtifactName }}
           path: ${{ parameters.sbomDir }}
 
   - task: PowerShell@2
@@ -53,7 +54,7 @@ steps:
         Write-Host "Creating vulnerability folder: ${{ parameters.vulnFolder }}"
         mkdir "${{ parameters.vulnFolder }}"
   
-  # Analyze npm SBOM if requested.
+  # Analyze the npm SBOM if enabled.
   - ${{ if eq(parameters.analyzeNpm, true) }}:
       - task: PowerShell@2
         displayName: 'Run Grype on NPM SBOM'
@@ -89,7 +90,7 @@ steps:
             Write-Host "Grype NPM Exit Code: $exitNpm"
             Write-Host "##vso[task.setvariable variable=GrypeNpmExitCode]$exitNpm"
             
-            # Cleanup temporary Grype files with retries
+            # Cleanup temporary Grype files with retries.
             $tempFilePath = "C:\Users\VSSADM~1\AppData\Local\Temp\grype-db-listing*"
             $retryRemoveCount = 5
             $removeDelay = 5
@@ -104,7 +105,7 @@ steps:
               }
             }
   
-  # Analyze .NET SBOM if requested.
+  # Analyze the .NET SBOM if enabled.
   - ${{ if eq(parameters.analyzeDotnet, true) }}:
       - task: PowerShell@2
         displayName: 'Run Grype on .NET SBOM'
@@ -119,14 +120,17 @@ steps:
             $exitDotnet = $LASTEXITCODE
             Write-Host "Grype .NET Exit Code: $exitDotnet"
             Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
-
+  
+  # Publish the vulnerability report.
   - task: PublishPipelineArtifact@1
     displayName: 'Publish vulnerability report'
     inputs:
       targetPath: ${{ parameters.vulnFolder }}
       publishLocation: 'pipeline'
-      artifact: ${{ parameters.artifactName }}
-
+      # The vulnerability report artifact will be named by taking the SBOM artifact name and appending "-vuln-report".
+      artifact: ${{ parameters.sbomArtifactName }}-vuln-report
+  
+  # Optionally, fail the pipeline if vulnerabilities are detected.
   - ${{ if eq(parameters.failOnVulnerabilities, true) }}:
       - task: PowerShell@2
         displayName: 'Fail pipeline if vulnerabilities found'
