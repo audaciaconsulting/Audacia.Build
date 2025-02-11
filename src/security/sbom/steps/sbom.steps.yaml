@@ -28,9 +28,6 @@ parameters:
   - name: sbomArtifactName
     type: string
     default: 'sbom-files'
-  - name: failOnVulnerabilities
-    type: boolean
-    default: true
   - name: syftInstallDir
     type: string
     default: '$(Agent.TempDirectory)'
@@ -65,4 +62,3 @@ steps:
       downloadArtifact: ${{ parameters.downloadArtifact }}
       sbomArtifactName: ${{ parameters.sbomArtifactName }}
       grypeInstallDir: ${{ parameters.grypeInstallDir }}
-      failOnVulnerabilities: ${{ parameters.failOnVulnerabilities }}
