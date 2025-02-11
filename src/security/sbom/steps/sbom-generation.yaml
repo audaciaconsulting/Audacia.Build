@@ -22,7 +22,7 @@ parameters:
 steps:
   - script: |
       echo "Creating SBOM folder at: ${{ parameters.sbomOutputDir }}"
-      mkdir -p "${{ parameters.sbomOutputDir }}"
+      mkdir "${{ parameters.sbomOutputDir }}"
     displayName: 'Create SBOM folder'
 
   - script: |
@@ -30,29 +30,38 @@ steps:
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
     displayName: 'Install Syft (SBOM Generator)'
 
-  # Generate SBOM for each lock/deps file in the provided artifact directory.
+  # Generate SBOM for each lock/deps file found in the artifact directory.
   - ${{ if ne(parameters.lockDepsArtifactDir, '') }}:
-      - script: |
-          echo "Generating SBOM for files in artifact directory: ${{ parameters.lockDepsArtifactDir }}"
-          # Loop through every JSON file found.
-          for file in $(find "${{ parameters.lockDepsArtifactDir }}" -type f -name '*.json'); do
-            filename=$(basename "$file")
-            if [[ "$filename" == "package-lock.json" ]]; then
-              # Generate an NPM SBOM for package-lock.json.
-              # Use the parent directory name to differentiate outputs.
-              outputFile="${{ parameters.sbomOutputDir }}/sbom-npm-$(basename $(dirname "$file")).json"
-              echo "Generating NPM SBOM for $file, output: $outputFile"
-              "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$file"
-            elif [[ "$filename" == "deps.json" ]]; then
-              # Generate a .NET SBOM for deps.json.
-              outputFile="${{ parameters.sbomOutputDir }}/sbom-dotnet-$(basename $(dirname "$file")).json"
-              echo "Generating .NET SBOM for $file, output: $outputFile"
-              "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$file"
-            else
-              echo "Skipping file $file as it is not a recognized lock/deps file."
-            fi
-          done
+      - task: PowerShell@2
         displayName: 'Generate SBOM for Lock/Deps Files'
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "Generating SBOM for files in artifact directory: $env:lockDepsArtifactDir"
+            # Use the provided parameter value for the lock files folder.
+            $lockDepsDir = "${{ parameters.lockDepsArtifactDir }}"
+            $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
+            # Find all JSON files recursively in the lock files folder.
+            $files = Get-ChildItem -Path $lockDepsDir -Recurse -Filter "*.json"
+            foreach ($file in $files) {
+                if ($file.Name -eq "package-lock.json") {
+                    # For npm lock files, use the parent folder name as part of the output file name.
+                    $parent = Split-Path -Path $file.DirectoryName -Leaf
+                    $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("sbom-npm-$parent.json")
+                    Write-Host "Generating NPM SBOM for $($file.FullName) -> $outputFile"
+                    & "${{ parameters.syftInstallDir }}\syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$($file.FullName)"
+                }
+                elseif ($file.Name -eq "deps.json") {
+                    # For .NET lock files, similarly generate a .NET SBOM.
+                    $parent = Split-Path -Path $file.DirectoryName -Leaf
+                    $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("sbom-dotnet-$parent.json")
+                    Write-Host "Generating .NET SBOM for $($file.FullName) -> $outputFile"
+                    & "${{ parameters.syftInstallDir }}\syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$($file.FullName)"
+                }
+                else {
+                    Write-Host "Skipping file $($file.FullName) as it is not a recognized lock/deps file."
+                }
+            }
 
   # Publish the generated SBOM files as an artifact if enabled.
   - ${{ if eq(parameters.publishArtifact, true) }}:
