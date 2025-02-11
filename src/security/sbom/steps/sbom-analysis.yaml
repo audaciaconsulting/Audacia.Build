@@ -1,19 +1,32 @@
 # sbom-analysis.yaml
 parameters:
-  # Location of the SBOM files (folder containing sbom-npm-file.json and sbom-dotnet-file.json)
-  sbomDir: ''
-  # Output format for Grype (for example: cyclonedx-json)
-  analysisOutputFormat: 'cyclonedx-json'
-  # Folder where vulnerability reports will be written.
-  vulnDir: '$(Agent.TempDirectory)/vuln'
-  # If true, attempt to download the SBOM artifact before scanning.
-  downloadArtifact: false
-  # Artifact name (if downloading an artifact) to use.
-  artifactName: 'vuln-files'
-  # Where to install Grype.
-  grypeInstallDir: '$(Agent.TempDirectory)'
-  # If true, fail the pipeline if any vulnerabilities are detected.
-  failOnVulnerabilities: true
+  - name: sbomDir
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'        # Directory containing the SBOM files.
+  - name: analyzeNpm
+    type: boolean
+    default: true                                 # Set to true to analyze the npm SBOM.
+  - name: analyzeDotnet
+    type: boolean
+    default: true                                 # Set to true to analyze the .NET SBOM.
+  - name: analysisOutputFormat
+    type: string
+    default: 'cyclonedx-json'                     # Output format for Grype analysis.
+  - name: vulnFolder
+    type: string
+    default: '$(Agent.TempDirectory)/vuln'         # Local folder to store the vulnerability reports.
+  - name: downloadArtifact
+    type: boolean
+    default: false                                # Download SBOM artifact before analysis if set to true.
+  - name: artifactName
+    type: string
+    default: 'vuln-files'                         # Artifact name to use when downloading/publishing vulnerability reports.
+  - name: grypeInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'             # Directory where Grype will be installed.
+  - name: failOnVulnerabilities
+    type: boolean
+    default: true                                 # Fail the pipeline if vulnerabilities are found.
 
 steps:
   - ${{ if eq(parameters.downloadArtifact, true) }}:
@@ -37,89 +50,96 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        Write-Host "Creating vulnerability folder: $env:VULN_DIR"
-        mkdir "${{ parameters.vulnDir }}"
-
-  - task: PowerShell@2
-    displayName: 'Run Grype on NPM SBOM'
-    name: GrypeNpm
-    inputs:
-      targetType: 'inline'
-      script: |
-        $sbomPath = "${{ parameters.sbomDir }}/sbom-npm-file.json"
-        $vulnOutput = "${{ parameters.vulnDir }}/vuln-npm.json"
-        Write-Host "Running Grype on NPM SBOM: $sbomPath"
-        
-        $retryCount = 5
-        $retryDelay = 10
-        $success = $false
-        
-        for ($i = 0; $i -lt $retryCount; $i++) {
-          try {
+        Write-Host "Creating vulnerability folder: ${{ parameters.vulnFolder }}"
+        mkdir "${{ parameters.vulnFolder }}"
+  
+  # Analyze npm SBOM if requested.
+  - ${{ if eq(parameters.analyzeNpm, true) }}:
+      - task: PowerShell@2
+        displayName: 'Run Grype on NPM SBOM'
+        name: GrypeNpm
+        inputs:
+          targetType: 'inline'
+          script: |
+            $sbomPath = "${{ parameters.sbomDir }}/sbom-npm-file.json"
+            $vulnOutput = "${{ parameters.vulnFolder }}/vuln-npm.json"
+            Write-Host "Running Grype on NPM SBOM: $sbomPath"
+            
+            $retryCount = 5
+            $retryDelay = 10
+            $success = $false
+            
+            for ($i = 0; $i -lt $retryCount; $i++) {
+              try {
+                & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$sbomPath --fail-on low -o ${{ parameters.analysisOutputFormat }}=$vulnOutput -o table
+                $success = $true
+                break
+              } catch {
+                Write-Host "Attempt $($i+1) failed. Retrying in $retryDelay seconds..."
+                Start-Sleep -Seconds $retryDelay
+              }
+            }
+            
+            if (-not $success) {
+              Write-Error "Grype failed after $retryCount attempts."
+              exit 1
+            }
+            
+            $exitNpm = $LASTEXITCODE
+            Write-Host "Grype NPM Exit Code: $exitNpm"
+            Write-Host "##vso[task.setvariable variable=GrypeNpmExitCode]$exitNpm"
+            
+            # Cleanup temporary Grype files with retries
+            $tempFilePath = "C:\Users\VSSADM~1\AppData\Local\Temp\grype-db-listing*"
+            $retryRemoveCount = 5
+            $removeDelay = 5
+            for ($j = 0; $j -lt $retryRemoveCount; $j++) {
+              try {
+                Remove-Item -Path $tempFilePath -Force -ErrorAction Stop
+                Write-Host "Successfully removed Grype temp files."
+                break
+              } catch {
+                Write-Host "Attempt $($j+1) to remove temp files failed. Retrying in $removeDelay seconds..."
+                Start-Sleep -Seconds $removeDelay
+              }
+            }
+  
+  # Analyze .NET SBOM if requested.
+  - ${{ if eq(parameters.analyzeDotnet, true) }}:
+      - task: PowerShell@2
+        displayName: 'Run Grype on .NET SBOM'
+        name: GrypeDotnet
+        inputs:
+          targetType: 'inline'
+          script: |
+            $sbomPath = "${{ parameters.sbomDir }}/sbom-dotnet-file.json"
+            $vulnOutput = "${{ parameters.vulnFolder }}/vuln-dotnet.json"
+            Write-Host "Running Grype on .NET SBOM: $sbomPath"
             & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$sbomPath --fail-on low -o ${{ parameters.analysisOutputFormat }}=$vulnOutput -o table
-            $success = $true
-            break
-          } catch {
-            Write-Host "Attempt $($i+1) failed. Retrying in $retryDelay seconds..."
-            Start-Sleep -Seconds $retryDelay
-          }
-        }
-        
-        if (-not $success) {
-          Write-Error "Grype failed after $retryCount attempts."
-          exit 1
-        }
-        
-        $exitNpm = $LASTEXITCODE
-        Write-Host "Grype NPM Exit Code: $exitNpm"
-        Write-Host "##vso[task.setvariable variable=GrypeNpmExitCode]$exitNpm"
-        
-        # Cleanup temporary Grype files with retries
-        $tempFilePath = "C:\Users\VSSADM~1\AppData\Local\Temp\grype-db-listing*"
-        $retryRemoveCount = 5
-        $removeDelay = 5
-        for ($j = 0; $j -lt $retryRemoveCount; $j++) {
-          try {
-            Remove-Item -Path $tempFilePath -Force -ErrorAction Stop
-            Write-Host "Successfully removed Grype temp files."
-            break
-          } catch {
-            Write-Host "Attempt $($j+1) to remove temp files failed. Retrying in $removeDelay seconds..."
-            Start-Sleep -Seconds $removeDelay
-          }
-        }
-
-  - task: PowerShell@2
-    displayName: 'Run Grype on .NET SBOM'
-    name: GrypeDotnet
-    inputs:
-      targetType: 'inline'
-      script: |
-        $sbomPath = "${{ parameters.sbomDir }}/sbom-dotnet-file.json"
-        $vulnOutput = "${{ parameters.vulnDir }}/vuln-dotnet.json"
-        Write-Host "Running Grype on .NET SBOM: $sbomPath"
-        & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$sbomPath --fail-on low -o ${{ parameters.analysisOutputFormat }}=$vulnOutput -o table
-        $exitDotnet = $LASTEXITCODE
-        Write-Host "Grype .NET Exit Code: $exitDotnet"
-        Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
+            $exitDotnet = $LASTEXITCODE
+            Write-Host "Grype .NET Exit Code: $exitDotnet"
+            Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
 
   - task: PublishPipelineArtifact@1
     displayName: 'Publish vulnerability report'
     inputs:
-      targetPath: ${{ parameters.vulnDir }}
+      targetPath: ${{ parameters.vulnFolder }}
       publishLocation: 'pipeline'
       artifact: ${{ parameters.artifactName }}
 
-  - task: PowerShell@2
-    displayName: 'Fail pipeline if vulnerabilities found'
-    inputs:
-      targetType: 'inline'
-      script: |
-        Write-Host "Grype NPM Exit Code: $(GrypeNpmExitCode)"
-        Write-Host "Grype .NET Exit Code: $(GrypeDotnetExitCode)"
-        if ([int]$(GrypeNpmExitCode) -ne 0 -or [int]$(GrypeDotnetExitCode) -ne 0) {
-          Write-Error "Dependency vulnerabilities detected. Failing pipeline."
-          exit 1
-        }
-    # Only run this check if the user wants the pipeline to fail on vulnerabilities.
-    condition: eq('${{ parameters.failOnVulnerabilities }}', 'true')
+  - ${{ if eq(parameters.failOnVulnerabilities, true) }}:
+      - task: PowerShell@2
+        displayName: 'Fail pipeline if vulnerabilities found'
+        inputs:
+          targetType: 'inline'
+          script: |
+            if ("${{ parameters.analyzeNpm }}" -eq "true") {
+              Write-Host "Grype NPM Exit Code: $(GrypeNpmExitCode)"
+            }
+            if ("${{ parameters.analyzeDotnet }}" -eq "true") {
+              Write-Host "Grype .NET Exit Code: $(GrypeDotnetExitCode)"
+            }
+            if ((("$(GrypeNpmExitCode)" -ne "0") -and "${{ parameters.analyzeNpm }}" -eq "true") -or (("$(GrypeDotnetExitCode)" -ne "0") -and "${{ parameters.analyzeDotnet }}" -eq "true")) {
+              Write-Error "Dependency vulnerabilities detected. Failing pipeline."
+              exit 1
+            }

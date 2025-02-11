@@ -1,19 +1,53 @@
 # sbom.steps.yaml
 parameters:
-  sbomOutputDir: '$(Agent.TempDirectory)/sbom'
-  npmScanDir: '$(System.DefaultWorkingDirectory)/src/apps'
-  dotnetScanDir: '$(Pipeline.Workspace)/$(Build.DefinitionName)'
-  outputFormat: 'cyclonedx-json'
-  vulnDir: '$(Agent.TempDirectory)/vuln'
-  analysisOutputFormat: 'cyclonedx-json'
-  downloadArtifact: false
-  publishGenerationArtifact: true
-  generationArtifactName: 'sbom-files'
-  publishAnalysisArtifact: true
-  analysisArtifactName: 'vuln-files'
-  failOnVulnerabilities: true
-  syftInstallDir: '$(Agent.TempDirectory)'
-  grypeInstallDir: '$(Agent.TempDirectory)'
+  - name: sbomOutputDir
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'       # Local folder to store the generated SBOM files.
+  - name: npmScanDir
+    type: string
+    default: ''                                   # Path to scan for npm dependencies. Supply a valid path or leave empty.
+  - name: dotnetScanDir
+    type: string
+    default: ''                                   # Path to scan for .NET dependencies. Supply a valid path or leave empty.
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'                     # SBOM output format.
+  - name: vulnFolder
+    type: string
+    default: '$(Agent.TempDirectory)/vuln'        # Local folder to store vulnerability reports.
+  - name: analysisOutputFormat
+    type: string
+    default: 'cyclonedx-json'                     # Output format for Grype analysis.
+  - name: downloadArtifact
+    type: boolean
+    default: false                                # Whether to download an SBOM artifact for analysis.
+  - name: publishGenerationArtifact
+    type: boolean
+    default: true                                 # Publish the generated SBOM artifact.
+  - name: generationArtifactName
+    type: string
+    default: 'sbom-files'                         # Artifact name for the generated SBOM.
+  - name: publishAnalysisArtifact
+    type: boolean
+    default: true                                 # Publish the vulnerability report artifact.
+  - name: analysisArtifactName
+    type: string
+    default: 'vuln-files'                         # Artifact name for the vulnerability report.
+  - name: failOnVulnerabilities
+    type: boolean
+    default: true                                 # Fail the pipeline if vulnerabilities are detected.
+  - name: syftInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'             # Directory where Syft will be installed.
+  - name: grypeInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'             # Directory where Grype will be installed.
+  - name: analyzeNpm
+    type: boolean
+    default: true                                 # Set to true to analyze the npm SBOM.
+  - name: analyzeDotnet
+    type: boolean
+    default: true                                 # Set to true to analyze the .NET SBOM.
 
 steps:
   - template: sbom-generation.yaml@templates
@@ -29,8 +63,10 @@ steps:
   - template: sbom-analysis.yaml@templates
     parameters:
       sbomDir: ${{ parameters.sbomOutputDir }}
+      analyzeNpm: ${{ parameters.analyzeNpm }}
+      analyzeDotnet: ${{ parameters.analyzeDotnet }}
       analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
-      vulnDir: ${{ parameters.vulnDir }}
+      vulnFolder: ${{ parameters.vulnFolder }}
       downloadArtifact: ${{ parameters.downloadArtifact }}
       artifactName: ${{ parameters.analysisArtifactName }}
       grypeInstallDir: ${{ parameters.grypeInstallDir }}
