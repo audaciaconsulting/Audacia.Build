@@ -32,12 +32,21 @@ steps:
 
   # Generate SBOM for each lock/deps file found in the artifact directory.
   - ${{ if ne(parameters.lockDepsArtifactDir, '') }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download lock/deps artifact'
+        inputs:
+          buildType: 'current'
+          artifact: 'lock-deps-files'       # This must match the artifact name published in the build stage.
+          path: '$(Agent.TempDirectory)/lock-deps'
+
       - task: PowerShell@2
         displayName: 'Generate SBOM for Lock/Deps Files'
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "Generating SBOM for files in artifact directory: $env:lockDepsArtifactDir"
+            $lockDepsDir = "${{ parameters.lockDepsArtifactDir }}"
+            Write-Host "Generating SBOM for files in artifact directory: $lockDepsDir"
+            
             # Use the provided parameter value for the lock files folder.
             $lockDepsDir = "${{ parameters.lockDepsArtifactDir }}"
             $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
