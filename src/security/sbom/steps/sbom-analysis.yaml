@@ -56,16 +56,27 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $sbomFiles = Get-ChildItem -Path "${{ parameters.sbomDir }}" -Filter "${{ parameters.sbomGlob }}"
+        $sbomFiles = Get-ChildItem -Path "${{ parameters.sbomDir }}" -Filter "*.json"
         if ($sbomFiles.Count -eq 0) {
-            Write-Host "No SBOM files found matching pattern '${{ parameters.sbomGlob }}' in ${env:sbomDir}"
+            Write-Host "No SBOM files found in ${env:sbomDir}"
             exit 0
         }
         $overallExit = 0
         foreach ($file in $sbomFiles) {
-            $vulnOutput = Join-Path "${{ parameters.vulnFolder }}" ("vuln-" + $file.BaseName + ".json")
+            if ($file.Name -eq "npm-sbom.json") {
+                $reportName = "npm-vuln-report.json"
+            }
+            elseif ($file.Name -like "*-sbom.json") {
+                # Replace the -sbom suffix with -vuln-report.
+                $reportName = $file.Name -replace '-sbom', '-vuln-report'
+            }
+            else {
+                Write-Host "Skipping unrecognized SBOM file: $($file.Name)"
+                continue
+            }
+            $vulnOutput = Join-Path "${{ parameters.vulnFolder }}" $reportName
             Write-Host "Running Grype on SBOM file: $($file.FullName). Output: $vulnOutput"
-            & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$($file.FullName) --fail-on low -o ${{ parameters.analysisOutputFormat }}=$vulnOutput -o table
+            & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$($file.FullName) --fail-on low -o ${{ parameters.analysisOutputFormat }}="$vulnOutput" -o table
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "Grype reported vulnerabilities for $($file.Name) with exit code $LASTEXITCODE"
                 $overallExit = 1
@@ -75,30 +86,9 @@ steps:
         Write-Host "##vso[task.setvariable variable=OverallGrypeExitCode]$overallExit"
         exit $overallExit
 
-  # Compute a unique suffix for the vulnerability report artifact name.
-  - task: PowerShell@2
-    displayName: 'Set unique artifact suffix'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $uniqueSuffix = (Get-Date -Format "yyyyMMddHHmmss")
-        Write-Host "##vso[task.setvariable variable=UniqueSuffix]$uniqueSuffix"
-
-  # Publish the vulnerability reports as a pipeline artifact.
   - task: PublishPipelineArtifact@1
     displayName: 'Publish vulnerability report'
     inputs:
       targetPath: ${{ parameters.vulnFolder }}
       publishLocation: 'pipeline'
-      artifact: "$(UniqueSuffix)-${{ parameters.sbomArtifactName }}-vuln-report"
-
-  # Fail the pipeline if any vulnerabilities were detected.
-  - task: PowerShell@2
-    displayName: 'Fail pipeline if vulnerabilities found'
-    inputs:
-      targetType: 'inline'
-      script: |
-        if ("$(OverallGrypeExitCode)" -ne "0") {
-          Write-Error "Dependency vulnerabilities detected. Failing pipeline."
-          exit 1
-        }
+      artifact: 'vuln-files'
