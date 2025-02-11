@@ -2,50 +2,40 @@
 parameters:
   - name: sbomOutputDir
     type: string
-    default: '$(Agent.TempDirectory)/sbom'
-  - name: npmScanDir
+    default: '$(Agent.TempDirectory)/sbom'           # Directory to store generated SBOM files.
+  - name: lockDepsArtifactDir
     type: string
-    default: ''             # Supply a valid path for npm projects or leave empty.
-  - name: dotnetScanDir
-    type: string
-    default: ''             # Supply a valid path for .NET projects or leave empty.
+    default: ''                                       # Path containing the published lock/deps artifact.
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'
+    default: 'cyclonedx-json'                         # SBOM output format.
   - name: vulnFolder
     type: string
-    default: '$(Agent.TempDirectory)/vuln'
+    default: '$(Agent.TempDirectory)/vuln'            # Directory to store vulnerability reports.
   - name: analysisOutputFormat
     type: string
-    default: 'cyclonedx-json'
+    default: 'cyclonedx-json'                         # Output format for vulnerability analysis.
   - name: downloadArtifact
     type: boolean
-    default: false
+    default: false                                  # Flag to indicate if the SBOM artifact should be downloaded before analysis.
   - name: publishGenerationArtifact
     type: boolean
-    default: true  # In composite runs you can override this to false.
+    default: true                                   # Flag to control publishing of the SBOM generation artifact.
   - name: sbomArtifactName
     type: string
-    default: 'sbom-files'
+    default: 'sbom-files'                           # Artifact name for the generated SBOM files.
   - name: syftInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'
+    default: '$(Agent.TempDirectory)'               # Directory for installing Syft.
   - name: grypeInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'
-  - name: analyzeNpm
-    type: boolean
-    default: true
-  - name: analyzeDotnet
-    type: boolean
-    default: true
+    default: '$(Agent.TempDirectory)'               # Directory for installing Grype.
 
 steps:
   - template: sbom-generation.yaml@templates
     parameters:
       sbomOutputDir: ${{ parameters.sbomOutputDir }}
-      npmScanDir: ${{ parameters.npmScanDir }}
-      dotnetScanDir: ${{ parameters.dotnetScanDir }}
+      lockDepsArtifactDir: ${{ parameters.lockDepsArtifactDir }}
       outputFormat: ${{ parameters.outputFormat }}
       publishArtifact: ${{ parameters.publishGenerationArtifact }}
       artifactName: ${{ parameters.sbomArtifactName }}
@@ -54,8 +44,6 @@ steps:
   - template: sbom-analysis.yaml@templates
     parameters:
       sbomDir: ${{ parameters.sbomOutputDir }}
-      analyzeNpm: ${{ parameters.analyzeNpm }}
-      analyzeDotnet: ${{ parameters.analyzeDotnet }}
       analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
       vulnFolder: ${{ parameters.vulnFolder }}
       downloadArtifact: ${{ parameters.downloadArtifact }}

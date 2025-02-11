@@ -3,50 +3,58 @@ parameters:
   - name: sbomOutputDir
     type: string
     default: '$(Agent.TempDirectory)/sbom'        # Local folder to store the generated SBOM files.
-  - name: npmScanDir
+  - name: lockDepsArtifactDir
     type: string
-    default: ''                                    # Path to scan for npm dependencies. Leave empty if not applicable.
-  - name: dotnetScanDir
-    type: string
-    default: ''                                    # Path to scan for .NET dependencies. Leave empty if not applicable.
+    default: ''                                    # Path containing the published package-lock.json and deps.json artifact.
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'                      # SBOM output format. Change as needed.
+    default: 'cyclonedx-json'                      # SBOM output format (e.g., cyclonedx-json).
   - name: publishArtifact
     type: boolean
-    default: true                                 # Publish the generated SBOM as a pipeline artifact.
+    default: true                                 # Whether to publish the generated SBOM as a pipeline artifact.
   - name: artifactName
     type: string
-    default: 'sbom-files'                          # Artifact name for the generated SBOM.
+    default: 'sbom-files'                          # Artifact name for the generated SBOM files.
   - name: syftInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'             # Directory where Syft will be installed.
+    default: '$(Agent.TempDirectory)'             # Directory where Syft (the SBOM generator) will be installed.
 
 steps:
   - script: |
       echo "Creating SBOM folder at: ${{ parameters.sbomOutputDir }}"
-      mkdir "${{ parameters.sbomOutputDir }}"
+      mkdir -p "${{ parameters.sbomOutputDir }}"
     displayName: 'Create SBOM folder'
 
   - script: |
       echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
     displayName: 'Install Syft (SBOM Generator)'
-  
-  # Generate SBOM for npm if npmScanDir is provided.
-  - ${{ if ne(parameters.npmScanDir, '') }}:
-      - script: |
-          echo "Generating NPM SBOM from directory: ${{ parameters.npmScanDir }}"
-          "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="${{ parameters.sbomOutputDir }}/sbom-npm-file.json" "${{ parameters.npmScanDir }}"
-        displayName: 'Generate NPM SBOM'
-  
-  # Generate SBOM for .NET if dotnetScanDir is provided.
-  - ${{ if ne(parameters.dotnetScanDir, '') }}:
-      - script: |
-          echo "Generating .NET SBOM from directory: ${{ parameters.dotnetScanDir }}"
-          "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="${{ parameters.sbomOutputDir }}/sbom-dotnet-file.json" "${{ parameters.dotnetScanDir }}"
-        displayName: 'Generate .NET SBOM'
 
+  # Generate SBOM for each lock/deps file in the provided artifact directory.
+  - ${{ if ne(parameters.lockDepsArtifactDir, '') }}:
+      - script: |
+          echo "Generating SBOM for files in artifact directory: ${{ parameters.lockDepsArtifactDir }}"
+          # Loop through every JSON file found.
+          for file in $(find "${{ parameters.lockDepsArtifactDir }}" -type f -name '*.json'); do
+            filename=$(basename "$file")
+            if [[ "$filename" == "package-lock.json" ]]; then
+              # Generate an NPM SBOM for package-lock.json.
+              # Use the parent directory name to differentiate outputs.
+              outputFile="${{ parameters.sbomOutputDir }}/sbom-npm-$(basename $(dirname "$file")).json"
+              echo "Generating NPM SBOM for $file, output: $outputFile"
+              "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$file"
+            elif [[ "$filename" == "deps.json" ]]; then
+              # Generate a .NET SBOM for deps.json.
+              outputFile="${{ parameters.sbomOutputDir }}/sbom-dotnet-$(basename $(dirname "$file")).json"
+              echo "Generating .NET SBOM for $file, output: $outputFile"
+              "${{ parameters.syftInstallDir }}/syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$file"
+            else
+              echo "Skipping file $file as it is not a recognized lock/deps file."
+            fi
+          done
+        displayName: 'Generate SBOM for Lock/Deps Files'
+
+  # Publish the generated SBOM files as an artifact if enabled.
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
         displayName: 'Publish SBOM Artifact'
