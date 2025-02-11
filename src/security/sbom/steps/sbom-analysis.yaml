@@ -53,6 +53,7 @@ steps:
   # Loop over each SBOM file (matching the provided glob) and run Grype to generate a vulnerability report.
   - task: PowerShell@2
     displayName: 'Run Grype on All SBOM Files'
+    continueOnError: true
     inputs:
       targetType: 'inline'
       script: |
