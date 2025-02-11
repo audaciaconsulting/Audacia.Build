@@ -74,6 +74,7 @@ parameters:
 jobs:
   - job: AnalyzeSBOM
     displayName: 'Analyze SBOM'
+    dependsOn: GenerateSBOM
     steps:
       - ${{ if eq(parameters.downloadArtifact, true) }}:
           - task: DownloadPipelineArtifact@2

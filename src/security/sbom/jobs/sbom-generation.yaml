@@ -50,26 +50,26 @@ jobs:
     steps:
       - download: current
         displayName: 'Download Source Code'
-    
+
       - script: mkdir "${{ parameters.outputFolder }}"
         displayName: 'Create SBOM Folder'
-    
+
       - script: |
           curl -sSfL ${{ parameters.syftInstallUrl }} | sh -s -- -b $(Agent.TempDirectory)
         displayName: 'Install Syft (SBOM Generator)'
-    
+      
       # Generate the NPM SBOM if enabled.
       - ${{ if eq(parameters.runNpm, true) }}:
           - script: |
               "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.npmSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-npm-file.json" "${{ parameters.npmScanDirectory }}"
             displayName: 'Generate NPM SBOM'
-    
+      
       # Generate the .NET SBOM if enabled.
       - ${{ if eq(parameters.runDotnet, true) }}:
           - script: |
               "$(Agent.TempDirectory)\syft.exe" -o ${{ parameters.dotnetSbomOutputFormat }}="${{ parameters.outputFolder }}\sbom-dotnet-file.json" "${{ parameters.dotnetScanDirectory }}"
             displayName: 'Generate .NET SBOM'
-    
+
       - task: PublishPipelineArtifact@1
         displayName: 'Publish SBOM Output'
         inputs:
