@@ -118,15 +118,25 @@ steps:
             Write-Host "Grype .NET Exit Code: $exitDotnet"
             Write-Host "##vso[task.setvariable variable=GrypeDotnetExitCode]$exitDotnet"
   
+  # Add a step to compute a unique suffix for the artifact.
+  - task: PowerShell@2
+    displayName: 'Set unique artifact suffix'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Get the current date/time in a format without invalid characters.
+        $uniqueSuffix = (Get-Date -Format "yyyyMMddHHmmss")
+        Write-Host "##vso[task.setvariable variable=UniqueSuffix]$uniqueSuffix"
+  
   # Publish the vulnerability report.
   - task: PublishPipelineArtifact@1
     displayName: 'Publish vulnerability report'
     inputs:
       targetPath: ${{ parameters.vulnFolder }}
       publishLocation: 'pipeline'
-      # The vulnerability report artifact will be named by taking the SBOM artifact name and appending "-vuln-report".
-      artifact: $(Date:yyyyMMddHHmmss)-${{ parameters.sbomArtifactName }}-vuln-report
-      
+      # Use the computed UniqueSuffix so the artifact name is unique.
+      artifact: $(UniqueSuffix)-${{ parameters.sbomArtifactName }}-vuln-report
+  
   # Fail the pipeline if vulnerabilities are detected.
   - task: PowerShell@2
     displayName: 'Fail pipeline if vulnerabilities found'
