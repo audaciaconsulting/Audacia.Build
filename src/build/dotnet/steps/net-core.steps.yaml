@@ -1,4 +1,8 @@
 # Steps to build .NET Core Projects
+
+variables:
+  lockDepsIncludeJoined: ${{ join(parameters.lockDepsInclude, ',') }}
+
 parameters:
   - name: projects                     # OPTIONAL: The glob for the projects to be built
     default: '**/*.csproj'
@@ -81,6 +85,8 @@ steps:
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
       - task: PowerShell@2
         displayName: 'Collect package-lock.json and deps.json files'
+        env:
+          LOCK_DEPS_INCLUDE: "$(lockDepsIncludeJoined)"
         inputs:
           targetType: 'inline'
           script: |
@@ -96,8 +102,6 @@ steps:
               $destination = Join-Path -Path $outputDir -ChildPath $_.Name
               Copy-Item -Path $_.FullName -Destination $destination -Force
             }
-        env:
-          LOCK_DEPS_INCLUDE: "${{ join(parameters.lockDepsInclude, ',') }}"
 
   # Instead of publishing the same artifact name from each job, publish using a job-unique name.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
