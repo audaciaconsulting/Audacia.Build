@@ -1,0 +1,162 @@
+# generate-zap-config.yaml
+# -------------------------------------------
+# This template generates the OWASP ZAP Automation configuration file (zap-automation.yaml)
+# and publishes it as an artifact named "owasp-config".
+#
+# Parameters:
+#   name:                    The name of the configuration run. Example: "API Scan Config"
+#   targetUrl:               The target URL to be scanned. Example: "https://customer-api.example.com/swagger/v1/swagger.json"
+#   scanType:                The type of scan to run. Allowed values are "quick-scan" or "API". Example: "API"
+#   maxScanTime:             Maximum scan duration in minutes. Example: 60
+#   authorizationHeaderValue:The authorization header value for API scans. Example: "Bearer eyJ...token"
+# -------------------------------------------
+parameters:
+  - name: name
+    type: string
+    default: ''  # The name of the configuration run. Example: "API Scan Config"
+  - name: targetUrl
+    type: string
+    default: ''  # The target URL to scan. Example: "https://customer-api.example.com/swagger/v1/swagger.json"
+  - name: scanType
+    type: string
+    default: 'quick-scan'  # Type of scan: "quick-scan" or "API". Example: "API"
+  - name: maxScanTime
+    type: number
+    default: 15  # Maximum scan time in minutes. Example: 60
+  - name: authorizationHeaderValue
+    type: string
+    default: ''  # Authorization header value for API scans. Example: "Bearer eyJ...token"
+
+steps:
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Determine the base URL by stripping '/swagger' (if present) from the target URL.
+        $target = '${{ parameters.targetUrl }}'
+        if ($target -match "/swagger") {
+            $baseUrl = $target -replace "/swagger.*", ""
+        } else {
+            $baseUrl = $target
+        }
+
+        # Begin building the configuration file content as YAML.
+        $configContent = @()
+        $configContent += "---"
+        $configContent += "env:"
+        # For API scans, add the Authorization header if provided.
+        if ('${{ parameters.scanType }}' -eq 'API' -and '${{ parameters.authorizationHeaderValue }}' -ne '') {
+            $configContent += "  httpHeaders:"
+            $configContent += "  - name: Authorization"
+            $configContent += "    value: '${{ parameters.authorizationHeaderValue }}'"
+        }
+        $configContent += "  contexts:"
+        $configContent += "  - name: 'Authentication Test'"
+        $configContent += "    urls:"
+        $configContent += "    - '$baseUrl'"
+        $configContent += "    includePaths:"
+        $configContent += "    - '$baseUrl.*'"
+        $configContent += "    excludePaths: []"
+        # If not an API scan, add browser-based authentication configuration.
+        if ('${{ parameters.scanType }}' -ne 'API') {
+            $configContent += "    authentication:"
+            $configContent += "      method: 'browser'"
+            $configContent += "      parameters:"
+            $configContent += "        loginPageUrl: '$baseUrl/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize...'"
+            $configContent += "        loginPageWait: 2"
+            $configContent += "        browserId: 'firefox'"
+            $configContent += "    verification:"
+            $configContent += "      method: 'poll'"
+            $configContent += "      loggedInRegex: '\\Q 200 OK\\E'"
+            $configContent += "      loggedOutRegex: '\\Q 401 Unauthorized\\E'"
+            $configContent += "      pollFrequency: 60"
+            $configContent += "      pollUnits: 'requests'"
+            $configContent += "      pollUrl: '$baseUrl/connect/userinfo'"
+            $configContent += "      pollPostData: ''"
+            $configContent += "      pollAdditionalHeaders:"
+            $configContent += "      - header: 'content-type'"
+            $configContent += "        value: 'application/x-www-form-urlencoded'"
+        }
+        $configContent += "    sessionManagement:"
+        $configContent += "      method: 'headers'"
+        $configContent += "      parameters:"
+        $configContent += "        Cookie: '.AspNetCore.Antiforgery.cdV5uW_Ejgc={%cookie:.AspNetCore.Antiforgery.cdV5uW_Ejgc%}; ARRAffinity=REDACTED; ARRAffinitySameSite=REDACTED'"
+        $configContent += "    technology:"
+        $configContent += "      exclude: []"
+        $configContent += "  parameters:"
+        $configContent += "    failOnError: true"
+        $configContent += "    failOnWarning: false"
+        $configContent += "    progressToStdout: true"
+        $configContent += "  vars: {}"
+        $configContent += "jobs:"
+        $configContent += "  - parameters:"
+        $configContent += "      scanOnlyInScope: true"
+        $configContent += "      enableTags: false"
+        $configContent += "      disableAllRules: false"
+        $configContent += "    rules: []"
+        $configContent += "    name: 'passiveScan-config'"
+        $configContent += "    type: 'passiveScan-config'"
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'spider'"
+        $configContent += "    type: 'spider'"
+        $configContent += "    tests:"
+        $configContent += "    - onFail: 'INFO'"
+        $configContent += "      statistic: 'automation.spider.urls.added'"
+        $configContent += "      site: ''"
+        $configContent += "      operator: '>='"
+        $configContent += "      value: 100"
+        $configContent += "      type: 'stats'"
+        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "  - parameters:"
+        $configContent += "      maxDuration: ${{ parameters.maxScanTime }}"
+        $configContent += "      maxCrawlDepth: 10"
+        $configContent += "      numberOfBrowsers: 32"
+        $configContent += "      inScopeOnly: true"
+        $configContent += "    name: 'spiderAjax'"
+        $configContent += "    type: 'spiderAjax'"
+        $configContent += "    tests:"
+        $configContent += "    - onFail: 'INFO'"
+        $configContent += "      statistic: 'spiderAjax.urls.added'"
+        $configContent += "      site: ''"
+        $configContent += "      operator: '>='"
+        $configContent += "      value: 100"
+        $configContent += "      type: 'stats'"
+        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'passiveScan-wait'"
+        $configContent += "    type: 'passiveScan-wait'"
+        $configContent += "  - parameters: {}"
+        $configContent += "    name: 'activeScan'"
+        $configContent += "    type: 'activeScan'"
+        $configContent += "    policyDefinition: {}"
+        $configContent += "  - type: 'exitStatus'"
+        $configContent += "    parameters: {}"
+        $configContent += "  - parameters:"
+        $configContent += "      template: 'traditional-xml-plus'"
+        $configContent += "      reportTitle: 'ZAP Scanning Report'"
+        $configContent += "      reportDescription: ''"
+        $configContent += "    name: 'reportXml'"
+        $configContent += "    type: 'report'"
+        $configContent += "  - parameters:"
+        $configContent += "      template: 'traditional-html-plus'"
+        $configContent += "      reportTitle: 'ZAP Scanning Report'"
+        $configContent += "      reportDescription: ''"
+        $configContent += "    name: 'reportHtml'"
+        $configContent += "    type: 'report'"
+
+        # Write the configuration to a file (zap-automation.yaml) in the working directory.
+        $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
+        $finalConfig = $configContent -join "`n"
+        $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
+        Write-Output "Generated zap-automation.yaml at $configFilePath"
+        Write-Output "Configuration content:"
+        Write-Output $finalConfig
+
+  # Publish the generated configuration file as an artifact named "owasp-config"
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+      artifactName: 'owasp-config'
+      publishLocation: 'Container'
