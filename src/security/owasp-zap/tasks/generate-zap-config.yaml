@@ -1,31 +1,37 @@
 # generate-zap-config.yaml
-# -------------------------------------------
-# This template generates the OWASP ZAP Automation configuration file (zap-automation.yaml)
-# and publishes it as an artifact named "owasp-config".
+# ---------------------------------------------------------------
+# This template generates the OWASP ZAP Automation configuration file
+# (zap-automation.yaml) and publishes it as an artifact named "owasp-config".
 #
 # Parameters:
-#   name:                    The name of the configuration run. Example: "API Scan Config"
-#   targetUrl:               The target URL to be scanned. Example: "https://customer-api.example.com/swagger/v1/swagger.json"
-#   scanType:                The type of scan to run. Allowed values are "quick-scan" or "API". Example: "API"
-#   maxScanTime:             Maximum scan duration in minutes. Example: 60
-#   authorizationHeaderValue:The authorization header value for API scans. Example: "Bearer eyJ...token"
-# -------------------------------------------
+#   name:                     The name of the configuration run.
+#                             Example: "API Scan Config"
+#   targetUrl:                The target URL to be scanned.
+#                             Example: "https://customer-api.example.com/swagger/v1/swagger.json"
+#   scanType:                 The type of scan to run.
+#                             Allowed values: "quick-scan" or "API".
+#                             Example: "API"
+#   maxScanTime:              Maximum scan duration in minutes.
+#                             Example: 60
+#   authorizationHeaderValue: The authorization header value for API scans.
+#                             Example: "Bearer eyJ...token"
+# ---------------------------------------------------------------
 parameters:
   - name: name
     type: string
-    default: ''  # The name of the configuration run. Example: "API Scan Config"
+    default: ''  # Name of the configuration run. Example: "API Scan Config"
   - name: targetUrl
     type: string
-    default: ''  # The target URL to scan. Example: "https://customer-api.example.com/swagger/v1/swagger.json"
+    default: ''  # Target URL to scan. Example: "https://customer-api.example.com/swagger/v1/swagger.json"
   - name: scanType
     type: string
-    default: 'quick-scan'  # Type of scan: "quick-scan" or "API". Example: "API"
+    default: 'quick-scan'  # Scan type: "quick-scan" or "API". Example: "API"
   - name: maxScanTime
     type: number
     default: 15  # Maximum scan time in minutes. Example: 60
   - name: authorizationHeaderValue
     type: string
-    default: ''  # Authorization header value for API scans. Example: "Bearer eyJ...token"
+    default: ''  # Authorization header for API scans. Example: "Bearer eyJ...token"
 
 steps:
   - task: PowerShell@2
@@ -33,19 +39,27 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        # Determine the base URL by stripping '/swagger' (if present) from the target URL.
+        # Create a dedicated directory to store the configuration file.
+        # We use the parentWorkingTempDirectory (set by initialize.yaml) to ensure the folder exists.
+        $configDir = "$(parentWorkingTempDirectory)/owasp-config"
+        if (-not (Test-Path -Path $configDir)) {
+            New-Item -Path $configDir -ItemType Directory -Force | Out-Null
+            Write-Output "Created configuration directory: $configDir"
+        }
+        
+        # Determine the base URL by stripping any "/swagger" segment from the target URL.
         $target = '${{ parameters.targetUrl }}'
         if ($target -match "/swagger") {
             $baseUrl = $target -replace "/swagger.*", ""
         } else {
             $baseUrl = $target
         }
-
-        # Begin building the configuration file content as YAML.
+        
+        # Begin building the YAML configuration content.
         $configContent = @()
         $configContent += "---"
         $configContent += "env:"
-        # For API scans, add the Authorization header if provided.
+        # For API scans with an authorization token, add the HTTP header.
         if ('${{ parameters.scanType }}' -eq 'API' -and '${{ parameters.authorizationHeaderValue }}' -ne '') {
             $configContent += "  httpHeaders:"
             $configContent += "  - name: Authorization"
@@ -58,7 +72,7 @@ steps:
         $configContent += "    includePaths:"
         $configContent += "    - '$baseUrl.*'"
         $configContent += "    excludePaths: []"
-        # If not an API scan, add browser-based authentication configuration.
+        # For non-API scans, include browser-based authentication configuration.
         if ('${{ parameters.scanType }}' -ne 'API') {
             $configContent += "    authentication:"
             $configContent += "      method: 'browser'"
@@ -145,18 +159,17 @@ steps:
         $configContent += "    name: 'reportHtml'"
         $configContent += "    type: 'report'"
 
-        # Write the configuration to a file (zap-automation.yaml) in the working directory.
-        $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
+        # Define the output file path using our new directory.
+        $configFilePath = "$configDir/zap-automation.yaml"
         $finalConfig = $configContent -join "`n"
         $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
         Write-Output "Generated zap-automation.yaml at $configFilePath"
         Write-Output "Configuration content:"
         Write-Output $finalConfig
 
-  # Publish the generated configuration file as an artifact named "owasp-config"
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+      pathtoPublish: '$(parentWorkingTempDirectory)/owasp-config/zap-automation.yaml'
       artifactName: 'owasp-config'
       publishLocation: 'Container'
