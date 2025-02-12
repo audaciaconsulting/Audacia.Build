@@ -339,7 +339,3 @@ The provided templates offer a flexible and modular approach to integrate SBOM g
 
 3. **Composite Approach:**  
    Employ `sbom.steps.yaml` to execute SBOM generation and analysis in a single composite process for a streamlined workflow.
-
-An update to the `net-core.steps.yaml` template introduces an optional parameter, `lockDepsInclude`, which accepts multiple file patterns. The default patterns are `*.Api.deps.json`, `*.Identity.deps.json`, `*.Tests.deps.json`, and `package-lock.json`. This enhancement allows precise control over the files collected during the build process.
-
-The templates and this documentation provide a comprehensive example of how to create an Azure DevOps YAML pipeline that generates SBOMs and analyzes them to produce vulnerability reports.
