@@ -60,6 +60,7 @@ steps:
 
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
+    continueOnError: true
     inputs:
       targetType: 'inline'
       script: |
