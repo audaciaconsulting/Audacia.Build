@@ -18,7 +18,7 @@ parameters:
   - name: lockDepsOutputDir            # Directory where lock/deps files will be collected.
     default: '$(Agent.TempDirectory)/lock-deps'
   - name: lockDepsToInclude            # Patterns for files to include
-    default: 'package-lock.json, *.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
+    default: '*.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
 
 steps:
   - task: DotNetCoreCLI@2
