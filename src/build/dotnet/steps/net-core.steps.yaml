@@ -12,13 +12,13 @@ parameters:
     default: '$(Build.DefinitionName)'
   - name: publishLockDepsArtifact      # Flag to enable publishing of lock/deps files artifact.
     type: boolean
-    default: false  # Set to true to collect and publish package-lock.json and deps.json files.
-  - name: lockDepsArtifactName         # Name of the artifact containing lock/deps files.
+    default: false  # Set to true to collect and publish only *.deps.json files.
+  - name: lockDepsArtifactName         # Name of the artifact containing deps files.
     default: 'lock-deps-files'
-  - name: lockDepsOutputDir            # Directory where lock/deps files will be collected.
+  - name: lockDepsOutputDir            # Directory where deps files will be collected.
     default: '$(Agent.TempDirectory)/lock-deps'
-  - name: lockDepsToInclude            # Patterns for files to include
-    default: 'package-lock.json, *.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
+  - name: lockDepsToInclude            # Patterns for .deps.json files to include (excludes package-lock.json)
+    default: '*.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -72,10 +72,10 @@ steps:
       path: ''
       artifactName: ${{ parameters.artifactName }}
 
-  # Optional step: Collect and publish package-lock.json and deps.json files.
+  # Optional step: Collect and publish only the deps.json files.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
       - task: PowerShell@2
-        displayName: 'Collect package-lock.json and deps.json files'
+        displayName: 'Collect deps.json files'
         inputs:
           targetType: 'inline'
           script: |
@@ -85,8 +85,8 @@ steps:
             }
             # Split the provided patterns into an array.
             $patterns = "${{ parameters.lockDepsToInclude }}" -split ',\s*'
-            Write-Host "Collecting lock/deps files from the source directory using patterns: $patterns"
-            # Recursively find all matching lock/deps files and copy them into the flat folder.
+            Write-Host "Collecting deps files from the source directory using patterns: $patterns"
+            # Recursively find all matching deps.json files and copy them into the flat folder.
             Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include $patterns | ForEach-Object {
               $destination = Join-Path -Path $outputDir -ChildPath $_.Name
               Copy-Item -Path $_.FullName -Destination $destination -Force
@@ -95,7 +95,7 @@ steps:
   # Instead of publishing the same artifact name from each job, publish using a job-unique name.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
       - task: PublishPipelineArtifact@1
-        displayName: 'Publish job lock/deps artifact'
+        displayName: 'Publish job deps artifact'
         inputs:
           targetPath: '$(Agent.TempDirectory)/lock-deps'
           artifact: "$(Agent.JobName)-lock-deps"
