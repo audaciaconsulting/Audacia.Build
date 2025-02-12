@@ -2,7 +2,7 @@
 
 This directory provides a set of reusable YAML templates that integrate SBOM (Software Bill of Materials) generation and vulnerability analysis into Azure DevOps pipelines. The templates enable:
 
-1. **SBOM Generation:** Generating SBOMs for .NET Core (and related) projects by collecting package lock files (for example, `package-lock.json` and specific `*.deps.json` files) and running [Syft](https://github.com/anchore/syft).
+1. **SBOM Generation:** Generating SBOMs for projects by collecting lock/deps files (for example, specific `*.deps.json` files from .NET projects and `package-lock.json` files from NPM projects) and running [Syft](https://github.com/anchore/syft).
 2. **SBOM Analysis:** Analyzing SBOMs to produce vulnerability reports using [Grype](https://github.com/anchore/grype).
 3. **Composite Execution:** Running a composite pipeline that performs both SBOM generation and analysis in one step, providing an end-to-end solution.
 
@@ -17,26 +17,26 @@ This document describes each template and explains how they may be used individu
 This template is designed for building .NET Core projects. It performs the following actions:
 
 - **Restore, Build, Test, and Publish:** Executes the standard .NET Core commands.
-- **Optional Lock/Deps Files Collection:** When enabled (via the `publishLockDepsArtifact` parameter), the template recursively searches the source directory for lock/deps files using a configurable list of file patterns and copies them into a designated folder.
-- **Artifact Publishing:** Publishes the collected lock/deps files as a pipeline artifact using a job‑unique artifact name to avoid conflicts when multiple jobs are used.
+- **Optional Lock/Deps Files Collection:** When enabled (via the `publishLockDepsArtifact` parameter), the template recursively searches the source directory for `.deps.json` files using a configurable list of file patterns and copies them into a designated folder.  
+  **Note:** The default pattern (`lockDepsToInclude`) only handles the .NET-specific dependency files.
+- **Artifact Publishing:** Publishes the collected lock/deps files as a pipeline artifact using a job‑unique artifact name (for example, `$(Agent.JobName)-lock-deps`). These artifacts will later be aggregated with other lock/deps artifacts.
 
 **Key Parameters:**
 
 - **projects:** Glob pattern for project files (default: `**/*.csproj`).
 - **runTests:** Boolean flag to run tests.
 - **configuration:** Build configuration (for example, `Release` or `Debug`).
-- **publishLockDepsArtifact:** Set to `true` to enable collection and publishing of lock/deps files.
-- **lockDepsOutputDir:** Directory where lock/deps files are collected (default: `$(Agent.TempDirectory)/lock-deps`).
-- **lockDepsInclude:** An optional parameter that accepts multiple file patterns to specify which lock/deps files to collect. The default values are:
+- **publishLockDepsArtifact:** Set to `true` to enable collection and publishing of lock/deps files (only `*.deps.json` files are collected).
+- **lockDepsOutputDir:** Directory where deps files are collected (default: `$(Agent.TempDirectory)/lock-deps`).
+- **lockDepsToInclude:** A comma‑separated list of file patterns to specify which lock/deps files to collect. The default values are:
   - `*.Api.deps.json`
   - `*.Identity.deps.json`
   - `*.Tests.deps.json`
-  - `package-lock.json`
 
-When enabled, the patterns are joined into a comma‑separated string and used by the inline PowerShell script to filter the files that are recursively found.
+When enabled, the PowerShell script in this template uses the provided patterns to filter the files that are recursively found and copies them into a flat folder for publishing.
 
 **Usage:**  
-This template is intended for inclusion in build jobs. When `publishLockDepsArtifact` is enabled, each job collects lock/deps files based on the specified (or default) patterns and publishes them using a job‑unique artifact name (for example, `$(Agent.JobName)-lock-deps`).
+Include this template in the .NET build jobs. When `publishLockDepsArtifact` is enabled, each job collects its `.deps.json` files and publishes them using a job‑unique artifact name. The NPM package lock file is no longer processed by this template.
 
 ---
 
@@ -45,9 +45,9 @@ This template is intended for inclusion in build jobs. When `publishLockDepsArti
 This template generates SBOM files from the published lock/deps artifact. It:
 
 - **Downloads** the aggregated lock/deps artifact.
-- **Installs Syft** (the SBOM generator) into a specified directory.
-- **Generates SBOMs:** Iterates through each lock/deps file and generates an SBOM using the chosen output format (default: `cyclonedx-json`). For example, a file named `package-lock.json` is converted to an SBOM named `npm-sbom.json`, and files matching `*.deps.json` are processed by removing the `.deps` segment and appending `-sbom.json`.
-- **Publishes** the generated SBOMs as an artifact (default artifact name: `sbom-files`).
+- **Installs Syft:** Installs the SBOM generator into a specified directory.
+- **Generates SBOMs:** Iterates through each lock/deps file and generates an SBOM using the chosen output format (default: `cyclonedx-json`). For example, a file named `package-lock.json` (published separately by the NPM job) is converted to an SBOM named `npm-sbom.json`, and files matching `*.deps.json` are processed by removing the `.deps` segment and appending `-sbom.json`.
+- **Publishes** the generated SBOMs as a pipeline artifact (default artifact name: `sbom-files`).
 
 **Key Parameters:**
 
@@ -57,7 +57,7 @@ This template generates SBOM files from the published lock/deps artifact. It:
 - **syftInstallDir:** Directory where Syft is installed.
 
 **Usage:**  
-This template is designed to be called in a stage dedicated to SBOM generation. It assumes that a lock‑deps artifact named `lock-deps-files` is available.
+Call this template in a stage dedicated to SBOM generation. It assumes that an aggregated lock‑deps artifact named `lock-deps-files` is available (which includes both .NET deps files and the NPM package lock file).
 
 ---
 
@@ -68,7 +68,7 @@ This template analyzes SBOM files to produce vulnerability reports. It:
 - **Optionally Downloads** the SBOM artifact if required.
 - **Installs Grype** (the vulnerability scanner) into a specified directory.
 - **Analyzes SBOM Files:** Iterates over SBOM files (matched by a glob pattern, default: `sbom-*.json`), runs Grype, and generates corresponding vulnerability reports. For instance, an SBOM named `npm-sbom.json` produces a report named `npm-vuln-report.json`, while other SBOMs have their `-sbom` suffix replaced with `-vuln-report`.
-- **Publishes** the generated vulnerability reports as an artifact (default: `vuln-files`).
+- **Publishes** the generated vulnerability reports as a pipeline artifact (default: `vuln-files`).
 
 **Key Parameters:**
 
@@ -79,7 +79,7 @@ This template analyzes SBOM files to produce vulnerability reports. It:
 - **grypeInstallDir:** Directory where Grype is installed.
 
 **Usage:**  
-This template is to be included in a stage dedicated to SBOM analysis. It consumes the SBOM artifact and produces vulnerability reports.
+Include this template in a stage dedicated to SBOM analysis. It consumes the SBOM artifact and produces vulnerability reports.
 
 ---
 
@@ -188,7 +188,7 @@ The composite template (`sbom.steps.yaml`) can be used to perform SBOM generatio
             grypeInstallDir: '$(Agent.TempDirectory)'
 ```
 
-In composite mode, the template downloads the aggregated lock/deps artifact (if no custom path is provided), generates the SBOM files, and then analyzes them with Grype to produce vulnerability reports.
+In composite mode, the template downloads (or uses) the aggregated lock/deps artifact, generates the SBOM files, and then analyzes them with Grype to produce vulnerability reports.
 
 ---
 
@@ -264,12 +264,49 @@ stages:
               publishLockDepsArtifact: true
               lockDepsArtifactName: 'lock-deps-files'
               lockDepsOutputDir: '$(Agent.TempDirectory)/lock-deps'
+      - job: BuildNpm
+        displayName: 'Build Web Apps'
+        steps:
+          - task: npmAuthenticate@0
+            displayName: 'NPM Authenticate'
+            inputs:
+              workingFile: '$(Build.SourcesDirectory)/src/apps/park-blue/.npmrc'
+          - task: Npm@1
+            displayName: 'NPM Install'
+            inputs:
+              command: 'custom'
+              customCommand: 'install --force'
+              workingDir: 'src/apps/park-blue'
+          - task: Npm@1
+            displayName: 'NPM Build'
+            inputs:
+              command: custom
+              workingDir: '$(Build.SourcesDirectory)/src/apps/park-blue'
+              customCommand: 'run build'
+          # New task: Publish package-lock.json for aggregation.
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish package-lock.json'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/src/apps/park-blue/package-lock.json'
+              ArtifactName: 'npm-lock-deps'
+          - task: Npm@1
+            displayName: 'NPM Test'
+            inputs:
+              command: 'custom'
+              customCommand: 'run test-ci'
+              workingDir: 'src/apps/park-blue'
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Web App Artifact'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/src/apps/park-blue/dist/'
+              ArtifactName: '$(Build.DefinitionName)'
       - job: AggregateLockDeps
         displayName: 'Aggregate Lock/Deps Files'
         dependsOn:
           - BuildDotNet
           - BuildIdentity
           - BuildTestDataSeeding
+          - BuildNpm
         pool:
           vmImage: windows-latest
         steps:
