@@ -17,6 +17,8 @@ parameters:
     default: 'lock-deps-files'
   - name: lockDepsOutputDir            # Directory where lock/deps files will be collected.
     default: '$(Agent.TempDirectory)/lock-deps'
+  - name: lockDepsToInclude            # Patterns for files to include
+    default: 'package-lock.json, *.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -82,8 +84,10 @@ steps:
             if (-Not (Test-Path $outputDir)) {
               New-Item -ItemType Directory -Path $outputDir | Out-Null
             }
-            # Recursively find all lock/deps files and copy them into the flat folder.
-            Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include package-lock.json, *.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json | ForEach-Object {
+            # Split the provided patterns into an array.
+            $patterns = "${{ parameters.lockDepsToInclude }}" -split ',\s*'
+            # Recursively find all matching lock/deps files and copy them into the flat folder.
+            Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include $patterns | ForEach-Object {
               $destination = Join-Path -Path $outputDir -ChildPath $_.Name
               Copy-Item -Path $_.FullName -Destination $destination -Force
             }
