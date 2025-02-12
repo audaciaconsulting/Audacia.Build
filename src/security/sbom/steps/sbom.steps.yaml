@@ -5,7 +5,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'           # Directory to store generated SBOM files.
   - name: lockDepsArtifactDir
     type: string
-    default: ''                                       # Path containing the published lock/deps artifact.
+    default: ''                                       # If not provided, the aggregated lock/deps artifact will be downloaded.
   - name: outputFormat
     type: string
     default: 'cyclonedx-json'                         # SBOM output format.
@@ -17,35 +17,47 @@ parameters:
     default: 'cyclonedx-json'                         # Output format for vulnerability analysis.
   - name: downloadArtifact
     type: boolean
-    default: false                                  # Flag to indicate if the SBOM artifact should be downloaded before analysis.
+    default: true                                     # In composite mode, we download the SBOM artifact for analysis.
   - name: publishGenerationArtifact
     type: boolean
-    default: true                                   # Flag to control publishing of the SBOM generation artifact.
+    default: true                                     # Controls publishing of the SBOM generation artifact.
   - name: sbomArtifactName
     type: string
-    default: 'sbom-files'                           # Artifact name for the generated SBOM files.
+    default: 'sbom-files'                             # Artifact name for the generated SBOM files.
   - name: syftInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'               # Directory for installing Syft.
+    default: '$(Agent.TempDirectory)'                 # Directory for installing Syft.
   - name: grypeInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'               # Directory for installing Grype.
+    default: '$(Agent.TempDirectory)'                 # Directory for installing Grype.
 
 steps:
+  # If a lockDepsArtifactDir isn’t provided, download the aggregated lock/deps artifact.
+  - ${{ if eq(parameters.lockDepsArtifactDir, '') }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Aggregated Lock/Deps Artifact'
+        inputs:
+          buildType: 'current'
+          artifact: 'lock-deps-files'
+          path: '$(Agent.TempDirectory)/lock-deps'
+
+  # Generate SBOMs using the aggregated lock/deps files.
   - template: sbom-generation.yaml@templates
     parameters:
       sbomOutputDir: ${{ parameters.sbomOutputDir }}
-      lockDepsArtifactDir: ${{ parameters.lockDepsArtifactDir }}
+      # In composite mode we assume the aggregated files are in $(Agent.TempDirectory)/lock-deps.
+      lockDepsArtifactDir: '$(Agent.TempDirectory)/lock-deps'
       outputFormat: ${{ parameters.outputFormat }}
       publishArtifact: ${{ parameters.publishGenerationArtifact }}
       artifactName: ${{ parameters.sbomArtifactName }}
       syftInstallDir: ${{ parameters.syftInstallDir }}
 
+  # Analyze the generated SBOMs to produce vulnerability reports.
   - template: sbom-analysis.yaml@templates
     parameters:
       sbomDir: ${{ parameters.sbomOutputDir }}
       analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
       vulnFolder: ${{ parameters.vulnFolder }}
-      downloadArtifact: ${{ parameters.downloadArtifact }}
+      downloadArtifact: true
       sbomArtifactName: ${{ parameters.sbomArtifactName }}
       grypeInstallDir: ${{ parameters.grypeInstallDir }}
