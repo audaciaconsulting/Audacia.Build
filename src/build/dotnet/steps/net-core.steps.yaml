@@ -17,6 +17,13 @@ parameters:
     default: 'lock-deps-files'
   - name: lockDepsOutputDir            # Directory where lock/deps files will be collected.
     default: '$(Agent.TempDirectory)/lock-deps'
+  - name: lockDepsInclude              # List of file patterns to include when searching for lock/deps files.
+    type: object
+    default:
+      - "*.Api.deps.json"
+      - "*.Identity.deps.json"
+      - "*.Tests.deps.json"
+      - "package-lock.json"
 
 steps:
   - task: DotNetCoreCLI@2
@@ -69,7 +76,7 @@ steps:
     parameters:
       path: ''
       artifactName: ${{ parameters.artifactName }}
-  
+
   # Optional step: Collect and publish package-lock.json and deps.json files.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
       - task: PowerShell@2
@@ -77,16 +84,20 @@ steps:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "Collecting package-lock.json and deps.json files from the source directory..."
+            Write-Host "Collecting lock/deps files from the source directory using patterns: $env:LOCK_DEPS_INCLUDE"
+            $patterns = $env:LOCK_DEPS_INCLUDE -split ','
+            Write-Host "Patterns: $patterns"
             $outputDir = "$(Agent.TempDirectory)/lock-deps"
             if (-Not (Test-Path $outputDir)) {
               New-Item -ItemType Directory -Path $outputDir | Out-Null
             }
-            # Recursively find all lock/deps files and copy them into the flat folder.
-            Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include package-lock.json, *deps.json | ForEach-Object {
+            # Recursively find all lock/deps files using the provided patterns and copy them into the flat folder.
+            Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include $patterns | ForEach-Object {
               $destination = Join-Path -Path $outputDir -ChildPath $_.Name
               Copy-Item -Path $_.FullName -Destination $destination -Force
             }
+        env:
+          LOCK_DEPS_INCLUDE: ${{ join(parameters.lockDepsInclude, ',') }}
 
   # Instead of publishing the same artifact name from each job, publish using a job-unique name.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
