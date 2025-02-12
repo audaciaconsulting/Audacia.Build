@@ -97,7 +97,7 @@ steps:
               Copy-Item -Path $_.FullName -Destination $destination -Force
             }
         env:
-          LOCK_DEPS_INCLUDE: ${{ join(parameters.lockDepsInclude, ',') }}
+          LOCK_DEPS_INCLUDE: "${{ join(parameters.lockDepsInclude, ',') }}"
 
   # Instead of publishing the same artifact name from each job, publish using a job-unique name.
   - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
