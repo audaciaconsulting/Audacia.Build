@@ -40,7 +40,6 @@ steps:
       targetType: 'inline'
       script: |
         # Create a dedicated directory to store the configuration file.
-        # We use the parentWorkingTempDirectory (set by initialize.yaml) to ensure the folder exists.
         $configDir = "$(parentWorkingTempDirectory)/owasp-config"
         if (-not (Test-Path -Path $configDir)) {
             New-Item -Path $configDir -ItemType Directory -Force | Out-Null
@@ -53,6 +52,15 @@ steps:
             $baseUrl = $target -replace "/swagger.*", ""
         } else {
             $baseUrl = $target
+        }
+        
+        # Set thresholds based on scan type.
+        if ('${{ parameters.scanType }}' -eq 'API') {
+            $spiderThreshold = 1
+            $spiderAjaxThreshold = 1
+        } else {
+            $spiderThreshold = 100
+            $spiderAjaxThreshold = 100
         }
         
         # Begin building the YAML configuration content.
@@ -119,9 +127,9 @@ steps:
         $configContent += "      statistic: 'automation.spider.urls.added'"
         $configContent += "      site: ''"
         $configContent += "      operator: '>='"
-        $configContent += "      value: 100"
+        $configContent += "      value: $spiderThreshold"
         $configContent += "      type: 'stats'"
-        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "      name: 'At least $spiderThreshold URLs found'"
         $configContent += "  - parameters:"
         $configContent += "      maxDuration: ${{ parameters.maxScanTime }}"
         $configContent += "      maxCrawlDepth: 10"
@@ -134,9 +142,9 @@ steps:
         $configContent += "      statistic: 'spiderAjax.urls.added'"
         $configContent += "      site: ''"
         $configContent += "      operator: '>='"
-        $configContent += "      value: 100"
+        $configContent += "      value: $spiderAjaxThreshold"
         $configContent += "      type: 'stats'"
-        $configContent += "      name: 'At least 100 URLs found'"
+        $configContent += "      name: 'At least $spiderAjaxThreshold URLs found'"
         $configContent += "  - parameters: {}"
         $configContent += "    name: 'passiveScan-wait'"
         $configContent += "    type: 'passiveScan-wait'"
