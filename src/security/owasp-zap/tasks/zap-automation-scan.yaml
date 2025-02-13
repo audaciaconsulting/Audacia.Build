@@ -86,16 +86,17 @@ steps:
             Write-Output "Scan output directory already exists at $outputDir"
         }
 
-  # Copy the config file into the scan output directory so that the scan runs from a writable location.
+  # Copy the contents of the config folder into the scan output directory.
   - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Copy Config to Scan Output Directory'
+    displayName: '${{ parameters.name }}: Copy Config Contents to Scan Output Directory'
     inputs:
       targetType: 'inline'
       script: |
-        Copy-Item -Path "$(workingTempDirectory)/config" -Destination "$(workingTempDirectory)/scanoutput" -Recurse -Force
-        Write-Output "Copied config to scan output directory."
+        # Copy only the contents of the config folder so that zap-automation.yaml appears directly in scanoutput.
+        Copy-Item -Path "$(workingTempDirectory)/config/*" -Destination "$(workingTempDirectory)/scanoutput" -Recurse -Force
+        Write-Output "Copied config contents to scan output directory."
 
-  # Run the ZAP scan with the working directory set to the scan output folder.
+  # Run the ZAP scan from the writable scan output directory.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     continueOnError: true
@@ -106,6 +107,15 @@ steps:
           --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
           -w /zap/wrk/scanoutput \
           ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/zap-automation.yaml
+
+  # Debug: List files in the scan output directory.
+  - task: PowerShell@2
+    displayName: 'Debug: List Files in Scan Output Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Output "Listing files in $(workingTempDirectory)/scanoutput:"
+        Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse | Format-List
 
   # Rename the generated XML report.
   - task: PowerShell@2
