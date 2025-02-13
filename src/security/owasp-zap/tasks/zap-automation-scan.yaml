@@ -65,7 +65,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-config/zap-automation.yaml
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-config/zap-automation-config/zap-automation.yaml
 
   # Rename the generated report files to fixed names.
   - task: PowerShell@2
