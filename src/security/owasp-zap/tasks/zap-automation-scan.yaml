@@ -56,7 +56,7 @@ steps:
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # Step 1: Generate the static part of the ZAP Automation configuration.
+  # Step 1: Generate the static portion of the configuration.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate Static ZAP Automation Config'
     inputs:
@@ -65,17 +65,17 @@ steps:
         # Determine the base URL.
         $target = '${{ parameters.targetUrl }}'
         if ($target -match "/swagger") {
-            $baseUrl = $target -replace "/swagger.*", ""
+          $baseUrl = $target -replace "/swagger.*", ""
         } else {
-            $baseUrl = $target
+          $baseUrl = $target
         }
         $staticConfig = @()
         $staticConfig += "---"
         $staticConfig += "env:"
         if ('${{ parameters.scanType }}' -eq 'API' -and '${{ parameters.authorizationHeaderValue }}' -ne '') {
-            $staticConfig += "  httpHeaders:"
-            $staticConfig += "  - name: Authorization"
-            $staticConfig += "    value: '${{ parameters.authorizationHeaderValue }}'"
+          $staticConfig += "  httpHeaders:"
+          $staticConfig += "  - name: Authorization"
+          $staticConfig += "    value: '${{ parameters.authorizationHeaderValue }}'"
         }
         $staticConfig += "  contexts:"
         $staticConfig += "  - name: 'Authentication Test'"
@@ -85,23 +85,23 @@ steps:
         $staticConfig += "    - '$baseUrl.*'"
         $staticConfig += "    excludePaths: []"
         if ('${{ parameters.scanType }}' -ne 'API') {
-            $staticConfig += "    authentication:"
-            $staticConfig += "      method: 'browser'"
-            $staticConfig += "      parameters:"
-            $staticConfig += "        loginPageUrl: '$baseUrl/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize...'"
-            $staticConfig += "        loginPageWait: 2"
-            $staticConfig += "        browserId: 'firefox'"
-            $staticConfig += "    verification:"
-            $staticConfig += "      method: 'poll'"
-            $staticConfig += "      loggedInRegex: '\\Q 200 OK\\E'"
-            $staticConfig += "      loggedOutRegex: '\\Q 401 Unauthorized\\E'"
-            $staticConfig += "      pollFrequency: 60"
-            $staticConfig += "      pollUnits: 'requests'"
-            $staticConfig += "      pollUrl: '$baseUrl/connect/userinfo'"
-            $staticConfig += "      pollPostData: ''"
-            $staticConfig += "      pollAdditionalHeaders:"
-            $staticConfig += "      - header: 'content-type'"
-            $staticConfig += "        value: 'application/x-www-form-urlencoded'"
+          $staticConfig += "    authentication:"
+          $staticConfig += "      method: 'browser'"
+          $staticConfig += "      parameters:"
+          $staticConfig += "        loginPageUrl: '$baseUrl/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize...'"
+          $staticConfig += "        loginPageWait: 2"
+          $staticConfig += "        browserId: 'firefox'"
+          $staticConfig += "    verification:"
+          $staticConfig += "      method: 'poll'"
+          $staticConfig += "      loggedInRegex: '\\Q 200 OK\\E'"
+          $staticConfig += "      loggedOutRegex: '\\Q 401 Unauthorized\\E'"
+          $staticConfig += "      pollFrequency: 60"
+          $staticConfig += "      pollUnits: 'requests'"
+          $staticConfig += "      pollUrl: '$baseUrl/connect/userinfo'"
+          $staticConfig += "      pollPostData: ''"
+          $staticConfig += "      pollAdditionalHeaders:"
+          $staticConfig += "      - header: 'content-type'"
+          $staticConfig += "        value: 'application/x-www-form-urlencoded'"
         }
         $staticConfig += "    sessionManagement:"
         $staticConfig += "      method: 'headers'"
@@ -158,32 +158,39 @@ steps:
         $staticConfig | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Encoding UTF8
         Write-Output "Static config generated."
 
-  # Step 2 (conditional): Append the alert filter block if any alert filters were provided.
+  # Step 2 (conditional): Append the alert filter block if alert filters are provided.
   - ${{ if gt(length(parameters.alertFilters), 0) }}:
       - task: PowerShell@2
         displayName: '${{ parameters.name }}: Append Alert Filter Block'
+        env:
+          ALERT_FILTERS: $[toJson(parameters.alertFilters)]
+          DELETE_GLOBAL_ALERTS: $[toJson(parameters.deleteGlobalAlerts)]
         inputs:
           targetType: 'inline'
           script: |
-            $alertBlock = @()
-            $alertBlock += "  - type: 'alertFilter'"
-            $alertBlock += "    parameters:"
-            $alertBlock += "      deleteGlobalAlerts: ${{ parameters.deleteGlobalAlerts }}"
-            $alertBlock += "    alertFilters:"
-            ${{ each filter in parameters.alertFilters }}:
-              $alertBlock += "      - ruleId: ${{ filter.ruleId }}"
-              $alertBlock += "        newRisk: '${{ filter.newRisk }}'"
-              $alertBlock += "        context: '${{ filter.context }}'"
-              $alertBlock += "        url: '${{ filter.url }}'"
-              $alertBlock += "        urlRegex: ${{ filter.urlRegex }}"
-              $alertBlock += "        parameter: '${{ filter.parameter }}'"
-              $alertBlock += "        parameterRegex: ${{ filter.parameterRegex }}"
-              $alertBlock += "        attack: '${{ filter.attack }}'"
-              $alertBlock += "        attackRegex: ${{ filter.attackRegex }}"
-              $alertBlock += "        evidence: '${{ filter.evidence }}'"
-              $alertBlock += "        evidenceRegex: ${{ filter.evidenceRegex }}"
-            $alertBlock | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Append -Encoding UTF8
-            Write-Output "Alert filter block appended."
+            $alertFilters = $env:ALERT_FILTERS | ConvertFrom-Json
+            if ($alertFilters.Count -gt 0) {
+              $alertBlock = @()
+              $alertBlock += "  - type: 'alertFilter'"
+              $alertBlock += "    parameters:"
+              $alertBlock += "      deleteGlobalAlerts: $env:DELETE_GLOBAL_ALERTS"
+              $alertBlock += "    alertFilters:"
+              foreach ($filter in $alertFilters) {
+                $alertBlock += "      - ruleId: $($filter.ruleId)"
+                $alertBlock += "        newRisk: '$($filter.newRisk)'"
+                $alertBlock += "        context: '$($filter.context)'"
+                $alertBlock += "        url: '$($filter.url)'"
+                $alertBlock += "        urlRegex: $($filter.urlRegex)"
+                $alertBlock += "        parameter: '$($filter.parameter)'"
+                $alertBlock += "        parameterRegex: $($filter.parameterRegex)"
+                $alertBlock += "        attack: '$($filter.attack)'"
+                $alertBlock += "        attackRegex: $($filter.attackRegex)"
+                $alertBlock += "        evidence: '$($filter.evidence)'"
+                $alertBlock += "        evidenceRegex: $($filter.evidenceRegex)"
+              }
+              $alertBlock | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Append -Encoding UTF8
+              Write-Output "Alert filter block appended."
+            }
 
   # Step 3: Append the remainder of the configuration.
   - task: PowerShell@2
@@ -230,8 +237,8 @@ steps:
       script: |
         $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
         if ($xmlFiles.Count -eq 0) {
-            Write-Error "No ZAP XML report file was found."
-            exit 1
+          Write-Error "No ZAP XML report file was found."
+          exit 1
         }
         $xmlReport = $xmlFiles[0].FullName
         Write-Output "Found XML report file: $xmlReport"
@@ -246,8 +253,8 @@ steps:
       script: |
         $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
         if ($htmlFiles.Count -eq 0) {
-            Write-Error "No ZAP HTML report file was found."
-            exit 1
+          Write-Error "No ZAP HTML report file was found."
+          exit 1
         }
         $htmlReport = $htmlFiles[0].FullName
         Write-Output "Found HTML report file: $htmlReport"
