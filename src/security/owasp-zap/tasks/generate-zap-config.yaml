@@ -178,6 +178,6 @@ steps:
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
     inputs:
-      pathtoPublish: '$(parentWorkingTempDirectory)/owasp-config/zap-automation.yaml'
-      artifactName: 'owasp-config'
+      pathtoPublish: '$(parentWorkingTempDirectory)/zap-automation-config/zap-automation.yaml'
+      artifactName: 'zap-automation-config'
       publishLocation: 'Container'
