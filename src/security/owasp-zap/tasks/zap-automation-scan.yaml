@@ -61,7 +61,7 @@ steps:
         docker run --rm \
           --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
           --mount type=bind,source="$(parentWorkingTempDirectory)/owasp-config",target=/zap/config \
-          -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/config/zap-automation.yaml
+          -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/config/zap-automation.yaml -config log.level=DEBUG
 
   # Rename the generated report files to fixed names.
   - task: PowerShell@2
