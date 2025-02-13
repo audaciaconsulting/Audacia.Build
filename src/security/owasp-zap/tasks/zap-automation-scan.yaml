@@ -58,7 +58,7 @@ steps:
       artifactName: 'owasp-config'
       downloadPath: '$(workingTempDirectory)'
 
-  # Create a new writable folder for scan output.
+  # Copy the downloaded artifact (read-only) to a writable folder "config".
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Copy Config Artifact to Writable Folder'
     inputs:
@@ -72,7 +72,30 @@ steps:
         Copy-Item -Path $source -Destination $dest -Recurse
         Write-Output "Copied config artifact to $dest"
 
-  # Run the ZAP scan.
+  # Create a new writable folder for scan output.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Create Scan Output Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $outputDir = "$(workingTempDirectory)/scanoutput"
+        if (-Not (Test-Path $outputDir)) {
+            New-Item -Path "$(workingTempDirectory)" -Name "scanoutput" -ItemType "directory" | Out-Null
+            Write-Output "Created scan output directory at $outputDir"
+        } else {
+            Write-Output "Scan output directory already exists at $outputDir"
+        }
+
+  # Copy the config file into the scan output directory so that the scan runs from a writable location.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Copy Config to Scan Output Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Copy-Item -Path "$(workingTempDirectory)/config" -Destination "$(workingTempDirectory)/scanoutput" -Recurse -Force
+        Write-Output "Copied config to scan output directory."
+
+  # Run the ZAP scan with the working directory set to the scan output folder.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     continueOnError: true
@@ -81,8 +104,8 @@ steps:
       script: |
         docker run --rm \
           --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
-          -w /zap/wrk \
-          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/config/zap-automation.yaml
+          -w /zap/wrk/scanoutput \
+          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/zap-automation.yaml
 
   # Rename the generated XML report.
   - task: PowerShell@2
@@ -101,7 +124,7 @@ steps:
         Copy-Item -Path $xmlReport -Destination $destXml -Force
         Write-Output "Renamed XML report file to: $destXml"
 
-  # Rename the generated HTML report to a fixed name.
+  # Rename the generated HTML report.
   - task: PowerShell@2
     displayName: 'Rename ZAP HTML Report'
     inputs:
@@ -118,7 +141,7 @@ steps:
         Copy-Item -Path $htmlReport -Destination $destHtml -Force
         Write-Output "Renamed HTML report file to: $destHtml"
 
-  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+  # Transform the XML report to NUnit format.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
     inputs:
@@ -156,7 +179,7 @@ steps:
       artifactName: '${{ parameters.name }}-HTML'
       publishLocation: 'Container'
 
-  # Publish the transformed report as test results so that alerts are visible as test failures.
+  # Publish the transformed report as test results.
   - task: PublishTestResults@2
     displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
     inputs:
