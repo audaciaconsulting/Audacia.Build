@@ -60,8 +60,8 @@ steps:
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
     env:
-      ALERTFILTERS_JSON: "$[toJson(parameters.alertFilters)]"
-      DELETE_GLOBAL_ALERTS: "$[parameters.deleteGlobalAlerts]"
+      ALERTFILTERS_JSON: $[toJson(parameters.alertFilters)]
+      DELETE_GLOBAL_ALERTS: $[parameters.deleteGlobalAlerts]
     inputs:
       targetType: 'inline'
       script: |
