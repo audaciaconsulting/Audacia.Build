@@ -1,6 +1,6 @@
 # zap-automation-scan.yaml
 # -------------------------------------------
-# This template runs the OWASP ZAP Automation scan using a pre-generated configuration file.
+# This template runs the OWASP ZAP Automation scan using a pre‐generated configuration file.
 #
 # Parameters:
 #   name:                  The name of the scan. Example: "API Scan"
@@ -49,7 +49,7 @@ steps:
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # Download the pre-generated ZAP Automation configuration artifact "owasp-config".
+  # Download the pre‐generated ZAP Automation configuration artifact "owasp‑config".
   - task: DownloadBuildArtifacts@0
     displayName: '${{ parameters.name }}: Download ZAP Automation Config Artifact'
     inputs:
@@ -58,7 +58,7 @@ steps:
       artifactName: 'owasp-config'
       downloadPath: '$(workingTempDirectory)'
 
-  # Copy the downloaded artifact (read-only) to a writable folder "config".
+  # Copy the downloaded artifact (read‐only) to a writable folder "config".
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Copy Config Artifact to Writable Folder'
     inputs:
@@ -106,7 +106,7 @@ steps:
         docker run --rm \
           --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
           -w /zap/wrk/scanoutput \
-          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/owasp-config/zap-automation.yaml
+          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/zap-automation.yaml
 
   # Debug: List files in the scan output directory.
   - task: PowerShell@2
@@ -123,14 +123,14 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
+        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse -Filter "*ZAP-Report*.xml"
         if ($xmlFiles.Count -eq 0) {
             Write-Error "No ZAP XML report file was found."
             exit 1
         }
         $xmlReport = $xmlFiles[0].FullName
         Write-Output "Found XML report file: $xmlReport"
-        $destXml = Join-Path "$(workingTempDirectory)" "Report.xml"
+        $destXml = Join-Path "$(workingTempDirectory)/scanoutput" "Report.xml"
         Copy-Item -Path $xmlReport -Destination $destXml -Force
         Write-Output "Renamed XML report file to: $destXml"
 
@@ -140,14 +140,14 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
+        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse -Filter "*ZAP-Report*.html"
         if ($htmlFiles.Count -eq 0) {
             Write-Error "No ZAP HTML report file was found."
             exit 1
         }
         $htmlReport = $htmlFiles[0].FullName
         Write-Output "Found HTML report file: $htmlReport"
-        $destHtml = Join-Path "$(workingTempDirectory)" "Report.html"
+        $destHtml = Join-Path "$(workingTempDirectory)/scanoutput" "Report.html"
         Copy-Item -Path $htmlReport -Destination $destHtml -Force
         Write-Output "Renamed HTML report file to: $destHtml"
 
@@ -158,7 +158,7 @@ steps:
       targetType: 'inline'
       script: |
         $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlInputPath = "$(workingTempDirectory)/scanoutput/Report.xml"
         $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
         $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
         Write-Output "Transforming Report.xml into NUnit-Report.xml"
@@ -178,14 +178,14 @@ steps:
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish XML Report Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      pathtoPublish: '$(workingTempDirectory)/scanoutput/Report.xml'
       artifactName: '${{ parameters.name }}-XML'
       publishLocation: 'Container'
 
   - task: PublishBuildArtifacts@1
     displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
     inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      pathtoPublish: '$(workingTempDirectory)/scanoutput/Report.html'
       artifactName: '${{ parameters.name }}-HTML'
       publishLocation: 'Container'
 
@@ -196,7 +196,7 @@ steps:
       testRunTitle: '${{ parameters.name }}'
       testRunner: 'NUnit'
       testResultsFiles: '**/NUnit-Report.xml'
-      searchFolder: '$(workingTempDirectory)'
+      searchFolder: '$(workingTempDirectory)/scanoutput'
       publishRunAttachments: false
 
   # Set the alerts flag if any non-false-positive alerts exist.
@@ -205,7 +205,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
+        $Alerts = Select-Xml -Path "$(workingTempDirectory)/scanoutput/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
         if ($Alerts.Count -gt 0) {
           Write-Output "Alerts detected; setting alertsExist variable to true."
           Write-Host "##vso[task.setvariable variable=alertsExist]true"
