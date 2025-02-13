@@ -49,7 +49,7 @@ steps:
         chmod a+w "$NewDirectoryFullPath"
         Write-Output "Created working folder at $NewDirectoryFullPath"
 
-  # Download the pre‐generated ZAP Automation configuration artifact "owasp‑config".
+  # Download the pre‐generated ZAP Automation configuration artifact "zap-automation-config".
   - task: DownloadBuildArtifacts@0
     displayName: '${{ parameters.name }}: Download ZAP Automation Config Artifact'
     inputs:
@@ -58,15 +58,15 @@ steps:
       artifactName: 'zap-automation-config'
       downloadPath: '$(workingTempDirectory)/zap-config'
 
-
   # Run the OWASP ZAP Automation scan via Docker.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     inputs:
       targetType: 'inline'
       script: |
-        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
-
+        # Note: the config file is downloaded as an artifact into:
+        #   $(workingTempDirectory)/zap-config/zap-automation-config/zap-automation.yaml
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-config/zap-automation-config/zap-automation.yaml
 
   # Rename the generated report files to fixed names.
   - task: PowerShell@2
