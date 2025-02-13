@@ -62,7 +62,7 @@ steps:
             Write-Host "No SBOM files found in ${env:sbomDir}"
             exit 0
         }
-        $overallExit = 0
+        $exitCode = 0
         foreach ($file in $sbomFiles) {
             if ($file.Name -eq "npm-sbom.json") {
                 $reportName = "npm-vuln-report.json"
@@ -80,12 +80,12 @@ steps:
             & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$($file.FullName) --fail-on low -o ${{ parameters.analysisOutputFormat }}="$vulnOutput" -o table
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "Grype reported vulnerabilities for $($file.Name) with exit code $LASTEXITCODE"
-                $overallExit = 1
+                $exitCode = 1
             }
         }
-        Write-Host "Overall Grype analysis exit code: $overallExit"
-        Write-Host "##vso[task.setvariable variable=OverallGrypeExitCode]$overallExit"
-        exit $overallExit
+        Write-Host "Overall Grype analysis exit code: $exitCode"
+        Write-Host "##vso[task.setvariable variable=OverallGrypeExitCode]$exitCode"
+        exit $exitCode
 
   - task: PublishPipelineArtifact@1
     displayName: 'Publish vulnerability report'
