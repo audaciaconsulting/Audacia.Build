@@ -106,7 +106,7 @@ steps:
         docker run --rm \
           --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
           -w /zap/wrk/scanoutput \
-          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/zap-automation.yaml
+          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/scanoutput/owasp-config/zap-automation.yaml
 
   # Debug: List files in the scan output directory.
   - task: PowerShell@2
