@@ -26,6 +26,11 @@ parameters:
   - name: projectName
     type: string
     default: '$(System.TeamProject)'
+  # New parameter to allow passing alert filter rules.
+  # This should be a YAML snippet (without the "alertFilters:" header) to be inserted in the generated configuration.
+  - name: alertFilters
+    type: string
+    default: ''
 
 steps:
   # Verify that the initialization step has run.
@@ -111,6 +116,18 @@ steps:
         $configContent += "    failOnWarning: false"
         $configContent += "    progressToStdout: true"
         $configContent += "  vars: {}"
+
+        # Insert alert filters if provided.
+        if ('${{ parameters.alertFilters }}' -ne '') {
+          $configContent += "alertFilters:"
+          # Split the provided parameter into lines and add each with an indent.
+          $alertFiltersLines = '${{ parameters.alertFilters }}' -split "`n"
+          foreach ($line in $alertFiltersLines) {
+            # Ensure proper indentation for the alert filter entries.
+            $configContent += "  $line"
+          }
+        }
+
         $configContent += "jobs:"
         $configContent += "  - parameters:"
         $configContent += "      scanOnlyInScope: true"
