@@ -60,19 +60,19 @@ steps:
 
   # Create a new writable folder for scan output.
   - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Create Scan Output Directory'
+    displayName: '${{ parameters.name }}: Copy Config Artifact to Writable Folder'
     inputs:
       targetType: 'inline'
       script: |
-        $outputDir = "$(workingTempDirectory)/scanoutput"
-        if (-Not (Test-Path -Path $outputDir)) {
-            New-Item -Path "$(workingTempDirectory)" -Name "scanoutput" -ItemType "directory" | Out-Null
-            Write-Output "Created scan output directory at $outputDir"
-        } else {
-            Write-Output "Scan output directory already exists at $outputDir"
+        $source = "$(workingTempDirectory)/owasp-config"
+        $dest = "$(workingTempDirectory)/config"
+        if (Test-Path $dest) {
+            Remove-Item -Recurse -Force $dest
         }
+        Copy-Item -Path $source -Destination $dest -Recurse
+        Write-Output "Copied config artifact to $dest"
 
-  # Run the ZAP scan by mounting the config folder and the writable scan output folder.
+  # Run the ZAP scan.
   - task: Bash@3
     displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
     continueOnError: true
@@ -80,11 +80,9 @@ steps:
       targetType: 'inline'
       script: |
         docker run --rm \
-          --mount type=bind,source="$(workingTempDirectory)/owasp-config",target=/zap/config \
-          --mount type=bind,source="$(workingTempDirectory)/scanoutput",target=/zap/wrk \
+          --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk \
           -w /zap/wrk \
-          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/config/zap-automation.yaml
-
+          ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/config/zap-automation.yaml
 
   # Rename the generated XML report.
   - task: PowerShell@2
@@ -92,7 +90,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse -Filter "*ZAP-Report*.xml"
+        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
         if ($xmlFiles.Count -eq 0) {
             Write-Error "No ZAP XML report file was found."
             exit 1
@@ -109,7 +107,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse -Filter "*ZAP-Report*.html"
+        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
         if ($htmlFiles.Count -eq 0) {
             Write-Error "No ZAP HTML report file was found."
             exit 1
