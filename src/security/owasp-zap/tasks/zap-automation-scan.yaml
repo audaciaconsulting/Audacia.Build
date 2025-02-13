@@ -61,6 +61,9 @@ steps:
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
     inputs:
       targetType: 'inline'
+      env:
+        ALERTFILTERS_JSON: ${{ toJson(parameters.alertFilters) }}
+        DELETE_GLOBAL_ALERTS: ${{ parameters.deleteGlobalAlerts }}
       script: |
         # Determine the base URL. If the targetUrl contains '/swagger', remove that portion.
         $target = '${{ parameters.targetUrl }}'
@@ -69,16 +72,16 @@ steps:
         } else {
             $baseUrl = $target
         }
-
+        
         # Initialize alert filters if provided.
-        $alertFiltersJson = '${{ toJson(parameters.alertFilters) }}'
+        $alertFiltersJson = $env:ALERTFILTERS_JSON
         if ($alertFiltersJson -and $alertFiltersJson -ne '[]' -and $alertFiltersJson -ne 'null') {
             $alertFilters = $alertFiltersJson | ConvertFrom-Json
         } else {
             $alertFilters = @()
         }
-        $deleteGlobalAlerts = '${{ parameters.deleteGlobalAlerts }}'
-
+        $deleteGlobalAlerts = $env:DELETE_GLOBAL_ALERTS
+        
         # Begin building the configuration file content.
         $configContent = @()
         $configContent += "---"
@@ -188,7 +191,7 @@ steps:
                 $configContent += "        evidenceRegex: $($filter.evidenceRegex)"
             }
         }
-
+        
         $configContent += "  - type: 'exitStatus'"
         $configContent += "    parameters: {}"
         $configContent += "  - parameters:"
@@ -203,7 +206,7 @@ steps:
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'reportHtml'"
         $configContent += "    type: 'report'"
-
+        
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
         $finalConfig = $configContent -join "`n"
         $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
