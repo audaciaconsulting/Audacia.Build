@@ -59,11 +59,11 @@ steps:
   # Dynamically generate the ZAP Automation Framework configuration file.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
+    env:
+      ALERTFILTERS_JSON: ${{ toJson(parameters.alertFilters) }}
+      DELETE_GLOBAL_ALERTS: ${{ parameters.deleteGlobalAlerts }}
     inputs:
       targetType: 'inline'
-      env:
-        ALERTFILTERS_JSON: ${{ toJson(parameters.alertFilters) }}
-        DELETE_GLOBAL_ALERTS: ${{ parameters.deleteGlobalAlerts }}
       script: |
         # Determine the base URL. If the targetUrl contains '/swagger', remove that portion.
         $target = '${{ parameters.targetUrl }}'
