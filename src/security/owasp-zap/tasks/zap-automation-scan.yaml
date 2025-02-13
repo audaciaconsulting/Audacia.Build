@@ -59,9 +59,6 @@ steps:
   # Dynamically generate the ZAP Automation Framework configuration file.
   - task: PowerShell@2
     displayName: '${{ parameters.name }}: Generate ZAP Automation Config'
-    env:
-      ALERTFILTERS_JSON: $[toJson(parameters.alertFilters)]
-      DELETE_GLOBAL_ALERTS: $[parameters.deleteGlobalAlerts]
     inputs:
       targetType: 'inline'
       script: |
@@ -72,15 +69,6 @@ steps:
         } else {
             $baseUrl = $target
         }
-        
-        # Initialize alert filters if provided.
-        $alertFiltersJson = $env:ALERTFILTERS_JSON
-        if ($alertFiltersJson -and $alertFiltersJson -ne '[]' -and $alertFiltersJson -ne 'null') {
-            $alertFilters = $alertFiltersJson | ConvertFrom-Json
-        } else {
-            $alertFilters = @()
-        }
-        $deleteGlobalAlerts = $env:DELETE_GLOBAL_ALERTS
         
         # Begin building the configuration file content.
         $configContent = @()
@@ -171,155 +159,154 @@ steps:
         $configContent += "    type: 'activeScan'"
         $configContent += "    policyDefinition: {}"
         
-        # Insert the alertFilter job if any alert filters are provided.
-        if ($alertFilters.Count -gt 0) {
-            $configContent += "  - type: 'alertFilter'"
-            $configContent += "    parameters:"
-            $configContent += "      deleteGlobalAlerts: $deleteGlobalAlerts"
-            $configContent += "    alertFilters:"
-            foreach ($filter in $alertFilters) {
-                $configContent += "      - ruleId: $($filter.ruleId)"
-                $configContent += "        newRisk: '$($filter.newRisk)'"
-                $configContent += "        context: '$($filter.context)'"
-                $configContent += "        url: '$($filter.url)'"
-                $configContent += "        urlRegex: $($filter.urlRegex)"
-                $configContent += "        parameter: '$($filter.parameter)'"
-                $configContent += "        parameterRegex: $($filter.parameterRegex)"
-                $configContent += "        attack: '$($filter.attack)'"
-                $configContent += "        attackRegex: $($filter.attackRegex)"
-                $configContent += "        evidence: '$($filter.evidence)'"
-                $configContent += "        evidenceRegex: $($filter.evidenceRegex)"
-            }
-        }
-        
-        $configContent += "  - type: 'exitStatus'"
+        # Insert the alertFilter job if alertFilters are provided.
+${{ if ne(parameters.alertFilters, []) }}:
+  $configContent += "  - type: 'alertFilter'"
+        $configContent += "    parameters:"
+  $configContent += "      deleteGlobalAlerts: ${{ parameters.deleteGlobalAlerts }}"
+    $configContent += "    alertFilters:"
+${{ each filter in parameters.alertFilters }}:
+  $configContent += "      - ruleId: ${{ filter.ruleId }}"
+  $configContent += "        newRisk: '${{ filter.newRisk }}'"
+        $configContent += "        context: '${{ filter.context }}'"
+        $configContent += "        url: '${{ filter.url }}'"
+        $configContent += "        urlRegex: ${{ filter.urlRegex }}"
+  $configContent += "        parameter: '${{ filter.parameter }}'"
+        $configContent += "        parameterRegex: ${{ filter.parameterRegex }}"
+  $configContent += "        attack: '${{ filter.attack }}'"
+        $configContent += "        attackRegex: ${{ filter.attackRegex }}"
+  $configContent += "        evidence: '${{ filter.evidence }}'"
+        $configContent += "        evidenceRegex: ${{ filter.evidenceRegex }}"
+    ${{ end }}
+
+$configContent += "  - type: 'exitStatus'"
         $configContent += "    parameters: {}"
         $configContent += "  - parameters:"
-        $configContent += "      template: 'traditional-xml-plus'"
+  $configContent += "      template: 'traditional-xml-plus'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'reportXml'"
         $configContent += "    type: 'report'"
         $configContent += "  - parameters:"
-        $configContent += "      template: 'traditional-html-plus'"
+  $configContent += "      template: 'traditional-html-plus'"
         $configContent += "      reportTitle: 'ZAP Scanning Report'"
         $configContent += "      reportDescription: ''"
         $configContent += "    name: 'reportHtml'"
         $configContent += "    type: 'report'"
         
         $configFilePath = "$(workingTempDirectory)/zap-automation.yaml"
-        $finalConfig = $configContent -join "`n"
-        $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
-        Write-Output "Generated zap-automation.yaml at $configFilePath"
-        Write-Output "Configuration content:"
-        Write-Output $finalConfig
+  $finalConfig = $configContent -join "`n"
+  $finalConfig | Out-File -FilePath $configFilePath -Encoding UTF8
+  Write-Output "Generated zap-automation.yaml at $configFilePath"
+  Write-Output "Configuration content:"
+  Write-Output $finalConfig
 
-  # Publish the generated configuration file as a build artifact.
-  - task: PublishBuildArtifacts@1
-    displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
-    inputs:
-      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
-      artifactName: 'zap-automation-config'
-      publishLocation: 'Container'
+# Publish the generated configuration file as a build artifact.
+- task: PublishBuildArtifacts@1
+  displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
+  inputs:
+    pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+    artifactName: 'zap-automation-config'
+    publishLocation: 'Container'
 
-  # Run the OWASP ZAP Automation scan via Docker.
-  - task: Bash@3
-    displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
-    inputs:
-      targetType: 'inline'
-      script: |
-        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
+# Run the OWASP ZAP Automation scan via Docker.
+- task: Bash@3
+  displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
+  inputs:
+    targetType: 'inline'
+    script: |
+      docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
 
-  # Rename the generated report files to fixed names.
-  - task: PowerShell@2
-    displayName: 'Rename ZAP XML Report'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
-        if ($xmlFiles.Count -eq 0) {
-            Write-Error "No ZAP XML report file was found."
-            exit 1
-        }
-        $xmlReport = $xmlFiles[0].FullName
-        Write-Output "Found XML report file: $xmlReport"
-        $destXml = Join-Path "$(workingTempDirectory)" "Report.xml"
-        Copy-Item -Path $xmlReport -Destination $destXml -Force
-        Write-Output "Renamed XML report file to: $destXml"
+# Rename the generated report files to fixed names.
+- task: PowerShell@2
+  displayName: 'Rename ZAP XML Report'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
+      if ($xmlFiles.Count -eq 0) {
+          Write-Error "No ZAP XML report file was found."
+          exit 1
+      }
+      $xmlReport = $xmlFiles[0].FullName
+      Write-Output "Found XML report file: $xmlReport"
+      $destXml = Join-Path "$(workingTempDirectory)" "Report.xml"
+      Copy-Item -Path $xmlReport -Destination $destXml -Force
+      Write-Output "Renamed XML report file to: $destXml"
 
-  - task: PowerShell@2
-    displayName: 'Rename ZAP HTML Report'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
-        if ($htmlFiles.Count -eq 0) {
-            Write-Error "No ZAP HTML report file was found."
-            exit 1
-        }
-        $htmlReport = $htmlFiles[0].FullName
-        Write-Output "Found HTML report file: $htmlReport"
-        $destHtml = Join-Path "$(workingTempDirectory)" "Report.html"
-        Copy-Item -Path $htmlReport -Destination $destHtml -Force
-        Write-Output "Renamed HTML report file to: $destHtml"
+- task: PowerShell@2
+  displayName: 'Rename ZAP HTML Report'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
+      if ($htmlFiles.Count -eq 0) {
+          Write-Error "No ZAP HTML report file was found."
+          exit 1
+      }
+      $htmlReport = $htmlFiles[0].FullName
+      Write-Output "Found HTML report file: $htmlReport"
+      $destHtml = Join-Path "$(workingTempDirectory)" "Report.html"
+      Copy-Item -Path $htmlReport -Destination $destHtml -Force
+      Write-Output "Renamed HTML report file to: $destHtml"
 
-  # Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
-  - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
-        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
-        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
-        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
-        Write-Output "Transforming Report.xml into NUnit-Report.xml"
-        $XslTransform.Load($XslPath)
-        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+# Transform the XML report to NUnit format so that alerts appear as test cases in DevOps.
+- task: PowerShell@2
+  displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+      $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+      $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+      $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+      Write-Output "Transforming Report.xml into NUnit-Report.xml"
+      $XslTransform.Load($XslPath)
+      $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
 
-  # Create bug work items if configured.
-  - ${{ if eq(parameters.createBugsForFailures, true) }}:
-      - template: ./create-bugs.yaml
-        parameters:
-          parentCardId: ${{ parameters.parentCardId }}
-          organisationUri: ${{ parameters.organisationUri }}
-          projectName: ${{ parameters.projectName }}
-          name: ${{ parameters.name }}
+# Create bug work items if configured.
+- ${{ if eq(parameters.createBugsForFailures, true) }}:
+    - template: ./create-bugs.yaml
+      parameters:
+        parentCardId: ${{ parameters.parentCardId }}
+        organisationUri: ${{ parameters.organisationUri }}
+        projectName: ${{ parameters.projectName }}
+        name: ${{ parameters.name }}
 
-  # Publish the raw XML and HTML reports as build artifacts.
-  - task: PublishBuildArtifacts@1
-    displayName: '${{ parameters.name }}: Publish XML Report Artifact'
-    inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.xml'
-      artifactName: '${{ parameters.name }}-XML'
-      publishLocation: 'Container'
+# Publish the raw XML and HTML reports as build artifacts.
+- task: PublishBuildArtifacts@1
+  displayName: '${{ parameters.name }}: Publish XML Report Artifact'
+  inputs:
+    pathtoPublish: '$(workingTempDirectory)/Report.xml'
+    artifactName: '${{ parameters.name }}-XML'
+    publishLocation: 'Container'
 
-  - task: PublishBuildArtifacts@1
-    displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
-    inputs:
-      pathtoPublish: '$(workingTempDirectory)/Report.html'
-      artifactName: '${{ parameters.name }}-HTML'
-      publishLocation: 'Container'
+- task: PublishBuildArtifacts@1
+  displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
+  inputs:
+    pathtoPublish: '$(workingTempDirectory)/Report.html'
+    artifactName: '${{ parameters.name }}-HTML'
+    publishLocation: 'Container'
 
-  # Publish the transformed report as test results so that alerts are visible as test failures.
-  - task: PublishTestResults@2
-    displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
-    inputs:
-      testRunTitle: '${{ parameters.name }}'
-      testRunner: 'NUnit'
-      testResultsFiles: '**/NUnit-Report.xml'
-      searchFolder: '$(workingTempDirectory)'
-      publishRunAttachments: false
+# Publish the transformed report as test results so that alerts appear as test failures.
+- task: PublishTestResults@2
+  displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
+  inputs:
+    testRunTitle: '${{ parameters.name }}'
+    testRunner: 'NUnit'
+    testResultsFiles: '**/NUnit-Report.xml'
+    searchFolder: '$(workingTempDirectory)'
+    publishRunAttachments: false
 
-  # Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml).
-  - task: PowerShell@2
-    displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
-        if ($Alerts.Count -gt 0) {
-          Write-Output "Alerts detected; setting alertsExist variable to true."
-          Write-Host "##vso[task.setvariable variable=alertsExist]true"
-        }
-    condition: and(succeeded(), ne(variables.alertsExist, 'true'))
+# Set the alerts flag if any non-false-positive alerts exist (parsing Report.xml).
+- task: PowerShell@2
+  displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
+      if ($Alerts.Count -gt 0) {
+        Write-Output "Alerts detected; setting alertsExist variable to true."
+        Write-Host "##vso[task.setvariable variable=alertsExist]true"
+      }
+  condition: and(succeeded(), ne(variables.alertsExist, 'true'))
