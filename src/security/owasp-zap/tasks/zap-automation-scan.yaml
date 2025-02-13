@@ -108,7 +108,7 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
+        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)/scanoutput" -Recurse -Filter "*ZAP-Report*.html"
         if ($htmlFiles.Count -eq 0) {
             Write-Error "No ZAP HTML report file was found."
             exit 1
