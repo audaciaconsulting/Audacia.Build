@@ -79,11 +79,12 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        docker run --rm `
-          --mount type=bind,source="$(workingTempDirectory)/owasp-config",target=/zap/config,readonly `
-          --mount type=bind,source="$(workingTempDirectory)/scanoutput",target=/zap/wrk `
-          -w /zap/wrk `
+        docker run --rm \
+          --mount type=bind,source="$(workingTempDirectory)/owasp-config",target=/zap/config,readonly \
+          --mount type=bind,source="$(workingTempDirectory)/scanoutput",target=/zap/wrk \
+          -w /zap/wrk \
           ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/config/zap-automation.yaml
+
 
   # Rename the generated XML report.
   - task: PowerShell@2
