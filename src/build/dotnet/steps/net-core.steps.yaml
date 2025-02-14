@@ -10,13 +10,13 @@ parameters:
     default: 'Release'
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
-  - name: publishLockDepsArtifact      # Flag to enable publishing of lock/deps files artifact.
+  - name: publishLockDepsArtifact      # Flag to enable publishing of Dependency Lock files artifact.
     type: boolean
     default: false  # Set to true to collect and publish only *.deps.json files.
   - name: lockDepsArtifactName         # Name of the artifact containing deps files.
-    default: 'lock-deps-files'
+    default: 'dependency-lock-files'
   - name: lockDepsOutputDir            # Directory where deps files will be collected.
-    default: '$(Agent.TempDirectory)/lock-deps'
+    default: '$(Agent.TempDirectory)/dependency-lock'
   - name: lockDepsToInclude            # Patterns for .deps.json files to include (excludes package-lock.json)
     default: '*.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
 
@@ -79,7 +79,7 @@ steps:
         inputs:
           targetType: 'inline'
           script: |
-            $outputDir = "$(Agent.TempDirectory)/lock-deps"
+            $outputDir = "$(Agent.TempDirectory)/dependency-lock"
             if (-Not (Test-Path $outputDir)) {
               New-Item -ItemType Directory -Path $outputDir | Out-Null
             }
@@ -97,5 +97,5 @@ steps:
       - task: PublishPipelineArtifact@1
         displayName: 'Publish job deps artifact'
         inputs:
-          targetPath: '$(Agent.TempDirectory)/lock-deps'
-          artifact: "$(Agent.JobName)-lock-deps"
+          targetPath: '$(Agent.TempDirectory)/dependency-lock'
+          artifact: "$(Agent.JobName)-dependency-lock"

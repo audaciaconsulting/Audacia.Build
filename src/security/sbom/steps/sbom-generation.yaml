@@ -3,7 +3,7 @@ parameters:
   - name: sbomOutputDir
     type: string
     default: '$(Agent.TempDirectory)/sbom'        # Local folder to store the generated SBOM files.
-  - name: lockDepsArtifactDir
+  - name: dependencyLockArtifactDirectory
     type: string
     default: ''                                    # Path containing the published package-lock.json and deps.json artifact.
   - name: outputFormat
@@ -21,11 +21,11 @@ parameters:
 
 steps:
   - task: DownloadPipelineArtifact@2
-    displayName: 'Download lock/deps artifact'
+    displayName: 'Download Dependency Lock artifact'
     inputs:
       buildType: 'current'
-      artifact: 'lock-deps-files'
-      path: '$(Agent.TempDirectory)/lock-deps'
+      artifact: 'dependency-lock-files'
+      path: '$(Agent.TempDirectory)/dependency-lock'
 
   # Install Syft before generating SBOMs.
   - script: |
@@ -34,22 +34,22 @@ steps:
     displayName: 'Install Syft (SBOM Generator)'
 
   - task: PowerShell@2
-    displayName: 'Generate SBOM for Lock/Deps Files'
+    displayName: 'Generate SBOM for Dependency Lock Files'
     inputs:
       targetType: 'inline'
       script: |
-        $lockDepsDir = "${{ parameters.lockDepsArtifactDir }}"
-        if (-Not (Test-Path $lockDepsDir)) {
+        $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
+        if (-Not (Test-Path $dependencyLockDir)) {
           # If the parameter isn’t set, assume the default download path.
-          $lockDepsDir = "$(Agent.TempDirectory)/lock-deps"
+          $dependencyLockDir = "$(Agent.TempDirectory)/dependency-lock"
         }
-        Write-Host "Generating SBOM for files in artifact directory: $lockDepsDir"
+        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
         $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
         if (-Not (Test-Path $sbomOutputDir)) {
             New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
         # Loop through every JSON file in the flat folder.
-        $files = Get-ChildItem -Path $lockDepsDir -Filter "*.json"
+        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
         foreach ($file in $files) {
             if ($file.Name -eq "package-lock.json") {
                 $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
