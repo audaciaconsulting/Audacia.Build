@@ -5,7 +5,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'           # Directory to store generated SBOM files.
   - name: lockDepsArtifactDir
     type: string
-    default: ''                                       # If not provided, the aggregated lock/deps artifact will be downloaded.
+    default: '$(Agent.TempDirectory)/lock-deps'       # If not provided, the aggregated lock/deps artifact will be downloaded.
   - name: outputFormat
     type: string
     default: 'cyclonedx-json'                         # SBOM output format.
@@ -36,14 +36,14 @@ steps:
         inputs:
           buildType: 'current'
           artifact: 'lock-deps-files'
-          path: '$(Agent.TempDirectory)/lock-deps'
+          path: ${{ parameters.lockDepsArtifactDir }}
 
   # Generate SBOMs using the aggregated lock/deps files.
   - template: sbom-generation.yaml@templates
     parameters:
       sbomOutputDir: ${{ parameters.sbomOutputDir }}
       # In composite mode we assume the aggregated files are in $(Agent.TempDirectory)/lock-deps.
-      lockDepsArtifactDir: '$(Agent.TempDirectory)/lock-deps'
+      lockDepsArtifactDir: ${{ parameters.lockDepsArtifactDir }}
       outputFormat: ${{ parameters.outputFormat }}
       publishArtifact: ${{ parameters.publishGenerationArtifact }}
       artifactName: ${{ parameters.sbomArtifactName }}
