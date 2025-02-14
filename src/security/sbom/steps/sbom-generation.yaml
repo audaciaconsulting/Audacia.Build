@@ -60,7 +60,6 @@ steps:
                 $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
             }
             else {
-                Write-Host "Skipping unrecognized file: $($file.FullName)"
                 continue
             }
             Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
