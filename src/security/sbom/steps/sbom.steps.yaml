@@ -15,9 +15,6 @@ parameters:
   - name: analysisOutputFormat
     type: string
     default: 'cyclonedx-json'                         # Output format for vulnerability analysis.
-  - name: downloadArtifact
-    type: boolean
-    default: true                                     # In composite mode, we download the SBOM artifact for analysis.
   - name: publishGenerationArtifact
     type: boolean
     default: true                                     # Controls publishing of the SBOM generation artifact.
