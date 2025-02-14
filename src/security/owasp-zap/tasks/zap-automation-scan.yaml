@@ -161,7 +161,7 @@ steps:
   # Step 2 (conditional): Append the alert filter block if alert filters are provided.
   - ${{ if gt(length(parameters.alertFilters), 0) }}:
       - task: Bash@3
-        displayName: '${{ parameters.name }}: Append Alert Filter Block'
+        displayName: '${{ parameters.name }}: Append Alert Filter Block Header'
         inputs:
           targetType: 'inline'
           script: |
@@ -169,18 +169,28 @@ steps:
             echo "    parameters:" >> "$(workingTempDirectory)/zap-automation.yaml"
             echo "      deleteGlobalAlerts: ${{ parameters.deleteGlobalAlerts }}" >> "$(workingTempDirectory)/zap-automation.yaml"
             echo "    alertFilters:" >> "$(workingTempDirectory)/zap-automation.yaml"
-            ${{ each filter in parameters.alertFilters }}:
-              echo "      - ruleId: ${{ filter.ruleId }}" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        newRisk: '${{ filter.newRisk }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        context: '${{ filter.context }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        url: '${{ filter.url }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        urlRegex: ${{ filter.urlRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        parameter: '${{ filter.parameter }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        parameterRegex: ${{ filter.parameterRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        attack: '${{ filter.attack }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        attackRegex: ${{ filter.attackRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        evidence: '${{ filter.evidence }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
-              echo "        evidenceRegex: ${{ filter.evidenceRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+      - ${{ each filter in parameters.alertFilters }}:
+          - task: Bash@3
+            displayName: '${{ parameters.name }}: Append Alert Filter for ruleId ${{ filter.ruleId }}'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "      - ruleId: ${{ filter.ruleId }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        newRisk: '${{ filter.newRisk }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        context: '${{ filter.context }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        url: '${{ filter.url }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        urlRegex: ${{ filter.urlRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        parameter: '${{ filter.parameter }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        parameterRegex: ${{ filter.parameterRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        attack: '${{ filter.attack }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        attackRegex: ${{ filter.attackRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        evidence: '${{ filter.evidence }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        evidenceRegex: ${{ filter.evidenceRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+      - task: Bash@3
+        displayName: '${{ parameters.name }}: Append Alert Filter Block Footer'
+        inputs:
+          targetType: 'inline'
+          script: |
             echo "Alert filter block appended."
 
   # Step 3: Append the remainder of the configuration.
