@@ -160,37 +160,28 @@ steps:
 
   # Step 2 (conditional): Append the alert filter block if alert filters are provided.
   - ${{ if gt(length(parameters.alertFilters), 0) }}:
-      - task: PowerShell@2
+      - task: Bash@3
         displayName: '${{ parameters.name }}: Append Alert Filter Block'
-        env:
-          ALERT_FILTERS: $[toJson(parameters.alertFilters)]
-          DELETE_GLOBAL_ALERTS: $[toJson(parameters.deleteGlobalAlerts)]
         inputs:
           targetType: 'inline'
           script: |
-            $alertFilters = $env:ALERT_FILTERS | ConvertFrom-Json
-            if ($alertFilters.Count -gt 0) {
-              $alertBlock = @()
-              $alertBlock += "  - type: 'alertFilter'"
-              $alertBlock += "    parameters:"
-              $alertBlock += "      deleteGlobalAlerts: $env:DELETE_GLOBAL_ALERTS"
-              $alertBlock += "    alertFilters:"
-              foreach ($filter in $alertFilters) {
-                $alertBlock += "      - ruleId: $($filter.ruleId)"
-                $alertBlock += "        newRisk: '$($filter.newRisk)'"
-                $alertBlock += "        context: '$($filter.context)'"
-                $alertBlock += "        url: '$($filter.url)'"
-                $alertBlock += "        urlRegex: $($filter.urlRegex)"
-                $alertBlock += "        parameter: '$($filter.parameter)'"
-                $alertBlock += "        parameterRegex: $($filter.parameterRegex)"
-                $alertBlock += "        attack: '$($filter.attack)'"
-                $alertBlock += "        attackRegex: $($filter.attackRegex)"
-                $alertBlock += "        evidence: '$($filter.evidence)'"
-                $alertBlock += "        evidenceRegex: $($filter.evidenceRegex)"
-              }
-              $alertBlock | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Append -Encoding UTF8
-              Write-Output "Alert filter block appended."
-            }
+            echo "  - type: 'alertFilter'" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "    parameters:" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "      deleteGlobalAlerts: ${{ parameters.deleteGlobalAlerts }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "    alertFilters:" >> "$(workingTempDirectory)/zap-automation.yaml"
+            ${{ each filter in parameters.alertFilters }}:
+              echo "      - ruleId: ${{ filter.ruleId }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        newRisk: '${{ filter.newRisk }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        context: '${{ filter.context }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        url: '${{ filter.url }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        urlRegex: ${{ filter.urlRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        parameter: '${{ filter.parameter }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        parameterRegex: ${{ filter.parameterRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        attack: '${{ filter.attack }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        attackRegex: ${{ filter.attackRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        evidence: '${{ filter.evidence }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+              echo "        evidenceRegex: ${{ filter.evidenceRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "Alert filter block appended."
 
   # Step 3: Append the remainder of the configuration.
   - task: PowerShell@2
