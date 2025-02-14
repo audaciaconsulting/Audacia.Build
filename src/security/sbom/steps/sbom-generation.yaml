@@ -48,7 +48,7 @@ steps:
         if (-Not (Test-Path $sbomOutputDir)) {
             New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
-        # Loop through every JSON file in the flat folder.
+        # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
         $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
         foreach ($file in $files) {
             if ($file.Name -eq "package-lock.json") {
