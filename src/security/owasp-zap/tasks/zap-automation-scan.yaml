@@ -159,6 +159,7 @@ steps:
         Write-Output "Static config generated."
 
   # Step 2 (conditional): Append the alert filter block if alert filters are provided.
+  # I am having to use Bash here to add the alerts because I couldn't get the PowerShell task to append the alert filters correctly.
   - ${{ if gt(length(parameters.alertFilters), 0) }}:
       - task: Bash@3
         displayName: '${{ parameters.name }}: Append Alert Filter Block Header'
