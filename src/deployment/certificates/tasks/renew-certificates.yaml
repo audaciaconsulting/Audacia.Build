@@ -44,8 +44,7 @@ steps:
       scriptType: pscore
       scriptLocation: inlineScript
       inlineScript: |
-          $env:AZCOPY_SPA_CLIENT_SECRET=$env:servicePrincipalKey
-          azcopy login --service-principal --application-id $env:servicePrincipalId --tenant-id $env:tenantId
+          azcopy login --login-type azcli --tenant-id $env:tenantId
       addSpnToEnvironment: true
       powerShellErrorActionPreference: 'stop'
       failOnStandardError: true
