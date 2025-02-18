@@ -27,6 +27,9 @@ parameters:
   - name: grypeInstallDir
     type: string
     default: '$(Agent.TempDirectory)'                 # Directory for installing Grype.
+  - name: downloadArtifact
+    type: boolean
+    default: true                                    # If true, download the SBOM artifact before analysis.
 
 steps:
   # If a dependencyLockArtifactDirectory isn’t provided, download the aggregated Dependency Lock artifact.
@@ -55,6 +58,6 @@ steps:
       sbomDir: ${{ parameters.sbomOutputDir }}
       analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
       vulnFolder: ${{ parameters.vulnFolder }}
-      downloadArtifact: true
+      downloadArtifact: ${{ parameters.downloadArtifact }}
       sbomArtifactName: ${{ parameters.sbomArtifactName }}
       grypeInstallDir: ${{ parameters.grypeInstallDir }}
