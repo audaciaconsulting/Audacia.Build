@@ -10,15 +10,6 @@ parameters:
     default: 'Release'
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
-  - name: publishLockDepsArtifact      # Flag to enable publishing of Dependency Lock files artifact.
-    type: boolean
-    default: false  # Set to true to collect and publish only *.deps.json files.
-  - name: lockDepsArtifactName         # Name of the artifact containing deps files.
-    default: 'dependency-lock-files'
-  - name: lockDepsOutputDir            # Directory where deps files will be collected.
-    default: '$(Agent.TempDirectory)/dependency-lock'
-  - name: lockDepsToInclude            # Patterns for .deps.json files to include (excludes package-lock.json)
-    default: '*.Api.deps.json, *.Identity.deps.json, *.Tests.deps.json'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -27,28 +18,28 @@ steps:
       command: restore
       ${{ if eq(parameters.runTests, true) }}:
         projects: |
-          ${{ parameters.projects }}
-          ${{ parameters.tests }}
+          ${{parameters.projects}}
+          ${{parameters.tests}}
       ${{ else }}:
-        projects: ${{ parameters.projects }}
+        projects: ${{parameters.projects}}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
 
   - task: DotNetCoreCLI@2
     displayName: .NET Build
     inputs:
       command: build
-      projects: ${{ parameters.projects }}
+      projects: ${{parameters.projects}}
       publishWebProjects: false
       arguments: >
-        --configuration ${{ parameters.configuration }}
+        --configuration ${{parameters.configuration}}
         --no-restore
 
   - task: DotNetCoreCLI@2
     displayName: .NET Test
-    condition: and(succeeded(), eq('${{ parameters.runTests }}', true))
+    condition: and(succeeded(), eq('${{parameters.runTests}}', true))
     inputs:
       command: test
-      projects: ${{ parameters.tests }}
+      projects: ${{parameters.tests}}
       arguments: >
         --collect "Code coverage"
       configuration: 'Release'
@@ -58,9 +49,9 @@ steps:
     inputs:
       command: publish
       publishWebProjects: false
-      projects: ${{ parameters.projects }}
+      projects: ${{parameters.projects}}
       arguments: >
-        --configuration ${{ parameters.configuration }}
+        --configuration ${{parameters.configuration}}
         --output $(Build.ArtifactStagingDirectory)
         --no-restore
         --no-build
@@ -70,32 +61,4 @@ steps:
   - template: /src/build/common/tasks/publish.yaml
     parameters:
       path: ''
-      artifactName: ${{ parameters.artifactName }}
-
-  # Optional step: Collect and publish only the deps.json files.
-  - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
-      - task: PowerShell@2
-        displayName: 'Collect deps.json files'
-        inputs:
-          targetType: 'inline'
-          script: |
-            $outputDir = "$(Agent.TempDirectory)/dependency-lock"
-            if (-Not (Test-Path $outputDir)) {
-              New-Item -ItemType Directory -Path $outputDir | Out-Null
-            }
-            # Split the provided patterns into an array.
-            $patterns = "${{ parameters.lockDepsToInclude }}" -split ',\s*'
-            Write-Host "Collecting deps files from the source directory using patterns: $patterns"
-            # Recursively find all matching deps.json files and copy them into the flat folder.
-            Get-ChildItem -Path $env:BUILD_SOURCESDIRECTORY -Recurse -Include $patterns | ForEach-Object {
-              $destination = Join-Path -Path $outputDir -ChildPath $_.Name
-              Copy-Item -Path $_.FullName -Destination $destination -Force
-            }
-
-  # Instead of publishing the same artifact name from each job, publish using a job-unique name.
-  - ${{ if eq(parameters.publishLockDepsArtifact, true) }}:
-      - task: PublishPipelineArtifact@1
-        displayName: 'Publish job deps artifact'
-        inputs:
-          targetPath: '$(Agent.TempDirectory)/dependency-lock'
-          artifact: "$(Agent.JobName)-dependency-lock"
+      artifactName: ${{parameters.artifactName}}
