@@ -1,0 +1,95 @@
+# sbom-analysis.yaml
+parameters:
+  - name: sbomDir
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'       # Directory containing the SBOM files to be analyzed.
+  - name: sbomGlob
+    type: string
+    default: 'sbom-*.json'                         # Glob pattern to match SBOM files for analysis.
+  - name: analysisOutputFormat
+    type: string
+    default: 'cyclonedx-json'                     # Output format for Grype vulnerability analysis.
+  - name: vulnFolder
+    type: string
+    default: '$(Agent.TempDirectory)/vuln'         # Directory where vulnerability reports will be stored.
+  - name: downloadArtifact
+    type: boolean
+    default: false                                # If true, download the SBOM artifact before analysis.
+  - name: sbomArtifactName
+    type: string
+    default: 'sbom-files'                         # The name of the SBOM artifact published during generation.
+  - name: grypeInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'             # Directory where Grype (the vulnerability scanner) will be installed.
+
+steps:
+  # Optionally download the SBOM artifact if needed.
+  - ${{ if eq(parameters.downloadArtifact, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download SBOM Artifact'
+        inputs:
+          buildType: 'current'
+          artifact: ${{ parameters.sbomArtifactName }}
+          path: ${{ parameters.sbomDir }}
+
+  - task: PowerShell@2
+    displayName: 'Install Grype'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Installing Grype into $env:grypeInstallDir"
+        curl.exe -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "${{ parameters.grypeInstallDir }}"
+
+  - task: PowerShell@2
+    displayName: 'Create vulnerability folder'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Creating vulnerability folder: ${{ parameters.vulnFolder }}"
+        if (!(Test-Path "${{ parameters.vulnFolder }}")) {
+            New-Item -ItemType Directory -Path "${{ parameters.vulnFolder }}" | Out-Null
+        }
+
+  # Loop over each SBOM file (matching the provided glob) and run Grype to generate a vulnerability report.
+  - task: PowerShell@2
+    displayName: 'Run Grype on All SBOM Files'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $sbomFiles = Get-ChildItem -Path "${{ parameters.sbomDir }}" -Filter "*.json"
+        if ($sbomFiles.Count -eq 0) {
+            Write-Host "No SBOM files found in ${env:sbomDir}"
+            exit 0
+        }
+        $exitCode = 0
+        foreach ($file in $sbomFiles) {
+            if ($file.Name -eq "npm-sbom.json") {
+                $reportName = "npm-vuln-report.json"
+            }
+            elseif ($file.Name -like "*-sbom.json") {
+                # Replace the -sbom suffix with -vuln-report.
+                $reportName = $file.Name -replace '-sbom', '-vuln-report'
+            }
+            else {
+                Write-Host "Skipping unrecognized SBOM file: $($file.Name)"
+                continue
+            }
+            $vulnOutput = Join-Path "${{ parameters.vulnFolder }}" $reportName
+            Write-Host "Running Grype on SBOM file: $($file.FullName). Output: $vulnOutput"
+            & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$($file.FullName) --fail-on low -o ${{ parameters.analysisOutputFormat }}="$vulnOutput" -o table
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Grype reported vulnerabilities for $($file.Name) with exit code $LASTEXITCODE"
+                $exitCode = 1
+            }
+        }
+        Write-Host "Overall Grype analysis exit code: $exitCode"
+        Write-Host "##vso[task.setvariable variable=OverallGrypeExitCode]$exitCode"
+        exit $exitCode
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish vulnerability report'
+    condition: always()
+    inputs:
+      targetPath: ${{ parameters.vulnFolder }}
+      publishLocation: 'pipeline'
+      artifact: 'vuln-files'

@@ -1,0 +1,76 @@
+# sbom-generation.yaml
+parameters:
+  - name: sbomOutputDir
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'        # Local folder to store the generated SBOM files.
+  - name: dependencyLockArtifactDirectory
+    type: string
+    default: '$(Agent.TempDirectory)/lock-deps'                                    # Path containing the published package-lock.json and deps.json artifact.
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'                      # SBOM output format (e.g., cyclonedx-json).
+  - name: publishArtifact
+    type: boolean
+    default: true                                 # Whether to publish the generated SBOM as a pipeline artifact.
+  - name: artifactName
+    type: string
+    default: 'sbom-files'                         # Artifact name for the generated SBOM files.
+  - name: syftInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'             # Directory where Syft (the SBOM generator) will be installed.
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Dependency Lock artifact'
+    inputs:
+      buildType: 'current'
+      artifact: 'lock-deps-files'                  # Updated artifact name to match published artifact.
+      path: ${{ parameters.dependencyLockArtifactDirectory }}
+
+  # Install Syft before generating SBOMs.
+  - script: |
+      echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
+    displayName: 'Install Syft (SBOM Generator)'
+
+  - task: PowerShell@2
+    displayName: 'Generate SBOM for Dependency Lock Files'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
+        if (-Not (Test-Path $dependencyLockDir)) {
+          # If the parameter isn’t set, assume the default download path.
+          $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
+        }
+        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
+        $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
+        if (-Not (Test-Path $sbomOutputDir)) {
+            New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
+        }
+        # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
+        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
+        foreach ($file in $files) {
+            if ($file.Name -eq "package-lock.json") {
+                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
+            }
+            elseif ($file.Name -like "*.deps.json") {
+                # Remove the '.deps' segment and append -sbom.json.
+                $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
+                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
+            }
+            else {
+                continue
+            }
+            Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
+            & "${{ parameters.syftInstallDir }}\syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$($file.FullName)"
+        }
+
+  # Publish the generated SBOM files as an artifact if enabled.
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish SBOM Artifact'
+        inputs:
+          targetPath: ${{ parameters.sbomOutputDir }}
+          publishLocation: 'pipeline'
+          artifact: ${{ parameters.artifactName }}
