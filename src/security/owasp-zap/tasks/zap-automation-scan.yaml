@@ -1,0 +1,321 @@
+parameters:
+  - name: name
+    type: string
+    default: ''
+  - name: targetUrl
+    type: string
+    default: ''
+  - name: scanType
+    type: string
+    default: 'quick-scan'   # Allowed values: "quick-scan" or "API"
+  - name: maxScanTime
+    type: number
+    default: '15'  # in minutes
+  - name: authorizationHeaderValue
+    type: string
+    default: ''  # Used for API scans; if empty, the JWT access token will be used
+  - name: createBugsForFailures
+    type: boolean
+    default: 'false'
+  - name: parentCardId
+    type: string
+    default: ''
+  - name: organisationUri
+    type: string
+    default: '$(System.TeamFoundationCollectionUri)'
+  - name: projectName
+    type: string
+    default: '$(System.TeamProject)'
+  - name: deleteGlobalAlerts         # New parameter to control deletion of global alerts.
+    type: boolean
+    default: false
+  - name: alertFilters               # New parameter to pass a list of alert filters.
+    type: object
+    default: []
+
+steps:
+  # Verify that the initialization step has run.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Verify Initialization'
+    inputs:
+      targetType: 'inline'
+      script: |
+        if (-not (Test-Path -Path "$(parentWorkingTempDirectory)")) {
+          throw "Initialization must be run before the scan. Please ensure initialize.yaml is included."
+        }
+
+  # Create a working directory for this scan.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Create Scan Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        New-Item -Path "$(parentWorkingTempDirectory)" -Name "${{ parameters.name }}" -ItemType "directory"
+        $NewDirectoryFullPath = "$(parentWorkingTempDirectory)/${{ parameters.name }}"
+        Write-Host "##vso[task.setvariable variable=workingTempDirectory]$NewDirectoryFullPath"
+        chmod a+w "$NewDirectoryFullPath"
+        Write-Output "Created working folder at $NewDirectoryFullPath"
+
+  # Step 1: Generate the static portion of the configuration.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Generate Static ZAP Automation Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Determine the base URL.
+        $target = '${{ parameters.targetUrl }}'
+        if ($target -match "/swagger") {
+          $baseUrl = $target -replace "/swagger.*", ""
+        } else {
+          $baseUrl = $target
+        }
+        $staticConfig = @()
+        $staticConfig += "---"
+        $staticConfig += "env:"
+        if ('${{ parameters.scanType }}' -eq 'API' -and '${{ parameters.authorizationHeaderValue }}' -ne '') {
+          $staticConfig += "  httpHeaders:"
+          $staticConfig += "  - name: Authorization"
+          $staticConfig += "    value: '${{ parameters.authorizationHeaderValue }}'"
+        }
+        $staticConfig += "  contexts:"
+        $staticConfig += "  - name: 'Authentication Test'"
+        $staticConfig += "    urls:"
+        $staticConfig += "    - '$baseUrl'"
+        $staticConfig += "    includePaths:"
+        $staticConfig += "    - '$baseUrl.*'"
+        $staticConfig += "    excludePaths: []"
+        if ('${{ parameters.scanType }}' -ne 'API') {
+          $staticConfig += "    authentication:"
+          $staticConfig += "      method: 'browser'"
+          $staticConfig += "      parameters:"
+          $staticConfig += "        loginPageUrl: '$baseUrl/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize...'"
+          $staticConfig += "        loginPageWait: 2"
+          $staticConfig += "        browserId: 'firefox'"
+          $staticConfig += "    verification:"
+          $staticConfig += "      method: 'poll'"
+          $staticConfig += "      loggedInRegex: '\\Q 200 OK\\E'"
+          $staticConfig += "      loggedOutRegex: '\\Q 401 Unauthorized\\E'"
+          $staticConfig += "      pollFrequency: 60"
+          $staticConfig += "      pollUnits: 'requests'"
+          $staticConfig += "      pollUrl: '$baseUrl/connect/userinfo'"
+          $staticConfig += "      pollPostData: ''"
+          $staticConfig += "      pollAdditionalHeaders:"
+          $staticConfig += "      - header: 'content-type'"
+          $staticConfig += "        value: 'application/x-www-form-urlencoded'"
+        }
+        $staticConfig += "    sessionManagement:"
+        $staticConfig += "      method: 'headers'"
+        $staticConfig += "      parameters:"
+        $staticConfig += "        Cookie: '.AspNetCore.Antiforgery.cdV5uW_Ejgc={%cookie:.AspNetCore.Antiforgery.cdV5uW_Ejgc%}; ARRAffinity=REDACTED; ARRAffinitySameSite=REDACTED'"
+        $staticConfig += "    technology:"
+        $staticConfig += "      exclude: []"
+        $staticConfig += "  parameters:"
+        $staticConfig += "    failOnError: true"
+        $staticConfig += "    failOnWarning: false"
+        $staticConfig += "    progressToStdout: true"
+        $staticConfig += "  vars: {}"
+        $staticConfig += "jobs:"
+        $staticConfig += "  - parameters:"
+        $staticConfig += "      scanOnlyInScope: true"
+        $staticConfig += "      enableTags: false"
+        $staticConfig += "      disableAllRules: false"
+        $staticConfig += "    rules: []"
+        $staticConfig += "    name: 'passiveScan-config'"
+        $staticConfig += "    type: 'passiveScan-config'"
+        $staticConfig += "  - parameters: {}"
+        $staticConfig += "    name: 'spider'"
+        $staticConfig += "    type: 'spider'"
+        $staticConfig += "    tests:"
+        $staticConfig += "    - onFail: 'INFO'"
+        $staticConfig += "      statistic: 'automation.spider.urls.added'"
+        $staticConfig += "      site: ''"
+        $staticConfig += "      operator: '>='"
+        $staticConfig += "      value: 100"
+        $staticConfig += "      type: 'stats'"
+        $staticConfig += "      name: 'At least 100 URLs found'"
+        $staticConfig += "  - parameters:"
+        $staticConfig += "      maxDuration: ${{ parameters.maxScanTime }}"
+        $staticConfig += "      maxCrawlDepth: 10"
+        $staticConfig += "      numberOfBrowsers: 32"
+        $staticConfig += "      inScopeOnly: true"
+        $staticConfig += "    name: 'spiderAjax'"
+        $staticConfig += "    type: 'spiderAjax'"
+        $staticConfig += "    tests:"
+        $staticConfig += "    - onFail: 'INFO'"
+        $staticConfig += "      statistic: 'spiderAjax.urls.added'"
+        $staticConfig += "      site: ''"
+        $staticConfig += "      operator: '>='"
+        $staticConfig += "      value: 100"
+        $staticConfig += "      type: 'stats'"
+        $staticConfig += "      name: 'At least 100 URLs found'"
+        $staticConfig += "  - parameters: {}"
+        $staticConfig += "    name: 'passiveScan-wait'"
+        $staticConfig += "    type: 'passiveScan-wait'"
+        $staticConfig += "  - parameters: {}"
+        $staticConfig += "    name: 'activeScan'"
+        $staticConfig += "    type: 'activeScan'"
+        $staticConfig += "    policyDefinition: {}"
+        $staticConfig | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Encoding UTF8
+        Write-Output "Static config generated."
+
+  # Step 2 (conditional): Append the alert filter block if alert filters are provided.
+  # I am having to use Bash here to add the alerts because I couldn't get the PowerShell task to append the alert filters correctly.
+  - ${{ if gt(length(parameters.alertFilters), 0) }}:
+      - task: Bash@3
+        displayName: '${{ parameters.name }}: Append Alert Filter Block Header'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "  - type: 'alertFilter'" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "    parameters:" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "      deleteGlobalAlerts: ${{ parameters.deleteGlobalAlerts }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+            echo "    alertFilters:" >> "$(workingTempDirectory)/zap-automation.yaml"
+      - ${{ each filter in parameters.alertFilters }}:
+          - task: Bash@3
+            displayName: '${{ parameters.name }}: Append Alert Filter for ruleId ${{ filter.ruleId }}'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "      - ruleId: ${{ filter.ruleId }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        newRisk: '${{ filter.newRisk }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        context: '${{ filter.context }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        url: '${{ filter.url }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        urlRegex: ${{ filter.urlRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        parameter: '${{ filter.parameter }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        parameterRegex: ${{ filter.parameterRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        attack: '${{ filter.attack }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        attackRegex: ${{ filter.attackRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        evidence: '${{ filter.evidence }}'" >> "$(workingTempDirectory)/zap-automation.yaml"
+                echo "        evidenceRegex: ${{ filter.evidenceRegex }}" >> "$(workingTempDirectory)/zap-automation.yaml"
+      - task: Bash@3
+        displayName: '${{ parameters.name }}: Append Alert Filter Block Footer'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Alert filter block appended."
+
+  # Step 3: Append the remainder of the configuration.
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Append Remainder of Config'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $remainder = @()
+        $remainder += "  - type: 'exitStatus'"
+        $remainder += "    parameters: {}"
+        $remainder += "  - parameters:"
+        $remainder += "      template: 'traditional-xml-plus'"
+        $remainder += "      reportTitle: 'ZAP Scanning Report'"
+        $remainder += "      reportDescription: ''"
+        $remainder += "    name: 'reportXml'"
+        $remainder += "    type: 'report'"
+        $remainder += "  - parameters:"
+        $remainder += "      template: 'traditional-html-plus'"
+        $remainder += "      reportTitle: 'ZAP Scanning Report'"
+        $remainder += "      reportDescription: ''"
+        $remainder += "    name: 'reportHtml'"
+        $remainder += "    type: 'report'"
+        $remainder | Out-File -FilePath "$(workingTempDirectory)/zap-automation.yaml" -Append -Encoding UTF8
+        Write-Output "Remainder of config appended."
+
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish ZAP Automation Config Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/zap-automation.yaml'
+      artifactName: 'zap-automation-config'
+      publishLocation: 'Container'
+
+  - task: Bash@3
+    displayName: '${{ parameters.name }}: Run OWASP ZAP Automation Scan'
+    inputs:
+      targetType: 'inline'
+      script: |
+        docker run --rm --mount type=bind,source="$(workingTempDirectory)",target=/zap/wrk -w /zap ghcr.io/zaproxy/zaproxy:stable /zap/zap.sh -cmd -autorun /zap/wrk/zap-automation.yaml
+
+  - task: PowerShell@2
+    displayName: 'Rename ZAP XML Report'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $xmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.xml"
+        if ($xmlFiles.Count -eq 0) {
+          Write-Error "No ZAP XML report file was found."
+          exit 1
+        }
+        $xmlReport = $xmlFiles[0].FullName
+        Write-Output "Found XML report file: $xmlReport"
+        $destXml = Join-Path "$(workingTempDirectory)" "Report.xml"
+        Copy-Item -Path $xmlReport -Destination $destXml -Force
+        Write-Output "Renamed XML report file to: $destXml"
+
+  - task: PowerShell@2
+    displayName: 'Rename ZAP HTML Report'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $htmlFiles = Get-ChildItem -Path "$(workingTempDirectory)" -Recurse -Filter "*ZAP-Report*.html"
+        if ($htmlFiles.Count -eq 0) {
+          Write-Error "No ZAP HTML report file was found."
+          exit 1
+        }
+        $htmlReport = $htmlFiles[0].FullName
+        Write-Output "Found HTML report file: $htmlReport"
+        $destHtml = Join-Path "$(workingTempDirectory)" "Report.html"
+        Copy-Item -Path $htmlReport -Destination $destHtml -Force
+        Write-Output "Renamed HTML report file to: $destHtml"
+
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Transform XML Report to NUnit Format'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $XslPath = "$(parentWorkingTempDirectory)/OWASPToNUnit3.xslt"
+        $XmlInputPath = "$(workingTempDirectory)/Report.xml"
+        $XmlOutputPath = "$(workingTempDirectory)/NUnit-Report.xml"
+        $XslTransform = New-Object System.Xml.Xsl.XslCompiledTransform
+        Write-Output "Transforming Report.xml into NUnit-Report.xml"
+        $XslTransform.Load($XslPath)
+        $XslTransform.Transform($XmlInputPath, $XmlOutputPath)
+
+  - ${{ if eq(parameters.createBugsForFailures, true) }}:
+      - template: ./create-bugs.yaml
+        parameters:
+          parentCardId: ${{ parameters.parentCardId }}
+          organisationUri: ${{ parameters.organisationUri }}
+          projectName: ${{ parameters.projectName }}
+          name: ${{ parameters.name }}
+
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish XML Report Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.xml'
+      artifactName: '${{ parameters.name }}-XML'
+      publishLocation: 'Container'
+
+  - task: PublishBuildArtifacts@1
+    displayName: '${{ parameters.name }}: Publish HTML Report Artifact'
+    inputs:
+      pathtoPublish: '$(workingTempDirectory)/Report.html'
+      artifactName: '${{ parameters.name }}-HTML'
+      publishLocation: 'Container'
+
+  - task: PublishTestResults@2
+    displayName: '${{ parameters.name }}: Publish Scan Results as Test Results'
+    inputs:
+      testRunTitle: '${{ parameters.name }}'
+      testRunner: 'NUnit'
+      testResultsFiles: '**/NUnit-Report.xml'
+      searchFolder: '$(workingTempDirectory)'
+      publishRunAttachments: false
+
+  - task: PowerShell@2
+    displayName: '${{ parameters.name }}: Set Alerts Exist Flag If Required'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $Alerts = Select-Xml -Path "$(workingTempDirectory)/Report.xml" -XPath "//*[local-name()='alertitem'][not(.//confidence='0')]"
+        if ($Alerts.Count -gt 0) {
+          Write-Output "Alerts detected; setting alertsExist variable to true."
+          Write-Host "##vso[task.setvariable variable=alertsExist]true"
+        }
+    condition: and(succeeded(), ne(variables.alertsExist, 'true'))
