@@ -18,8 +18,8 @@ steps:
       command: restore
       ${{ if eq(parameters.runTests, true) }}:
         projects: |
-            ${{parameters.projects}}
-            ${{parameters.tests}}
+          ${{parameters.projects}}
+          ${{parameters.tests}}
       ${{ else }}:
         projects: ${{parameters.projects}}
       vstsFeed: 'Audacia.Public/AudaciaPublic'

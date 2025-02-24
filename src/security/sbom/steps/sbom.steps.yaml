@@ -1,0 +1,63 @@
+# sbom.steps.yaml
+parameters:
+  - name: sbomOutputDir
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'           # Directory to store generated SBOM files.
+  - name: dependencyLockArtifactDirectory
+    type: string
+    default: '$(Agent.TempDirectory)/dependency-lock'       # If not provided, the aggregated Dependency Lock artifact will be downloaded.
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'                         # SBOM output format.
+  - name: vulnFolder
+    type: string
+    default: '$(Agent.TempDirectory)/vuln'            # Directory to store vulnerability reports.
+  - name: analysisOutputFormat
+    type: string
+    default: 'cyclonedx-json'                         # Output format for vulnerability analysis.
+  - name: publishGenerationArtifact
+    type: boolean
+    default: true                                     # Controls publishing of the SBOM generation artifact.
+  - name: sbomArtifactName
+    type: string
+    default: 'sbom-files'                             # Artifact name for the generated SBOM files.
+  - name: syftInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'                 # Directory for installing Syft.
+  - name: grypeInstallDir
+    type: string
+    default: '$(Agent.TempDirectory)'                 # Directory for installing Grype.
+  - name: downloadArtifact
+    type: boolean
+    default: true                                    # If true, download the SBOM artifact before analysis.
+
+steps:
+  # If a dependencyLockArtifactDirectory isn’t provided, download the aggregated Dependency Lock artifact.
+  - ${{ if eq(parameters.dependencyLockArtifactDirectory, '') }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Aggregated Dependency Lock Artifact'
+        inputs:
+          buildType: 'current'
+          artifact: 'dependency-lock-files'
+          path: ${{ parameters.dependencyLockArtifactDirectory }}
+
+  # Generate SBOMs using the aggregated Dependency Lock files.
+  - template: sbom-generation.yaml@templates
+    parameters:
+      sbomOutputDir: ${{ parameters.sbomOutputDir }}
+      # In composite mode we assume the aggregated files are in $(Agent.TempDirectory)/dependency-lock.
+      dependencyLockArtifactDirectory: ${{ parameters.dependencyLockArtifactDirectory }}
+      outputFormat: ${{ parameters.outputFormat }}
+      publishArtifact: ${{ parameters.publishGenerationArtifact }}
+      artifactName: ${{ parameters.sbomArtifactName }}
+      syftInstallDir: ${{ parameters.syftInstallDir }}
+
+  # Analyze the generated SBOMs to produce vulnerability reports.
+  - template: sbom-analysis.yaml@templates
+    parameters:
+      sbomDir: ${{ parameters.sbomOutputDir }}
+      analysisOutputFormat: ${{ parameters.analysisOutputFormat }}
+      vulnFolder: ${{ parameters.vulnFolder }}
+      downloadArtifact: ${{ parameters.downloadArtifact }}
+      sbomArtifactName: ${{ parameters.sbomArtifactName }}
+      grypeInstallDir: ${{ parameters.grypeInstallDir }}
