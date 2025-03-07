@@ -11,7 +11,11 @@ parameters:
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
   - name: nugetConfigPath              # OPTIONAL: Path to the NuGet.Config file
-    default: '$(Build.SourcesDirectory)/src/apis'
+    default: '$(Build.SourcesDirectory)/src/apis/nuget.config'
+  - name: feedsToUse                   # OPTIONAL: Should vstsFeed be used or nugetConfigPath
+    default: 'select'
+  - name: feed                         # OPTIONAL: Vsts feed to be used
+    default: 'Audacia.Public/AudaciaPublic'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -24,8 +28,10 @@ steps:
           ${{parameters.tests}}
       ${{ else }}:
         projects: ${{parameters.projects}}
-      feedsToUse: 'config'
-      nugetConfigPath: ${{parameters.nugetConfigPath}}/nuget.config
+      ${{ if eq(parameters.feedsToUse, 'select') }}:
+        vstsFeed: ${{parameters.feed}}
+      ${{ else }}:
+        nugetConfigPath: ${{parameters.nugetConfigPath}}
 
   - task: DotNetCoreCLI@2
     displayName: .NET Build
