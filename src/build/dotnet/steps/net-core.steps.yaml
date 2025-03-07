@@ -11,7 +11,7 @@ parameters:
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
   - name: nugetConfigPath              # OPTIONAL: Path to the NuGet.Config file
-    default: '$(Build.SourcesDirectory)'
+    default: '$(Build.SourcesDirectory)/src/apis'
 
 steps:
   - task: DotNetCoreCLI@2
