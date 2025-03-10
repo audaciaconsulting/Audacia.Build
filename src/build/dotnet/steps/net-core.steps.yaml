@@ -10,6 +10,15 @@ parameters:
     default: 'Release'
   - name: artifactName                 # OPTIONAL: The name of the DevOps artifact to publish the built projects to
     default: '$(Build.DefinitionName)'
+  - name: feedsToUse                   # OPTIONAL: Should vstsFeed be used or nugetConfigPath
+    default: 'vstsFeed'
+    values:
+      - 'vstsFeed'
+      - 'nugetConfigPath'
+  - name: vstsFeed                     # OPTIONAL: VSTS feed to be used
+    default: 'Audacia.Public/AudaciaPublic'
+  - name: nugetConfigPath              # OPTIONAL: Path to the NuGet.Config file
+    default: '$(Build.SourcesDirectory)/src/apis/nuget.config'
 
 steps:
   - task: DotNetCoreCLI@2
@@ -22,7 +31,10 @@ steps:
           ${{parameters.tests}}
       ${{ else }}:
         projects: ${{parameters.projects}}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
+      ${{ if eq(parameters.feedsToUse, 'vstsFeed') }}:
+        vstsFeed: ${{parameters.vstsFeed}}
+      ${{ else }}:
+        nugetConfigPath: ${{parameters.nugetConfigPath}}
 
   - task: DotNetCoreCLI@2
     displayName: .NET Build
