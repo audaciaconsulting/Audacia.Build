@@ -172,11 +172,20 @@ The scan hook is a python script that can be used to run custom scripts during t
 ```python
 def zap_started(zap, target):
     scanners = zap.pscan.scanners
-    # disable scanners
-    # 10038 - Content Security Policy (CSP) Header Not Set - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
-    # 10020 - Anti-clickjacking Header - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
-    # 90003 - Sub Resource Integrity Attribute Missing - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
-    ids = '10038,10020,90003'
+    # List of scanner IDs to disable
+    scanner_ids = [
+        '10038', # Content Security Policy (CSP) Header Not Set - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+        '10020', # Anti-clickjacking Header - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+        '90003', # Sub Resource Integrity Attribute Missing - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+    ]
+    
+    print("Disabling the following ZAP scanners:")
+    for scanner in scanners:
+        if str(scanner['id']) in scanner_ids:
+            print(f"- Scanner ID: {scanner['id']}, Name: {scanner['name']}")
+    
+    # Disable scanners
+    ids = ','.join(scanner_ids)
     zap.pscan.disable_scanners(ids)
     return zap
 ```
