@@ -156,6 +156,7 @@ steps:
       UseAjaxSpider: ${{parameters.useAjaxSpider}}
       MaxPassiveScanTime: ${{parameters.maxPassiveScanTime}}
       MaxSpiderCrawlTime: ${{parameters.maxSpiderCrawlTime}}
+      ScanHookLocation: ${{parameters.scanHookLocation}}
     inputs:
       targetType: 'inline'
       script: |
