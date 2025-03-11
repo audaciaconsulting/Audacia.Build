@@ -34,6 +34,8 @@ parameters:
     default: '$(System.TeamFoundationCollectionUri)'
   - name: projectName # OPTIONAL: The name of the DevOps project to create the bugs in. Defaults to the current project.
     default: '$(System.TeamProject)'
+  - name: scanHookLocation # OPTIONAL: The location and name of the scan hook file to use. This file location is the location of the file in the repository. Use this parameter if you need to run custom scripts during the scan. Expected format: 'path/to/scan_hook.py'
+    default: ''
 
 steps:
   # Check initialize yaml step has been run
@@ -126,6 +128,18 @@ steps:
         Copy-Item "${{parameters.authenticationScriptLocation}}" -Destination "$(workingTempDirectory)/$FileName"
     # Run step if the previous step succeeded and authenticationScriptLocation is not empty
     condition: and(succeeded(), ne('${{parameters.authenticationScriptLocation}}', ''))
+
+  # Copy scan hook file to temporary working directory if provided
+  - task: PowerShell@2
+    displayName: '${{parameters.name}}: Copy Scan Hook to Working Directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        if ("${{parameters.scanHookLocation}}" -ne '') {
+          echo "Copying ${{parameters.scanHookLocation}} to temp working folder"
+          Copy-Item "${{parameters.scanHookLocation}}" -Destination "$(workingTempDirectory)/zap_started.py"
+        }
+    condition: ne('${{parameters.scanHookLocation}}', '')
 
   # Run Security Scans
   - task: Bash@3
@@ -220,6 +234,11 @@ steps:
           zap2DockerArguments+=" -j"
         fi
 
+        if [ "$ScanHookLocation" != '' ]; then
+          # If a scan hook is provided, add it to the command
+          zap2DockerArguments+=" --hook=/zap/wrk/zap_started.py"
+        fi
+
         baseCommand+=$zap2DockerArguments
         redactedCommand+=$zap2DockerArguments
 
@@ -291,3 +310,9 @@ steps:
         }
       failOnStderr: true
     condition: and(succeeded(), ne(variables.alertsExist, 'true'))
+
+  # Set directory permissions to allow for deletion, including pycache folder created by scan hook.
+  - bash: |
+      sudo chmod -R 777 $(parentWorkingTempDirectory)
+    displayName: 'Set directory permissions'
+    condition: always()
