@@ -151,6 +151,7 @@ The first scan.yaml step in a pipeline must be preceded by an initialize.yaml st
 | useAjaxSpider    | (optional) | Defaults `false`. Use Ajax Spider test URLs found on webpages that have been scanned - `Baseline` and `Full` scan types only. |
 | maxPassiveScanTime | (optional) | Max time in minutes to wait for ZAP to start and the passive scan to run (minutes). |
 | maxSpiderCrawlTime | (optional) | The number of minutes to spider for (minutes) - `Baseline` and `Full` scan types only. |
+| scanHookLocation | (optional) | The location and name of the scan hook file to use. This file location is the location of the file in the repository. Use this parameter if you need to run custom scripts during the scan. Expected format: 'path/to/scan_hook.py' |
 
 #### With Context Files
 
@@ -163,6 +164,35 @@ This step will emit scan results as failed tests and publish scan HTML and XML r
 #### Example**
 
 See examples under `examples/security/owasp-zap` in the `Audacia.Build` repository. `examples/security/owasp-zap/unauthenticated-baseline-multi-scan` gives an example of performing multiple scans within the same pipeline.
+
+#### Scan Hook
+
+The scan hook is a python script that can be used to run custom scripts during the scan. The script must be located in the repository and the location must be specified in the `scanHookLocation` parameter. Following is an example py script that can be used as a scan hook to disable alerts for specified rules:
+
+```python
+def zap_started(zap, target):
+    scanners = zap.pscan.scanners
+    # List of scanner IDs to disable
+    scanner_ids = [
+        '10038', # Content Security Policy (CSP) Header Not Set - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+        '10020', # Anti-clickjacking Header - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+        '90003', # Sub Resource Integrity Attribute Missing - https://dev.azure.com/audacia/Audacia/_workitems/edit/99999
+    ]
+    
+    print("Disabling the following ZAP scanners:")
+    for scanner in scanners:
+        if str(scanner['id']) in scanner_ids:
+            print(f"- Scanner ID: {scanner['id']}, Name: {scanner['name']}")
+    
+    # Disable scanners
+    ids = ','.join(scanner_ids)
+    zap.pscan.disable_scanners(ids)
+    return zap
+```
+
+Remember to add a comment for each new scanner that you disable, ideally with a link to the work item that explains why the scanner is disabled.
+
+For more information on Scan Hooks, see the [ZAP API Documentation](https://www.zaproxy.org/docs/docker/scan-hooks/).
 
 ### finalize.yaml
 
