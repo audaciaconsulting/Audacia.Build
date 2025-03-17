@@ -135,10 +135,8 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        if ("${{parameters.scanHookLocation}}" -ne '') {
           echo "Copying ${{parameters.scanHookLocation}} to temp working folder"
           Copy-Item "${{parameters.scanHookLocation}}" -Destination "$(workingTempDirectory)/zap_started.py"
-        }
     condition: ne('${{parameters.scanHookLocation}}', '')
 
   # Run Security Scans
