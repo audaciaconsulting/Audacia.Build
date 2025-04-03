@@ -42,3 +42,8 @@
 - ✔ No new security vulnerabilities introduced/external dependencies are secure and up-to-date
 - ❌ New security vulnerabilities found/external dependency has known insecurity or is not latest version
 - ❎ No new dependencies or changes affecting security
+
+### Work item linked
+- ✔ The Azure DevOps work item has been linked to the PR
+- ❌ The Azure DevOps work item has not been linked to the PR
+- ❎ No work item exists and none is needed
