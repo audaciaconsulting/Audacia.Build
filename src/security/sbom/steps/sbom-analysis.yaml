@@ -5,7 +5,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'       # Directory containing the SBOM files to be analyzed.
   - name: sbomGlob
     type: string
-    default: 'sbom-*.json'                         # Glob pattern to match SBOM files for analysis.
+    default: '*-sbom.json'                         # Glob pattern to match SBOM files for analysis.
   - name: analysisOutputFormat
     type: string
     default: 'cyclonedx-json'                     # Output format for Grype vulnerability analysis.
@@ -66,7 +66,7 @@ steps:
             if ($file.Name -eq "npm-sbom.json") {
                 $reportName = "npm-vuln-report.json"
             }
-            elseif ($file.Name -like "*-sbom.json") {
+            elseif ($file.Name -like "${{ parameters.sbomGlob }}") {
                 # Replace the -sbom suffix with -vuln-report.
                 $reportName = $file.Name -replace '-sbom', '-vuln-report'
             }

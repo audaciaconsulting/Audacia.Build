@@ -67,7 +67,7 @@ This template analyzes SBOM files to produce vulnerability reports. It:
 
 - **Optionally Downloads** the SBOM artifact if required.
 - **Installs Grype** (the vulnerability scanner) into a specified directory.
-- **Analyzes SBOM Files:** Iterates over SBOM files (matched by a glob pattern, default: `sbom-*.json`), runs Grype, and generates corresponding vulnerability reports. For instance, an SBOM named `npm-sbom.json` produces a report named `npm-vuln-report.json`, while other SBOMs have their `-sbom` suffix replaced with `-vuln-report`.
+- **Analyzes SBOM Files:** Iterates over SBOM files (matched by a glob pattern, default: `*-sbom.json`), runs Grype, and generates corresponding vulnerability reports. For instance, an SBOM named `npm-sbom.json` produces a report named `npm-vuln-report.json`, while other SBOMs have their `-sbom` suffix replaced with `-vuln-report`.
 - **Publishes** the generated vulnerability reports as a pipeline artifact (default: `vuln-files`).
 
 **Key Parameters:**
@@ -149,7 +149,7 @@ A stage using `sbom-analysis.yaml` might be configured as follows:
         - template: /src/security/sbom/steps/sbom-analysis.yaml@templates
           parameters:
             sbomDir: '$(Agent.TempDirectory)/sbom'
-            sbomGlob: 'sbom-*.json'
+            sbomGlob: '*-sbom.json'
             analysisOutputFormat: 'cyclonedx-json'
             vulnFolder: '$(Agent.TempDirectory)/vuln'
             downloadArtifact: true
