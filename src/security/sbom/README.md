@@ -55,6 +55,7 @@ This template generates SBOM files from the published Dependency Lock artifact. 
 - **dependencyLockArtifactDirectory:** Directory containing the downloaded Dependency Lock files (if not provided, defaults to the download path).
 - **outputFormat:** SBOM format (for example, `cyclonedx-json`).
 - **syftInstallDir:** Directory where Syft is installed.
+- **syftConfigFile:** *(Optional)* Path to a Syft configuration file used for SBOM generation. Refer to the documentation for details: [Syft Configuration Guide](https://github.com/anchore/syft/wiki/Configuration)
 
 **Usage:**  
 Call this template in a stage dedicated to SBOM generation. It assumes that an aggregated lock‑deps artifact named `dependency-lock-files` is available (which includes both .NET deps files and the NPM package lock file).
@@ -67,7 +68,7 @@ This template analyzes SBOM files to produce vulnerability reports. It:
 
 - **Optionally Downloads** the SBOM artifact if required.
 - **Installs Grype** (the vulnerability scanner) into a specified directory.
-- **Analyzes SBOM Files:** Iterates over SBOM files (matched by a glob pattern, default: `sbom-*.json`), runs Grype, and generates corresponding vulnerability reports. For instance, an SBOM named `npm-sbom.json` produces a report named `npm-vuln-report.json`, while other SBOMs have their `-sbom` suffix replaced with `-vuln-report`.
+- **Analyzes SBOM Files:** Iterates over SBOM files (matched by a glob pattern, default: `*-sbom.json`), runs Grype, and generates corresponding vulnerability reports. For instance, an SBOM named `npm-sbom.json` produces a report named `npm-vuln-report.json`, while other SBOMs have their `-sbom` suffix replaced with `-vuln-report`.
 - **Publishes** the generated vulnerability reports as a pipeline artifact (default: `vuln-files`).
 
 **Key Parameters:**
@@ -96,6 +97,7 @@ The composite template provides an end-to-end solution that:
 - Inherits parameters from the individual generation and analysis templates (such as `sbomOutputDir`, `outputFormat`, `vulnFolder`, etc.).
 - **dependencyLockArtifactDirectory:** If not provided, the template downloads the aggregated Dependency Lock artifact (published from the build stage) into a default location.
 - **downloadArtifact:** When set to `true`, causes the SBOM artifact to be downloaded before analysis.
+- **syftConfigFile:** *(Optional)* Path to a Syft configuration file used for SBOM generation. Refer to the documentation for details: [Syft Configuration Guide](https://github.com/anchore/syft/wiki/Configuration)
 
 **Usage:**  
 The composite template is designed for scenarios where SBOM generation and analysis are to be executed in sequence as a single, integrated process.
@@ -149,7 +151,7 @@ A stage using `sbom-analysis.yaml` might be configured as follows:
         - template: /src/security/sbom/steps/sbom-analysis.yaml@templates
           parameters:
             sbomDir: '$(Agent.TempDirectory)/sbom'
-            sbomGlob: 'sbom-*.json'
+            sbomGlob: '*-sbom.json'
             analysisOutputFormat: 'cyclonedx-json'
             vulnFolder: '$(Agent.TempDirectory)/vuln'
             downloadArtifact: true

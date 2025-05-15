@@ -5,10 +5,10 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'        # Local folder to store the generated SBOM files.
   - name: dependencyLockArtifactDirectory
     type: string
-    default: '$(Agent.TempDirectory)/lock-deps'                                    # Path containing the published package-lock.json and deps.json artifact.
+    default: '$(Agent.TempDirectory)/lock-deps'   # Path containing the published package-lock.json and deps.json artifact.
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'                      # SBOM output format (e.g., cyclonedx-json).
+    default: 'cyclonedx-json'                     # SBOM output format (e.g., cyclonedx-json).
   - name: publishArtifact
     type: boolean
     default: true                                 # Whether to publish the generated SBOM as a pipeline artifact.
@@ -18,6 +18,9 @@ parameters:
   - name: syftInstallDir
     type: string
     default: '$(Agent.TempDirectory)'             # Directory where Syft (the SBOM generator) will be installed.
+  - name: syftConfigFile
+    type: string
+    default: ''                                   # Directory where an optional configuration file for Syft located.
 
 steps:
   - task: DownloadPipelineArtifact@2
@@ -63,7 +66,11 @@ steps:
                 continue
             }
             Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
-            & "${{ parameters.syftInstallDir }}\syft.exe" -o ${{ parameters.outputFormat }}="$outputFile" "$($file.FullName)"
+            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+            if ("${{ parameters.syftConfigFile }}") {
+                $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
+            }
+            & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
         }
 
   # Publish the generated SBOM files as an artifact if enabled.

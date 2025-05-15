@@ -30,6 +30,9 @@ parameters:
   - name: downloadArtifact
     type: boolean
     default: true                                    # If true, download the SBOM artifact before analysis.
+  - name: syftConfigFile
+    type: string
+    default: ''                                   # Directory where an optional configuration file for Syft located.
 
 steps:
   # If a dependencyLockArtifactDirectory isn’t provided, download the aggregated Dependency Lock artifact.
@@ -51,6 +54,7 @@ steps:
       publishArtifact: ${{ parameters.publishGenerationArtifact }}
       artifactName: ${{ parameters.sbomArtifactName }}
       syftInstallDir: ${{ parameters.syftInstallDir }}
+      syftConfigFile: ${{ parameters.syftConfigFile }}
 
   # Analyze the generated SBOMs to produce vulnerability reports.
   - template: sbom-analysis.yaml@templates
