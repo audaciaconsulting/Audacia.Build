@@ -21,15 +21,16 @@ steps:
       scriptType: pscore
       scriptLocation: inlineScript
       inlineScript: |
-        # read the boolean flag that was expanded at compile-time
+        # read the boolean flag (expanded at compile-time)
         $ignoreEmpty = ${{ parameters.ignoreEmptyAppServices }}
 
-        # parse the array of app-service names
-        $ResourceNames = '${{ convertToJson(parameters.appServices) }}' | ConvertFrom-Json
+        # parse the array of app-service names (ensure variable macros are expanded first)
+        $ResourceNames = "${{ convertToJson(parameters.appServices) }}" | ConvertFrom-Json
 
-        # drop empty or whitespace-only entries when requested
+        # if requested, drop any empty or whitespace-only entries
         if ($ignoreEmpty) {
-            $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            $ResourceNames = $ResourceNames |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         }
 
         $ResourceGroupName = '${{ parameters.resourceGroupName }}'
@@ -41,20 +42,20 @@ steps:
             $target = $_
             try {
                 Write-Host "Starting swap for $target"
-                az webapp deployment slot swap -g $using:ResourceGroupName -n $target --slot $using:slotName --target-slot production | ConvertFrom-Json
-        
-                if (!$?) 
-                {
-                    throw "Swap failed for $target"            
-                } 
-                else 
-                {
+                az webapp deployment slot swap `
+                  -g $using:ResourceGroupName `
+                  -n $target `
+                  --slot $using:slotName `
+                  --target-slot production | ConvertFrom-Json
+
+                if (!$?) {
+                    throw "Swap failed for $target"
+                } else {
                     ($using:slotSwapCompleted).Add($target)
                     Write-Host "Completed swap for $target successfully"
                 }
-            } 
-            catch 
-            {
+            }
+            catch {
                 Write-Host "Exception during swap for $($target): $_"
                 ($using:slotSwapErrored).Add($target)
             }
@@ -63,16 +64,17 @@ steps:
         Write-Host "Slots swapped successfully: $($slotSwapCompleted.Count)"
         Write-Host "Slot swap errors: $($slotSwapErrored.Count)"
 
-        if($slotSwapErrored.Count -gt 0)
-        {
+        if ($slotSwapErrored.Count -gt 0) {
             $slotSwapCompleted | ForEach-Object {
                 $target = $_
                 Write-Host "Reversing slot swap for $target"
-                az webapp deployment slot swap -g $ResourceGroupName -n $target --slot $slotName --target-slot production | ConvertFrom-Json
+                az webapp deployment slot swap `
+                  -g $ResourceGroupName `
+                  -n $target `
+                  --slot $slotName `
+                  --target-slot production | ConvertFrom-Json
             }
             exit 1
-        } 
-        else 
-        {
+        } else {
             exit 0
         }
