@@ -8,9 +8,6 @@ parameters:
   - name: appServices # The names of the app services to swap the slots in
     default: []
     type: object
-  - name: ignoreEmptyAppServices # Option to ignore empty entries in the appServices list
-    type: boolean
-    default: false
 
 steps:
   - task: AzureCLI@2
@@ -21,11 +18,8 @@ steps:
       scriptLocation: inlineScript
       inlineScript: |
         $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
-        # only drop empty entries when requested
-        $ignoreEmpty = ${{ parameters.ignoreEmptyAppServices }}
-        if ($ignoreEmpty) {
+        # Filter out empty or whitespace-only service names
         $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        }
 
         $ResourceGroupName = '${{parameters.resourceGroupName}}'
         $slotName = '${{parameters.slotName}}'
