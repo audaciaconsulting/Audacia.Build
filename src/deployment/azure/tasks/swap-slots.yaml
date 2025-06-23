@@ -1,14 +1,15 @@
 parameters:
-  - name: serviceConnectionName # The name of the service connection used to deploy to Azure
+  - name: serviceConnectionName    # The name of the service connection used to deploy to Azure
     type: string
-  - name: slotName # The name of the slot to deploy to, that will be swapped into production
+  - name: slotName                 # The name of the slot to deploy to, that will be swapped into production
+    type: string
     default: 'Staging'
-  - name: resourceGroupName # The name of the resource group the app services are in
+  - name: resourceGroupName        # The name of the resource group the app services are in
     type: string
-  - name: appServices # The names of the app services to swap the slots in
-    default: []
+  - name: appServices              # The names of the app services to swap the slots in
     type: object
-  - name: ignoreEmptyAppServices # Option to ignore empty entries in the appServices list
+    default: []
+  - name: ignoreEmptyAppServices   # Whether to drop empty or whitespace-only names before swapping
     type: boolean
     default: false
 
@@ -16,20 +17,25 @@ steps:
   - task: AzureCLI@2
     displayName: 'Swap Slots'
     inputs:
-      azureSubscription: ${{parameters.serviceConnectionName}}
+      azureSubscription: ${{ parameters.serviceConnectionName }}
       scriptType: pscore
       scriptLocation: inlineScript
       inlineScript: |
-        $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
-        ${{ if eq(parameters.ignoreEmptyAppServices, true) }}:
-          # drop any empty or whitespace-only names
-          $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) 
+        # read the boolean flag that was expanded at compile-time
+        $ignoreEmpty = ${{ parameters.ignoreEmptyAppServices }}
+
+        # parse the array of app-service names
+        $ResourceNames = '${{ convertToJson(parameters.appServices) }}' | ConvertFrom-Json
+
+        # drop empty or whitespace-only entries when requested
+        if ($ignoreEmpty) {
+            $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         }
 
-        $ResourceGroupName = '${{parameters.resourceGroupName}}'
-        $slotName = '${{parameters.slotName}}'
+        $ResourceGroupName = '${{ parameters.resourceGroupName }}'
+        $slotName          = '${{ parameters.slotName }}'
         $slotSwapCompleted = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-        $slotSwapErrored = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        $slotSwapErrored   = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
 
         $ResourceNames | ForEach-Object -Parallel {
             $target = $_
