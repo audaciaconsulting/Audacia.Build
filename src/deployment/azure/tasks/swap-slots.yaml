@@ -21,10 +21,9 @@ steps:
       scriptLocation: inlineScript
       inlineScript: |
         $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
-        # only drop empty entries when requested
-          $ignoreEmpty = ${{ parameters.ignoreEmptyAppServices }}
-          if ($ignoreEmpty) {
-          $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        ${{ if eq(parameters.ignoreEmptyAppServices, true) }}:
+          # drop any empty or whitespace-only names
+          $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) 
         }
 
         $ResourceGroupName = '${{parameters.resourceGroupName}}'
