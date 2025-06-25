@@ -18,6 +18,9 @@ steps:
       scriptLocation: inlineScript
       inlineScript: |
         $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
+        # Filter out empty or whitespace-only service names
+        $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
         $ResourceGroupName = '${{parameters.resourceGroupName}}'
         $slotName = '${{parameters.slotName}}'
         $slotSwapCompleted = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
