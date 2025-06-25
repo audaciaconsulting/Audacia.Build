@@ -40,6 +40,10 @@ jobs:
           parameters:
             continueIfVulnerabilities: true
 
+      - template: /src/build/common/steps/nuget-license-check.steps.yaml
+        parameters:
+          projectPaths: ${{parameters.projects}}
+
       - ${{ if eq(parameters.applyVersioning, true) }}:
         - task: UpdateVersions@1
           name: UpdateVersions
