@@ -1,61 +1,46 @@
 parameters:
-  - name: serviceConnectionName    # The name of the service connection used to deploy to Azure
+  - name: serviceConnectionName # The name of the service connection used to deploy to Azure
     type: string
-  - name: slotName                 # The name of the slot to deploy to, that will be swapped into production
-    type: string
+  - name: slotName # The name of the slot to deploy to, that will be swapped into production
     default: 'Staging'
-  - name: resourceGroupName        # The name of the resource group the app services are in
+  - name: resourceGroupName # The name of the resource group the app services are in
     type: string
-  - name: appServices              # The names of the app services to swap the slots in
-    type: object
+  - name: appServices # The names of the app services to swap the slots in
     default: []
-  - name: ignoreEmptyAppServices   # Whether to drop empty or whitespace-only names before swapping
-    type: boolean
-    default: false
+    type: object
 
 steps:
   - task: AzureCLI@2
     displayName: 'Swap Slots'
     inputs:
-      azureSubscription: ${{ parameters.serviceConnectionName }}
+      azureSubscription: ${{parameters.serviceConnectionName}}
       scriptType: pscore
       scriptLocation: inlineScript
       inlineScript: |
-        # read the boolean flag (expanded at compile-time)
-        $ignoreEmpty = ${{ parameters.ignoreEmptyAppServices }}
-
-        # parse the array of app-service names (ensure variable macros are expanded first)
-        $ResourceNames = "${{ convertToJson(parameters.appServices) }}" | ConvertFrom-Json
-
-        # if requested, drop any empty or whitespace-only entries
-        if ($ignoreEmpty) {
-            $ResourceNames = $ResourceNames |
-              Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        }
-
-        $ResourceGroupName = '${{ parameters.resourceGroupName }}'
-        $slotName          = '${{ parameters.slotName }}'
+        $ResourceNames = '${{convertToJson(parameters.appServices)}}' | ConvertFrom-Json;
+        $ResourceGroupName = '${{parameters.resourceGroupName}}'
+        $slotName = '${{parameters.slotName}}'
         $slotSwapCompleted = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-        $slotSwapErrored   = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        $slotSwapErrored = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
 
         $ResourceNames | ForEach-Object -Parallel {
             $target = $_
             try {
                 Write-Host "Starting swap for $target"
-                az webapp deployment slot swap `
-                  -g $using:ResourceGroupName `
-                  -n $target `
-                  --slot $using:slotName `
-                  --target-slot production | ConvertFrom-Json
-
-                if (!$?) {
-                    throw "Swap failed for $target"
-                } else {
+                az webapp deployment slot swap -g $using:ResourceGroupName -n $target --slot $using:slotName --target-slot production | ConvertFrom-Json
+        
+                if (!$?) 
+                {
+                    throw "Swap failed for $target"            
+                } 
+                else 
+                {
                     ($using:slotSwapCompleted).Add($target)
                     Write-Host "Completed swap for $target successfully"
                 }
-            }
-            catch {
+            } 
+            catch 
+            {
                 Write-Host "Exception during swap for $($target): $_"
                 ($using:slotSwapErrored).Add($target)
             }
@@ -64,17 +49,16 @@ steps:
         Write-Host "Slots swapped successfully: $($slotSwapCompleted.Count)"
         Write-Host "Slot swap errors: $($slotSwapErrored.Count)"
 
-        if ($slotSwapErrored.Count -gt 0) {
+        if($slotSwapErrored.Count -gt 0)
+        {
             $slotSwapCompleted | ForEach-Object {
                 $target = $_
                 Write-Host "Reversing slot swap for $target"
-                az webapp deployment slot swap `
-                  -g $ResourceGroupName `
-                  -n $target `
-                  --slot $slotName `
-                  --target-slot production | ConvertFrom-Json
+                az webapp deployment slot swap -g $ResourceGroupName -n $target --slot $slotName --target-slot production | ConvertFrom-Json
             }
             exit 1
-        } else {
+        } 
+        else 
+        {
             exit 0
         }
