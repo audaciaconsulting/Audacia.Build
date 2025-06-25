@@ -21,6 +21,11 @@ steps:
         # Filter out empty or whitespace-only service names
         $ResourceNames = $ResourceNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
+        # Ensure at least one app service is specified
+        if ($ResourceNames.Count -eq 0) {
+            throw "No app services specified. At least one app service name must be provided."
+        }
+
         $ResourceGroupName = '${{parameters.resourceGroupName}}'
         $slotName = '${{parameters.slotName}}'
         $slotSwapCompleted = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
