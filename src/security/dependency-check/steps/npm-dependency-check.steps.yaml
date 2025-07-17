@@ -58,6 +58,7 @@ steps:
     displayName: Check for Dependency Check Report
     condition: and(succeededOrFailed(), ne('${{parameters.publishAs}}', ''))
 
+
     # Republish report to unique artifact
   - publish: $(Common.TestResultsDirectory)\dependency-check
     condition: eq(variables.ReportExists, 'true')
