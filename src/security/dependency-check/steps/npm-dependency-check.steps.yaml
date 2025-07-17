@@ -43,7 +43,8 @@ steps:
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
-      suppressionPath: $(suppressionsPath)
+      ${{ if ne(variables['suppressionsPath'], 'null') && ne(variables['suppressionsPath'], '') }}:
+        suppressionPath: $(suppressionsPath)
       projectName: ${{parameters.projectName}}
       scanPath: '${{parameters.path}}/package-lock.json'
       format: 'HTML,JUNIT'
