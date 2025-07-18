@@ -28,7 +28,7 @@ steps:
         $filePath = "$(Build.SourcesDirectory)"
         Write-Host "Listing contents of folder containing suppression file:"
         $dir = Split-Path -Path $filePath
-        Get-ChildItem -Path $dir -Recurse
+        Get-ChildItem -Path $dir
 
   - task: PowerShell@2
     displayName: Find Suppressions File
