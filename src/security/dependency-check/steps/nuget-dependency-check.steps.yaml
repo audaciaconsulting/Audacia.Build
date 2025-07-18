@@ -45,7 +45,7 @@ steps:
       scanPath: '**/*.csproj'
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
-      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --hostedSuppressionsUrl "https://jeremylong.github.io/DependencyCheck/suppressions/publishedSuppressions.xml"'
+      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
       ${{ if and(ne(variables['suppressionsPath'], 'null'), ne(variables['suppressionsPath'], '')) }}:
         suppressionPath: $(suppressionsPath)
     # Check if report exists, when not skipped and artifact name provided
