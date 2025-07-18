@@ -45,11 +45,9 @@ steps:
       scanPath: '**/*.csproj'
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
-      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
+      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --hostedSuppressionsUrl "https://jeremylong.github.io/DependencyCheck/suppressions/publishedSuppressions.xml"'
       ${{ if and(ne(variables['suppressionsPath'], 'null'), ne(variables['suppressionsPath'], '')) }}:
         suppressionPath: $(suppressionsPath)
-      ${{ if or(eq(variables['suppressionsPath'], 'null'), eq(variables['suppressionsPath'], '')) }}:
-        suppressionFile: '$(Build.SourcesDirectory)/dependency-check-suppress.xml'
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
