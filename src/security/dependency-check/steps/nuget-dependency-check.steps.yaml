@@ -25,7 +25,7 @@ steps:
       targetType: 'inline'
       pwsh: true
       script: |
-        $filePath = "$(Build.SourcesDirectory)"
+        $filePath = "${{ parameters.suppressionsFilePath }}"
         Write-Host "Listing contents of folder containing suppression file:"
         $dir = Split-Path -Path $filePath
         Get-ChildItem -Path $dir
