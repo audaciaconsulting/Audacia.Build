@@ -19,15 +19,13 @@ steps:
       jdkSourceOption: 'PreInstalled'
 
   - task: PowerShell@2
-    displayName: 'Debug suppression path'
+      displayName: 'Debug suppression path'
     inputs:
       targetType: 'inline'
-      pwsh: true
       script: |
-        $filePath = "${{ parameters.suppressionsFilePath }}"
-        Write-Host "Listing contents of folder containing suppression file:"
-        $dir = Split-Path -Path $filePath
-        Get-ChildItem -Path $dir
+       $filePath = "${{ parameters.suppressionsFilePath }}"
+       echo "Listing contents of suppression folder:"
+       dir $filePath
 
   - task: PowerShell@2
     displayName: Find Suppressions File
