@@ -23,8 +23,9 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
+       $filePath = "${{ parameters.suppressionsFilePath }}"
        echo "Listing contents of suppression folder:"
-       dir "${{ parameters.suppressionsFilePath }}"
+       dir $filePath
 
   - task: PowerShell@2
     displayName: Find Suppressions File
