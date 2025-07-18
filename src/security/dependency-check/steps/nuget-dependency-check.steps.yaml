@@ -20,7 +20,6 @@ steps:
 
   - task: PowerShell@2
     displayName: 'Debug suppression path'
-    condition: always()
     inputs:
       targetType: 'inline'
       pwsh: true
