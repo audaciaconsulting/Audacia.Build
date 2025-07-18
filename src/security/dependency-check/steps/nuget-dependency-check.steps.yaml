@@ -49,7 +49,7 @@ steps:
       ${{ if and(ne(variables['suppressionsPath'], 'null'), ne(variables['suppressionsPath'], '')) }}:
         suppressionPath: $(suppressionsPath)
       ${{ if or(eq(variables['suppressionsPath'], 'null'), eq(variables['suppressionsPath'], '')) }}:
-        suppressionPath: 'https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml'
+        additionalArguments: '--suppression https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml'
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
