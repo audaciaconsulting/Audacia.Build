@@ -21,16 +21,6 @@ steps:
       jdkSourceOption: 'PreInstalled'
 
   - task: PowerShell@2
-    displayName: 'Download base suppression file'
-    inputs:
-      targetType: 'inline'
-      script: |
-        $suppressionUrl = "https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml"
-        $outputFile = "$(Build.SourcesDirectory)/base-suppression.xml"
-        Invoke-WebRequest -Uri $suppressionUrl -OutFile $outputFile
-        echo "##vso[task.setvariable variable=baseSuppressionFile]$outputFile"
-
-  - task: PowerShell@2
     displayName: Find Suppressions File
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     inputs:
@@ -61,7 +51,7 @@ steps:
         additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
         suppressionPath: $(suppressionsPath)
       ${{ if eq(variables['suppressionsPath'], '') }}:
-        additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --suppression $(baseSuppressionFile)"'
+        additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --suppression "https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml"'
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
