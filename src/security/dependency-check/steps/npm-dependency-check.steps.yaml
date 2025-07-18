@@ -50,7 +50,7 @@ steps:
       ${{ if ne(variables['suppressionsPath'], '') }}:
         additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
         suppressionPath: $(suppressionsPath)
-      ${{ if eq(variables['suppressionsPath'], '') }}:
+      ${{ if eq(variables['suppressionsPath'], '')) }}:
         additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --suppression "https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml"'
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
