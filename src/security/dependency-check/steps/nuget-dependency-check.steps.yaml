@@ -35,13 +35,11 @@ steps:
       targetType: inline
       pwsh: true
       script: |
-         $filePath = "${{ parameters.suppressionsFilePath }}"
-   
-          Write-Host "Checking for: $filePath"
+          Write-Host "Checking for: ${{parameters.suppressionsFilePath}}"
 
-          if (Test-Path $filePath ){
+          if (Test-Path ${{parameters.suppressionsFilePath}} ){
             Write-Host "Suppressions file found"
-            echo "##vso[task.setvariable variable=suppressionsPath]$filePath"
+            echo "##vso[task.setvariable variable=suppressionsPath]${{parameters.suppressionsFilePath}}"
           }
           else {
             Write-Host "Suppressions file not found, no suppressions will be provided"
