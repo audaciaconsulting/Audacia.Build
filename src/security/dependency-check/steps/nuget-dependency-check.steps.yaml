@@ -45,11 +45,12 @@ steps:
       scanPath: '**/*.csproj'
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
-      ${{ if and(ne(variables['suppressionsPath'], null), ne(variables['suppressionsPath'], '')) }}:
+      ${{ if ne(variables['suppressionsPath'], '') }}:
         additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
         suppressionPath: $(suppressionsPath)
-      ${{ if or(eq(variables['suppressionsPath'], null), eq(variables['suppressionsPath'], '')) }}:
+      ${{ if eq(variables['suppressionsPath'], '')) }}:
         additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc" --suppression "https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml"'
+
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
