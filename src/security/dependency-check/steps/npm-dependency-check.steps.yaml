@@ -51,7 +51,7 @@ steps:
       ${{ if and(ne(variables['suppressionsPath'], 'null'), ne(variables['suppressionsPath'], '')) }}:
         suppressionPath: $(suppressionsPath)
       ${{ if or(eq(variables['suppressionsPath'], 'null'), eq(variables['suppressionsPath'], '')) }}:
-        suppressionFile: '$(Build.SourcesDirectory)/dependency-check-suppress.xml'
+        suppressionPath: '$(Build.SourcesDirectory)/dependency-check-suppress.xml'
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
