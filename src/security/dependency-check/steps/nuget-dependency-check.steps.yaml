@@ -19,14 +19,12 @@ steps:
       jdkSourceOption: 'PreInstalled'
 
   - task: PowerShell@2
-    displayName: 'Download base suppression file'
+      displayName: 'Debug suppression path'
     inputs:
       targetType: 'inline'
       script: |
-        $suppressionUrl = "https://raw.githubusercontent.com/dependency-check/DependencyCheck/refs/heads/main/core/src/main/resources/dependencycheck-base-suppression.xml"
-        $outputFile = "$(Build.SourcesDirectory)/base-suppression.xml"
-        Invoke-WebRequest -Uri $suppressionUrl -OutFile $outputFile
-        echo "##vso[task.setvariable variable=baseSuppressionFile]$outputFile"
+       echo "Listing contents of suppression folder:"
+       dir "${{ parameters.suppressionsFilePath }}"
 
   - task: PowerShell@2
     displayName: Find Suppressions File
