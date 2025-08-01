@@ -43,12 +43,12 @@ steps:
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
+      suppressionPath: $(suppressionsPath)
       projectName: ${{parameters.projectName}}
       scanPath: '${{parameters.path}}/package-lock.json'
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
       additionalArguments: '--nodeAuditSkipDevDependencies --disableNodeJS --nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
-      suppressionPath: $(suppressionsPath)
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {

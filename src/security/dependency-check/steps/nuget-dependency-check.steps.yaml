@@ -46,7 +46,7 @@ steps:
       format: 'HTML,JUNIT'
       failOnCVSS: '1'
       additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
-    suppressionPath: $(suppressionsPath)
+      suppressionPath: $(suppressionsPath)
     # Check if report exists, when not skipped and artifact name provided
   - powershell: |
       if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
