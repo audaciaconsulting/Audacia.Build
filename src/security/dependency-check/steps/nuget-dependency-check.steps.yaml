@@ -20,7 +20,6 @@ steps:
 
   # Step 1: Set suppressionsPath (runtime variable)
   - task: PowerShell@2
-    name: setVarsNuget
     displayName: Find Suppressions File
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     inputs:
