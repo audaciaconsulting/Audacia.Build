@@ -6,7 +6,7 @@ parameters:
     default: ''
   - name: runEvenIfError
     default: false
-  - name: continueIfVulnerabilities # Should the pipeline continue if vulnerabilities are found?
+  - name: continueIfVulnerabilities
     default: false
   - name: suppressionsFilePath
     default: '$(Build.SourcesDirectory)/suppressions.xml'
@@ -17,67 +17,74 @@ steps:
       versionSpec: '11'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
+
   # Step 1: Set suppressionsPath (runtime variable)
   - task: PowerShell@2
     name: setVars
     displayName: Find Suppressions File
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     inputs:
-    targetType: inline
-    pwsh: true
-    script: |
-      Write-Host "Checking for: ${{parameters.suppressionsFilePath}}"
+      targetType: inline
+      pwsh: true
+      script: |
+        Write-Host "Checking for: ${{parameters.suppressionsFilePath}}"
 
-      if (Test-Path "${{parameters.suppressionsFilePath}}") {
-        Write-Host "Suppressions file found"
-        Write-Host "##vso[task.setvariable variable=suppressionsPath]${{parameters.suppressionsFilePath}}"
-        Write-Host "##vso[task.setvariable variable=hasSuppression]true"
-      }
-      else {
-        Write-Host "Suppressions file not found"
-        Write-Host "##vso[task.setvariable variable=hasSuppression]false"
-      }
+        if (Test-Path "${{parameters.suppressionsFilePath}}") {
+          Write-Host "Suppressions file found"
+          Write-Host "##vso[task.setvariable variable=suppressionsPath]${{parameters.suppressionsFilePath}}"
+          Write-Host "##vso[task.setvariable variable=hasSuppression]true"
+        }
+        else {
+          Write-Host "Suppressions file not found"
+          Write-Host "##vso[task.setvariable variable=hasSuppression]false"
+        }
 
-# Step 2a: Dependency check WITH suppressions
+  # Step 2a: Dependency check WITH suppressions
   - task: dependency-check-build-task@6
     displayName: .NET Dependency Check (with suppressions)
     condition: and(succeeded(), eq(variables['hasSuppression'], 'true'))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
-    projectName: ${{parameters.projectName}}
-    scanPath: '**/*.csproj'
-    format: 'HTML,JUNIT'
-    failOnCVSS: '1'
-    additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
-    suppressionPath: '$(suppressionsPath)'
+      projectName: ${{parameters.projectName}}
+      scanPath: '**/*.csproj'
+      format: 'HTML,JUNIT'
+      failOnCVSS: '1'
+      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
+      suppressionPath: '$(suppressionsPath)'
 
-# Step 2b: Dependency check WITHOUT suppressions
+  # Step 2b: Dependency check WITHOUT suppressions
   - task: dependency-check-build-task@6
     displayName: .NET Dependency Check (no suppressions)
     condition: and(succeeded(), ne(variables['hasSuppression'], 'true'))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
-    projectName: ${{parameters.projectName}}
-    scanPath: '**/*.csproj'
-    format: 'HTML,JUNIT'
-    failOnCVSS: '1'
-    additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
-    # Check if report exists, when not skipped and artifact name provided
-  - powershell: |
-      if (Test-Path $(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html) {
-        echo "##vso[task.setVariable variable=ReportExists]true"
-      }
+      projectName: ${{parameters.projectName}}
+      scanPath: '**/*.csproj'
+      format: 'HTML,JUNIT'
+      failOnCVSS: '1'
+      additionalArguments: '--nvdApiKey "cb027565-2f22-4e16-8992-9bf0a9a0cadc"'
+
+  # Check if dependency-check report exists
+  - task: PowerShell@2
     displayName: Check for Dependency Check Report
     condition: and(succeededOrFailed(), ne('${{parameters.publishAs}}', ''))
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        if (Test-Path "$(Common.TestResultsDirectory)\dependency-check\dependency-check-report.html") {
+          Write-Host "##vso[task.setVariable variable=ReportExists]true"
+        }
 
-    # Republish report to unique artifact
+  # Republish the report as an artifact
   - publish: $(Common.TestResultsDirectory)\dependency-check
-    condition: eq(variables.ReportExists, 'true')
     displayName: Republish Dependency Check Report
+    condition: eq(variables['ReportExists'], 'true')
     artifact: ${{parameters.publishAs}}
 
+  # Publish JUnit results
   - task: PublishTestResults@2
-    displayName: "Publish JUnit Results"
+    displayName: Publish JUnit Results
     condition: succeededOrFailed()
     inputs:
       testResultsFormat: 'JUnit'
