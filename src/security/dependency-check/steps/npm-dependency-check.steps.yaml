@@ -14,7 +14,6 @@ parameters:
     default: '$(Build.SourcesDirectory)/suppressions.xml'
 
 steps:
-  # Ensure Java is available for dependency check
   - task: JavaToolInstaller@0
     inputs:
       versionSpec: '11'
@@ -23,7 +22,7 @@ steps:
 
   # Step 1: Set suppressionsPath (runtime variable)
   - task: PowerShell@2
-    name: setVars
+    name: setVarsNpm
     displayName: Find Suppressions File
     condition: or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed()))
     inputs:
