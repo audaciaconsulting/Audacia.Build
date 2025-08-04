@@ -43,7 +43,7 @@ steps:
   # Step 2a: Dependency check WITH suppressions
   - task: dependency-check-build-task@6
     displayName: NPM Dependency Check (with suppressions)
-    condition: and(succeeded(), eq(variables['hasSuppression'], 'true'))
+    condition: and(or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed())), eq(variables['hasSuppression'], 'true'))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
       projectName: ${{parameters.projectName}}
@@ -56,7 +56,7 @@ steps:
   # Step 2b: Dependency check WITHOUT suppressions
   - task: dependency-check-build-task@6
     displayName: NPM Dependency Check (no suppressions)
-    condition: and(succeeded(), ne(variables['hasSuppression'], 'true'))
+    condition: and(or(succeeded(), and(eq('${{parameters.runEvenIfError}}', true), succeededOrFailed())), ne(variables['hasSuppression'], 'true'))
     continueOnError: ${{parameters.continueIfVulnerabilities}}
     inputs:
       projectName: ${{parameters.projectName}}
