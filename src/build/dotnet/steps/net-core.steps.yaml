@@ -32,8 +32,10 @@ steps:
       ${{ else }}:
         projects: ${{parameters.projects}}
       ${{ if eq(parameters.feedsToUse, 'vstsFeed') }}:
+        feedsToUse: select
         vstsFeed: ${{parameters.vstsFeed}}
-      ${{ else }}:
+      ${{ if eq(parameters.feedsToUse, 'nugetConfigPath') }}:
+        feedsToUse: config
         nugetConfigPath: ${{parameters.nugetConfigPath}}
 
   - task: DotNetCoreCLI@2
