@@ -2,78 +2,140 @@
 parameters:
   - name: sbomOutputDir
     type: string
-    default: '$(Agent.TempDirectory)/sbom'        # Local folder to store the generated SBOM files.
+    default: '$(Agent.TempDirectory)/sbom'
   - name: dependencyLockArtifactDirectory
     type: string
-    default: '$(Agent.TempDirectory)/lock-deps'   # Path containing the published package-lock.json and deps.json artifact.
+    default: '$(Agent.TempDirectory)/lock-deps'
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'                     # SBOM output format (e.g., cyclonedx-json).
+    default: 'cyclonedx-json'
   - name: publishArtifact
     type: boolean
-    default: true                                 # Whether to publish the generated SBOM as a pipeline artifact.
+    default: true
   - name: artifactName
     type: string
-    default: 'sbom-files'                         # Artifact name for the generated SBOM files.
+    default: 'sbom-files'
   - name: syftInstallDir
     type: string
-    default: '$(Agent.TempDirectory)'             # Directory where Syft (the SBOM generator) will be installed.
+    default: '$(Agent.TempDirectory)'
   - name: syftConfigFile
     type: string
-    default: ''                                   # Directory where an optional configuration file for Syft located.
+    default: ''
+  # NEW: optional hint for where a .NET project/solution lives if you want to use cyclonedx-dotnet
+  - name: dotnetProjectRoot
+    type: string
+    default: ''          # e.g. '$(Build.SourcesDirectory)/src/MyApp' or leave blank to auto-fallback to Syft
 
 steps:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Dependency Lock artifact'
     inputs:
       buildType: 'current'
-      artifact: 'lock-deps-files'                  # Updated artifact name to match published artifact.
+      artifact: 'lock-deps-files'
       path: ${{ parameters.dependencyLockArtifactDirectory }}
 
-  # Install Syft before generating SBOMs.
+  # Install Syft (fallback + for non-cyclonedx-json or unknown types)
   - script: |
-      echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
+      echo "Installing Syft into ${{ parameters.syftInstallDir }}"
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
-    displayName: 'Install Syft (SBOM Generator)'
+    displayName: 'Install Syft'
+
+  # Install CycloneDX .NET global tool (used when handling .deps.json and a project/solution is available)
+  - script: |
+      echo "Installing CycloneDX .NET global tool"
+      dotnet tool install --global CycloneDX || dotnet tool update --global CycloneDX
+      echo "##vso[task.prependpath]$HOME/.dotnet/tools"
+      dotnet tool list -g
+    displayName: 'Install CycloneDX .NET tool'
+
+  # Ensure Node is available; use npx for CycloneDX npm
+  - script: |
+      node --version
+      npm --version
+      echo "Node and npm present; will use npx @cyclonedx/cyclonedx-npm when needed."
+    displayName: 'Check Node/npm'
 
   - task: PowerShell@2
-    displayName: 'Generate SBOM for Dependency Lock Files'
+    displayName: 'Generate SBOMs (smart selection)'
     inputs:
       targetType: 'inline'
       script: |
         $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
         if (-Not (Test-Path $dependencyLockDir)) {
-          # If the parameter isn’t set, assume the default download path.
           $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
         }
-        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
         $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
         if (-Not (Test-Path $sbomOutputDir)) {
-            New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
-        }
-        # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
-        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
-        foreach ($file in $files) {
-            if ($file.Name -eq "package-lock.json") {
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
-            }
-            elseif ($file.Name -like "*.deps.json") {
-                # Remove the '.deps' segment and append -sbom.json.
-                $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
-            }
-            else {
-                continue
-            }
-            Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
-            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
-            if ("${{ parameters.syftConfigFile }}") {
-                $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
-            }
-            & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
+          New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
 
-  # Publish the generated SBOM files as an artifact if enabled.
+        $outputFormat = "${{ parameters.outputFormat }}"
+        $dotnetRoot   = "${{ parameters.dotnetProjectRoot }}"
+        $syftPath     = "${{ parameters.syftInstallDir }}\syft.exe"
+        $syftConfig   = "${{ parameters.syftConfigFile }}"
+
+        Write-Host "Scanning artifact directory: $dependencyLockDir"
+        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json" -File
+
+        foreach ($file in $files) {
+          $ext = $file.Extension.ToLowerInvariant()
+          $name = $file.Name.ToLowerInvariant()
+          $outputFile = $null
+
+          if ($name -eq "package-lock.json") {
+            $outputFile = Join-Path $sbomOutputDir "npm-sbom.json"
+          } elseif ($name -like "*.deps.json") {
+            $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
+            $outputFile = Join-Path $sbomOutputDir ("{0}-sbom.json" -f $nameWithoutDeps)
+          } else {
+            # default naming for other json inputs
+            $base = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+            $outputFile = Join-Path $sbomOutputDir ("{0}-sbom.json" -f $base)
+          }
+
+          # Decide which generator to use
+          $used = ""
+          if ($outputFormat -eq "cyclonedx-json") {
+            if ($name -eq "package-lock.json") {
+              # Use CycloneDX npm (lockfile-only mode to avoid needing node_modules)
+              Write-Host "Generating CycloneDX (npm) for $($file.FullName) -> $outputFile"
+              Push-Location $file.Directory.FullName
+              npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --spec-version 1.6 --package-lock-only -o "$outputFile"
+              Pop-Location
+              $used = "cyclonedx-npm"
+            } elseif ($name -like "*.deps.json") {
+              if ($dotnetRoot -and (Test-Path $dotnetRoot)) {
+                # Prefer operating on a project/solution at the hinted root
+                Write-Host "Attempting CycloneDX .NET against project/solution at $dotnetRoot for $($file.Name)"
+                # Try to find a .sln or .csproj under the root
+                $proj = Get-ChildItem -Path $dotnetRoot -Include *.sln,*.csproj,*.fsproj,*.vbproj -Recurse -File | Select-Object -First 1
+                if ($proj) {
+                  dotnet CycloneDX "$($proj.FullName)" --json -o "$sbomOutputDir" | Out-Null
+                  # dotnet CycloneDX writes bom.json by default; move/rename to our desired filename
+                  $generated = Join-Path $sbomOutputDir "bom.json"
+                  if (Test-Path $generated) { Move-Item -Force $generated $outputFile }
+                  $used = "cyclonedx-dotnet"
+                } else {
+                  Write-Warning "No project/solution found under $dotnetRoot; falling back to Syft for $($file.Name)."
+                }
+              } else {
+                Write-Host "No dotnetProjectRoot provided; falling back to Syft for $($file.Name)."
+              }
+            }
+          }
+
+          if (-not $used) {
+            # Either outputFormat != cyclonedx-json, or unknown filetype, or dotnet fallback
+            Write-Host "Generating SBOM with Syft for $($file.FullName) -> $outputFile (format: $outputFormat)"
+            $syftArgs = @("-o", "$outputFormat=$outputFile", "$($file.FullName)")
+            if ($syftConfig) { $syftArgs += @("-c", "$syftConfig") }
+            & "$syftPath" @syftArgs
+            $used = "syft"
+          }
+
+          Write-Host "Generator used for $($file.Name): $used"
+        }
+
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
         displayName: 'Publish SBOM Artifact'
