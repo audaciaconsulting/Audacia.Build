@@ -48,12 +48,25 @@ steps:
       dotnet tool list -g
     displayName: 'Install CycloneDX .NET tool'
 
-  # Ensure Node is available; use npx for CycloneDX npm
+  # Install Node.js for npm SBOM generation
+  - task: NodeTool@0
+    displayName: 'Install Node.js'
+    inputs:
+      versionSpec: '18.x'
+    continueOnError: true
+
+  # Verify Node.js and npm installation
   - script: |
-      node --version
-      npm --version
-      echo "Node and npm present; will use npx @cyclonedx/cyclonedx-npm when needed."
-    displayName: 'Check Node/npm'
+      if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+        echo "Node.js and npm are available:"
+        node --version
+        npm --version
+        echo "Will use npx @cyclonedx/cyclonedx-npm for npm SBOMs."
+      else
+        echo "##[warning]Node.js and/or npm not available. npm SBOM generation will fall back to Syft."
+      fi
+    displayName: 'Check Node/npm availability'
+    condition: always()
 
   - task: PowerShell@2
     displayName: 'Generate SBOMs (smart selection)'
@@ -97,19 +110,6 @@ steps:
           $used = ""
           if ($outputFormat -eq "cyclonedx-json") {
             if ($name -eq "package-lock.json") {
-              # Use CycloneDX npm (lockfile-only mode to avoid needing node_modules)
-              Write-Host "Generating CycloneDX (npm) for $($file.FullName) -> $outputFile"
-              Push-Location $file.Directory.FullName
-              npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --spec-version 1.6 --package-lock-only -o "$outputFile"
-              Pop-Location
-              $used = "cyclonedx-npm"
-            } elseif ($name -like "*.deps.json") {
-              if ($dotnetRoot -and (Test-Path $dotnetRoot)) {
-                # Prefer operating on a project/solution at the hinted root
-                Write-Host "Attempting CycloneDX .NET against project/solution at $dotnetRoot for $($file.Name)"
-                # Try to find a .sln or .csproj under the root
-                $proj = Get-ChildItem -Path $dotnetRoot -Include *.sln,*.csproj,*.fsproj,*.vbproj -Recurse -File | Select-Object -First 1
-                if ($proj) {
               # Check if npx is available before trying to use CycloneDX npm
               try {
                 $npxCheck = Get-Command npx -ErrorAction SilentlyContinue
@@ -125,6 +125,19 @@ steps:
               } catch {
                 Write-Warning "Error using CycloneDX npm; falling back to Syft for $($file.Name). Error: $($_.Exception.Message)"
               }
+            } elseif ($name -like "*.deps.json") {
+              if ($dotnetRoot -and (Test-Path $dotnetRoot)) {
+                # Prefer operating on a project/solution at the hinted root
+                Write-Host "Attempting CycloneDX .NET against project/solution at $dotnetRoot for $($file.Name)"
+                # Try to find a .sln or .csproj under the root
+                $proj = Get-ChildItem -Path $dotnetRoot -Include *.sln,*.csproj,*.fsproj,*.vbproj -Recurse -File | Select-Object -First 1
+                if ($proj) {
+                  dotnet CycloneDX "$($proj.FullName)" --json -o "$sbomOutputDir" | Out-Null
+                  # dotnet CycloneDX writes bom.json by default; move/rename to our desired filename
+                  $generated = Join-Path $sbomOutputDir "bom.json"
+                  if (Test-Path $generated) { Move-Item -Force $generated $outputFile }
+                  $used = "cyclonedx-dotnet"
+                } else {
                   Write-Warning "No project/solution found under $dotnetRoot; falling back to Syft for $($file.Name)."
                 }
               } else {
