@@ -57,14 +57,15 @@ steps:
 
   # Verify Node.js and npm installation
   - script: |
-      if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-        echo "Node.js and npm are available:"
+      where node >nul 2>&1 && where npm >nul 2>&1
+      if %errorlevel% equ 0 (
+        echo Node.js and npm are available:
         node --version
         npm --version
-        echo "Will use npx @cyclonedx/cyclonedx-npm for npm SBOMs."
-      else
-        echo "##[warning]Node.js and/or npm not available. npm SBOM generation will fall back to Syft."
-      fi
+        echo Will use npx @cyclonedx/cyclonedx-npm for npm SBOMs.
+      ) else (
+        echo ##[warning]Node.js and/or npm not available. npm SBOM generation will fall back to Syft.
+      )
     displayName: 'Check Node/npm availability'
     condition: always()
 
