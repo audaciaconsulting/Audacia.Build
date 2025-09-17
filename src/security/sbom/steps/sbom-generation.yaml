@@ -167,9 +167,9 @@ steps:
                     continue
                 }
 
-                # Attempt 1: use explicit lockfile path
+                # Attempt 1: use lockfile-only mode
                 $toolName = "@cyclonedx/cyclonedx-npm"
-                $cdxArgs = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--lockfile", "$($file.FullName)")
+                $cdxArgs = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--package-lock-only")
                 Write-Host ("Using CycloneDX npm to generate SBOM: {0}" -f $outputFile)
                 Write-Host ("Command: npx -y {0} {1}" -f $toolName, ($cdxArgs -join ' '))
                 $cdxExit = $null
@@ -184,11 +184,11 @@ steps:
 
                 # If attempt 1 failed, try boolean --lockfile from the file directory
                 if ($cdxExit -ne 0 -or -not (Test-Path $outputFile)) {
-                    Write-Warning "CycloneDX npm attempt 1 failed or did not produce output. Trying attempt 2 from lockfile directory with boolean --lockfile."
+                    Write-Warning "CycloneDX npm attempt 1 failed or did not produce output. Trying attempt 2 from lockfile directory with --package-lock-only."
                     $pwdSaved = Get-Location
                     Push-Location -Path $file.DirectoryName
                     try {
-                        $cdxArgs2 = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--lockfile")
+                        $cdxArgs2 = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--package-lock-only")
                         Write-Host ("Command (cwd=$($file.DirectoryName)): npx -y {0} {1}" -f $toolName, ($cdxArgs2 -join ' '))
                         & npx -y $toolName @cdxArgs2
                         $cdxExit = $LASTEXITCODE
