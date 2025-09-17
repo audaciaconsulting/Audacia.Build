@@ -57,8 +57,29 @@ steps:
 
         $requestedFormat = "${{ parameters.outputFormat }}"
         $cdxOutputFormat = if ($requestedFormat -match '(?i)xml') { 'xml' } else { 'json' }
+        $fileExt         = if ($requestedFormat -match '(?i)xml') { 'xml' } else { 'json' }
 
-        # Detect if CycloneDX npm is invokable; fallback to Syft otherwise.
+        function Get-AppNameFromPackageJson([string]$manifestPath) {
+          try {
+            $pkg = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
+            $name = $pkg.name
+          } catch { $name = $null }
+
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            $name = Split-Path (Split-Path $manifestPath -Parent) -Leaf
+          }
+
+          if ($name -match '^@[^/]+/(.+)$') { $name = $Matches[1] }  # drop npm scope
+          $name = $name.ToLowerInvariant()
+
+          # Windows-safe filename: strip reserved characters and trailing dot/space
+          $name = $name -replace '[<>:"/\\|?*]', '-'
+          $name = $name.Trim().TrimEnd('.',' ')
+          if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
+          return $name
+        }
+
+        # Detect if CycloneDX npm CLI is available; otherwise fallback to Syft.
         $haveNode = $false; $haveNpm = $false; $haveNpx = $false
         try { & node --version  | Out-Null; $haveNode = $true } catch { }
         try { & npm  --version  | Out-Null; $haveNpm  = $true } catch { }
@@ -78,9 +99,10 @@ steps:
           if ([string]::IsNullOrWhiteSpace($projRel)) { $projRel = "root" }
           $safeRel   = ($projRel -replace '[:*?\"<>|]', '_')
 
+          $appName   = Get-AppNameFromPackageJson $manifest.FullName
           $projOutDir = Join-Path $sbomOutputDir ("npm\" + $safeRel)
           if (-not (Test-Path $projOutDir)) { New-Item -ItemType Directory -Path $projOutDir -Force | Out-Null }
-          $outputFile = Join-Path $projOutDir "bom.json"
+          $outputFile = Join-Path $projOutDir ("{0}-sbom.{1}" -f $appName, $fileExt)
 
           if ($canUseCdx) {
             Push-Location $projDir
@@ -109,7 +131,7 @@ steps:
         foreach ($file in $depsFiles) {
           if (-not $syftExists) { $dotnetFailed++; continue }
           $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
-          $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
+          $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.$fileExt")
           $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
           if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
           & $syftPath @syftArgs
