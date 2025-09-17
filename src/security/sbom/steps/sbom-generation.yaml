@@ -20,17 +20,16 @@ parameters:
     default: '$(Agent.TempDirectory)'             # Directory where Syft (the SBOM generator) will be installed.
   - name: syftConfigFile
     type: string
-    default: ''                                   # Directory where an optional configuration file for Syft located.
+    default: ''                                   # Optional Syft configuration file path.
 
 steps:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Dependency Lock artifact'
     inputs:
       buildType: 'current'
-      artifact: 'lock-deps-files'                  # Updated artifact name to match published artifact.
+      artifact: 'lock-deps-files'
       path: ${{ parameters.dependencyLockArtifactDirectory }}
 
-  # Install Syft before generating SBOMs.
   - script: |
       echo "Installing Syft (SBOM Generator) into ${{ parameters.syftInstallDir }}"
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
@@ -42,201 +41,171 @@ steps:
       targetType: 'inline'
       script: |
         <#
-          Preflight manual checks (if automated checks below still fail or are inconclusive):
-            - Ensure the pipeline uses a Windows agent (windows-latest is recommended) with PowerShell available.
-            - Confirm Node.js, npm, and npx are on PATH (npx will fetch @cyclonedx/cyclonedx-npm when first used).
-            - Allow outbound HTTPS to registry.npmjs.org:443 (or configure npm proxy/https-proxy accordingly).
-            - Decide desired CycloneDX output format: cyclonedx or SPDX (we’ll map from the requested format).
-            - Ensure Syft is installed and syft.exe is present for the fallback path (if CycloneDX npm cannot be used).
+          Preflight manual checks:
+            - Windows agent with PowerShell is available.
+            - Node.js, npm, and npx are on PATH.
+            - Outbound HTTPS to registry.npmjs.org:443 is allowed.
+            - Syft is installed and syft.exe is present for fallback.
         #>
-
-        # Log the current GitHub branch information
-        $branchName = $env:BUILD_SOURCEBRANCHNAME
-        $branchRef = $env:BUILD_SOURCEBRANCH
-        $prSource = $env:SYSTEM_PULLREQUEST_SOURCEBRANCH
-        $prTarget = $env:SYSTEM_PULLREQUEST_TARGETBRANCH
-        if (![string]::IsNullOrWhiteSpace($prSource)) {
-          Write-Host "Building PR from $prSource into $prTarget"
-        }
-        else {
-          Write-Host "Building branch: $branchName ($branchRef)"
-        }
 
         $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
         if (-Not (Test-Path $dependencyLockDir)) {
-          # If the parameter isn’t set, assume the default download path.
           $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
         }
-        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
+
         $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
         if (-Not (Test-Path $sbomOutputDir)) {
-            New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
+          New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
-        # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
-        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
-        $fileNames = ($files | ForEach-Object { $_.Name } | Sort-Object)
-        Write-Host ("Discovered {0} JSON file(s) in dependency lock directory: {1}" -f $files.Count, ($fileNames -join ", "))
 
-        # Log environment/agent details to help identify OS compatibility issues
+        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
+
         Write-Host ("Agent OS: {0}" -f $env:AGENT_OS)
         Write-Host ("Agent OS Architecture: {0}" -f $env:AGENT_OSARCHITECTURE)
         Write-Host ("PowerShell: {0} {1} on {2}" -f $PSVersionTable.PSEdition, $PSVersionTable.PSVersion, [Environment]::OSVersion.VersionString)
 
-        # Toolchain presence checks with logging
         $haveNode = $false; $haveNpm = $false; $haveNpx = $false
         try { $nodeVersion = & node --version; $haveNode = $true; Write-Host "node --version: $nodeVersion" } catch { Write-Warning ("Node.js not found on PATH. Error: {0}" -f $_.Exception.Message) }
         try { $npmVersion  = & npm  --version; $haveNpm  = $true; Write-Host "npm  --version: $npmVersion" } catch { Write-Warning ("npm not found on PATH. Error: {0}" -f $_.Exception.Message) }
         try { $npxVersion  = & npx  --version; $haveNpx  = $true; Write-Host "npx  --version: $npxVersion" } catch { Write-Warning ("npx not found on PATH. Error: {0}" -f $_.Exception.Message) }
 
-        # Network reachability and npm proxy diagnostics
         $networkOk = $true
         try {
-            Write-Host "Network check: attempting TCP connection to registry.npmjs.org:443 ..."
-            $tnc = Test-NetConnection -ComputerName registry.npmjs.org -Port 443 -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-            if ($null -eq $tnc -or -not $tnc.TcpTestSucceeded) {
-                $networkOk = $false
-                Write-Warning "Unable to reach registry.npmjs.org:443. If behind a proxy, configure 'npm config set proxy' and 'npm config set https-proxy'."
-            } else {
-                Write-Host "Network check passed: registry.npmjs.org:443 is reachable."
-            }
-        } catch {
+          Write-Host "Network check: attempting TCP connection to registry.npmjs.org:443 ..."
+          $tnc = Test-NetConnection -ComputerName registry.npmjs.org -Port 443 -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+          if ($null -eq $tnc -or -not $tnc.TcpTestSucceeded) {
             $networkOk = $false
-            Write-Warning ("Network check (Test-NetConnection) failed: {0}" -f $_.Exception.Message)
-        }
-        if ($haveNpm) {
-            try {
-                $npmProxy = (& npm config get proxy) 2>$null
-                $npmHttpsProxy = (& npm config get https-proxy) 2>$null
-                Write-Host ("npm proxy: {0}" -f ($npmProxy | Out-String).Trim())
-                Write-Host ("npm https-proxy: {0}" -f ($npmHttpsProxy | Out-String).Trim())
-            } catch {
-                Write-Warning ("Unable to read npm proxy configuration: {0}" -f $_.Exception.Message)
-            }
-            if ($networkOk) {
-                try {
-                    $resp = Invoke-WebRequest -Uri "https://registry.npmjs.org/-/ping" -Method GET -TimeoutSec 15 -UseBasicParsing -ErrorAction Stop
-                    Write-Host ("NPM registry ping status: {0}" -f $resp.StatusCode)
-                } catch {
-                    Write-Warning ("NPM registry HTTP ping failed: {0}" -f $_.Exception.Message)
-                }
-            }
+            Write-Warning "Unable to reach registry.npmjs.org:443. If behind a proxy, configure 'npm config set proxy' and 'npm config set https-proxy'."
+          } else {
+            Write-Host "Network check passed: registry.npmjs.org:443 is reachable."
+          }
+        } catch {
+          $networkOk = $false
+          Write-Warning ("Network check (Test-NetConnection) failed: {0}" -f $_.Exception.Message)
         }
 
-        # Syft availability for fallback on Windows
+        if ($haveNpm) {
+          try {
+            $npmProxy = (& npm config get proxy) 2>$null
+            $npmHttpsProxy = (& npm config get https-proxy) 2>$null
+            Write-Host ("npm proxy: {0}" -f ($npmProxy | Out-String).Trim())
+            Write-Host ("npm https-proxy: {0}" -f ($npmHttpsProxy | Out-String).Trim())
+          } catch {
+            Write-Warning ("Unable to read npm proxy configuration: {0}" -f $_.Exception.Message)
+          }
+          if ($networkOk) {
+            try {
+              $resp = Invoke-WebRequest -Uri "https://registry.npmjs.org/-/ping" -Method GET -TimeoutSec 15 -UseBasicParsing -ErrorAction Stop
+              Write-Host ("NPM registry ping status: {0}" -f $resp.StatusCode)
+            } catch {
+              Write-Warning ("NPM registry HTTP ping failed: {0}" -f $_.Exception.Message)
+            }
+          }
+        }
+
         $syftPath = Join-Path -Path "${{ parameters.syftInstallDir }}" -ChildPath "syft.exe"
         $syftExists = Test-Path $syftPath
         if ($syftExists) {
-            Write-Host ("Syft detected at: {0}" -f $syftPath)
+          Write-Host ("Syft detected at: {0}" -f $syftPath)
         } else {
-            Write-Warning ("Syft not found at expected path: {0}. If CycloneDX npm is unavailable, fallback will fail. Ensure syft.exe is installed." -f $syftPath)
+          Write-Warning ("Syft not found at expected path: {0}. If CycloneDX npm is unavailable, fallback will fail." -f $syftPath)
         }
 
-        # Map requested output format to CycloneDX npm accepted formats (json|xml)
         $requestedFormat = "${{ parameters.outputFormat }}"
         $cdxOutputFormat = "json"
         if ($requestedFormat -match "(?i)xml")       { $cdxOutputFormat = "xml" }
         elseif ($requestedFormat -match "(?i)json") { $cdxOutputFormat = "json" }
         else {
-            Write-Warning ("Requested output format '{0}' not recognized by CycloneDX npm. Defaulting to 'json'." -f $requestedFormat)
+          Write-Warning ("Requested output format '{0}' not recognized by CycloneDX npm. Defaulting to 'json'." -f $requestedFormat)
         }
         Write-Host ("Output format mapping: requested='{0}' -> CycloneDX npm='{1}'" -f $requestedFormat, $cdxOutputFormat)
 
         $canUseCdx = $haveNode -and $haveNpm -and $haveNpx -and $networkOk
 
-        foreach ($file in $files) {
-            if ($file.Name -eq "package-lock.json") {
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
-                Write-Host "Detected npm lockfile: $($file.FullName)"
+        # Generate npm SBOMs by discovering project folders recursively
+        $npmProjects = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "package.json" -File |
+          Where-Object {
+            Test-Path (Join-Path $_.Directory.FullName "package-lock.json")
+          }
 
-                if (-not $canUseCdx) {
-                    Write-Warning "CycloneDX npm preflight failed; will try Syft fallback."
-                    if (-not $haveNode) { Write-Warning "Missing Node.js on PATH." }
-                    if (-not $haveNpm)  { Write-Warning "Missing npm on PATH." }
-                    if (-not $haveNpx)  { Write-Warning "Missing npx on PATH." }
-                    if (-not $networkOk){ Write-Warning "Network to registry.npmjs.org:443 appears blocked. Configure npm proxy or allow outbound HTTPS." }
-                    if (-not $syftExists) {
-                        Write-Error "No CycloneDX npm and no Syft available. Cannot generate SBOM for package-lock.json."
-                        continue
-                    }
-                    # Fallback to Syft
-                    Write-Host "Using Syft fallback to generate SBOM: $outputFile"
-                    $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
-                    if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
-                    Write-Host ("Command: {0} {1}" -f $syftPath, ($syftArgs -join ' '))
-                    & $syftPath @syftArgs
-                    continue
-                }
+        Write-Host ("Discovered {0} npm project(s)." -f $npmProjects.Count)
 
-                # Attempt 1: use lockfile-only mode
-                $toolName = "@cyclonedx/cyclonedx-npm"
-                $cdxArgs = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--package-lock-only")
-                Write-Host ("Using CycloneDX npm to generate SBOM: {0}" -f $outputFile)
-                Write-Host ("Command: npx -y {0} {1}" -f $toolName, ($cdxArgs -join ' '))
-                $cdxExit = $null
-                try {
-                    & npx -y $toolName @cdxArgs
-                    $cdxExit = $LASTEXITCODE
-                    Write-Host "CycloneDX npm exit code (attempt 1): $cdxExit"
-                } catch {
-                    $cdxExit = 1
-                    Write-Warning ("CycloneDX npm threw an exception (attempt 1): {0}" -f $_.Exception.Message)
-                }
+        foreach ($manifest in $npmProjects) {
+          $projDir   = $manifest.Directory.FullName
+          $lockPath  = Join-Path $projDir "package-lock.json"
+          $projRel   = $projDir.Substring($dependencyLockDir.Length).TrimStart('\','/')
+          if ([string]::IsNullOrWhiteSpace($projRel)) { $projRel = "root" }
 
-                # If attempt 1 failed, try boolean --lockfile from the file directory
-                if ($cdxExit -ne 0 -or -not (Test-Path $outputFile)) {
-                    Write-Warning "CycloneDX npm attempt 1 failed or did not produce output. Trying attempt 2 from lockfile directory with --package-lock-only."
-                    $pwdSaved = Get-Location
-                    Push-Location -Path $file.DirectoryName
-                    try {
-                        $cdxArgs2 = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--package-lock-only")
-                        Write-Host ("Command (cwd=$($file.DirectoryName)): npx -y {0} {1}" -f $toolName, ($cdxArgs2 -join ' '))
-                        & npx -y $toolName @cdxArgs2
-                        $cdxExit = $LASTEXITCODE
-                        Write-Host "CycloneDX npm exit code (attempt 2): $cdxExit"
-                    } catch {
-                        $cdxExit = 1
-                        Write-Warning ("CycloneDX npm threw an exception (attempt 2): {0}" -f $_.Exception.Message)
-                    } finally {
-                        Pop-Location | Out-Null
-                    }
-                }
+          $safeRel   = ($projRel -replace '[:*?\"<>|]', '_')
+          $projOutDir = Join-Path $sbomOutputDir ("npm\" + $safeRel)
+          if (-not (Test-Path $projOutDir)) {
+            New-Item -ItemType Directory -Path $projOutDir -Force | Out-Null
+          }
+          $outputFile = Join-Path $projOutDir "bom.json"
 
-                if ($cdxExit -eq 0 -and (Test-Path $outputFile)) {
-                    Write-Host "CycloneDX npm successfully generated SBOM: $outputFile"
-                } else {
-                    Write-Warning "CycloneDX npm failed to generate SBOM. Falling back to Syft."
-                    if (-not $syftExists) {
-                        Write-Error ("Syft fallback unavailable at: {0}. Please install Syft on Windows (e.g., download syft-Windows-x86_64.exe and place it at the configured path)." -f $syftPath)
-                        continue
-                    }
-                    $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
-                    if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
-                    Write-Host ("Command: {0} {1}" -f $syftPath, ($syftArgs -join ' '))
-                    & $syftPath @syftArgs
-                }
+          Write-Host "Generating npm SBOM from: $projDir"
+          if (-not $canUseCdx) {
+            Write-Warning "CycloneDX npm preflight failed; will try Syft fallback."
+            if (-not $syftExists) {
+              Write-Error "Syft fallback unavailable. Skipping $projDir"
+              continue
             }
-            elseif ($file.Name -like "*.deps.json") {
-                # Remove the '.deps' segment and append -sbom.json.
-                $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
-                Write-Host "Detected .NET deps file: $($file.FullName)"
-                if (-not $syftExists) {
-                    Write-Error ("Syft not found at: {0}. Cannot generate SBOM for {1}. Please install syft.exe or adjust syftInstallDir." -f $syftPath, $file.Name)
-                    continue
-                }
-                Write-Host "Using Syft to generate SBOM: $outputFile"
-                $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
-                if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
-                Write-Host ("Command: {0} {1}" -f $syftPath, ($syftArgs -join ' '))
-                & $syftPath @syftArgs
+            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$lockPath")
+            if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
+            & $syftPath @syftArgs
+            if (Test-Path $outputFile) { Write-Host "Created (Syft): $outputFile" }
+            continue
+          }
+
+          Push-Location $projDir
+          try {
+            $cdxArgs = @("--package-lock-only", "--output-format", $cdxOutputFormat, "--output-file", $outputFile, $manifest.FullName)
+            Write-Host ("Command: npx -y @cyclonedx/cyclonedx-npm {0}" -f ($cdxArgs -join ' '))
+            & npx -y @cyclonedx/cyclonedx-npm @cdxArgs
+            $cdxExit = $LASTEXITCODE
+            Write-Host "cyclonedx-npm exit code: $cdxExit"
+          } catch {
+            $cdxExit = 1
+            Write-Warning ("CycloneDX npm threw an exception: {0}" -f $_.Exception.Message)
+          } finally {
+            Pop-Location | Out-Null
+          }
+
+          if ($cdxExit -ne 0 -or -not (Test-Path $outputFile)) {
+            Write-Warning "CycloneDX npm failed for $projDir; falling back to Syft."
+            if ($syftExists) {
+              $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$lockPath")
+              if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
+              & $syftPath @syftArgs
+              if (Test-Path $outputFile) { Write-Host "Created (Syft): $outputFile" } else { Write-Warning "Syft also failed for $projDir" }
+            } else {
+              Write-Error "No Syft available. Skipped $projDir."
             }
-            else {
-                Write-Host "Skipping unsupported JSON file: $($file.Name)"
-                continue
-            }
+          } else {
+            Write-Host "Created: $outputFile"
+          }
         }
 
-  # Publish the generated SBOM files as an artifact if enabled.
+        # Generate SBOMs for .NET deps files via Syft (unchanged)
+        $depsFiles = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "*.deps.json" -File
+        $depsNames = ($depsFiles | ForEach-Object { $_.Name } | Sort-Object)
+        Write-Host ("Discovered {0} .deps.json file(s): {1}" -f $depsFiles.Count, ($depsNames -join ", "))
+
+        foreach ($file in $depsFiles) {
+          $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
+          $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
+          Write-Host "Detected .NET deps file: $($file.FullName)"
+          if (-not $syftExists) {
+            Write-Error ("Syft not found at: {0}. Cannot generate SBOM for {1}." -f $syftPath, $file.Name)
+            continue
+          }
+          $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+          if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
+          Write-Host ("Command: {0} {1}" -f $syftPath, ($syftArgs -join ' '))
+          & $syftPath @syftArgs
+          if (Test-Path $outputFile) { Write-Host "Created: $outputFile" } else { Write-Warning "Failed to create: $outputFile" }
+        }
+
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
         displayName: 'Publish SBOM Artifact'
