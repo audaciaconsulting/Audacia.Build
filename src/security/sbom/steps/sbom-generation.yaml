@@ -65,24 +65,66 @@ steps:
         }
         # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
         $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
+        Write-Host ("Discovered {0} JSON file(s) in dependency lock directory: {1}" -f $files.Count, ($files | ForEach-Object { $_.Name } | Sort-Object | Join-String -Separator ", "))
+        # Log toolchain information for traceability and troubleshooting
+        try { $nodeVersion = & node --version; Write-Host "node --version: $nodeVersion" } catch { Write-Warning ("Node.js not found on PATH. Error: {0}" -f $_.Exception.Message) }
+        try { $npmVersion  = & npm  --version; Write-Host "npm  --version: $npmVersion" } catch { Write-Warning ("npm not found on PATH. Error: {0}" -f $_.Exception.Message) }
+        try { $npxVersion  = & npx  --version; Write-Host "npx  --version: $npxVersion" } catch { Write-Warning ("npx not found on PATH. Error: {0}" -f $_.Exception.Message) }
+
+        # Map requested output format to CycloneDX npm accepted formats (json|xml)
+        $requestedFormat = "${{ parameters.outputFormat }}"
+        $cdxOutputFormat = "json"
+        if ($requestedFormat -match "(?i)xml") { $cdxOutputFormat = "xml" }
+        elseif ($requestedFormat -match "(?i)json") { $cdxOutputFormat = "json" }
+
         foreach ($file in $files) {
             if ($file.Name -eq "package-lock.json") {
                 $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
+                Write-Host "Detected npm lockfile: $($file.FullName)"
+                Write-Host "Using CycloneDX npm tool to generate SBOM: $outputFile"
+                $toolName = "@cyclonedx/cyclonedx-npm"
+                $cdxArgs = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile, "--lockfile", "$($file.FullName)")
+                Write-Host ("Command: npx -y {0} {1}" -f $toolName, ($cdxArgs -join ' '))
+                $cdxExit = $null
+                try {
+                    & npx -y $toolName @cdxArgs
+                    $cdxExit = $LASTEXITCODE
+                    Write-Host "CycloneDX npm exit code: $cdxExit"
+                }
+                catch {
+                    $cdxExit = 1
+                    Write-Warning ("CycloneDX npm threw an exception: {0}" -f $_.Exception.Message)
+                }
+                if ($cdxExit -ne 0 -or -not (Test-Path $outputFile)) {
+                    Write-Warning "CycloneDX npm failed or did not produce output. Falling back to Syft for $($file.Name)."
+                    $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+                    if ("${{ parameters.syftConfigFile }}") {
+                        $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
+                    }
+                    Write-Host ("Command: {0}\syft.exe {1}" -f "${{ parameters.syftInstallDir }}", ($syftArgs -join ' '))
+                    & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
+                }
+                else {
+                    Write-Host "CycloneDX npm successfully generated SBOM: $outputFile"
+                }
             }
             elseif ($file.Name -like "*.deps.json") {
                 # Remove the '.deps' segment and append -sbom.json.
                 $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
                 $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
+                Write-Host "Detected .NET deps file: $($file.FullName)"
+                Write-Host "Using Syft to generate SBOM: $outputFile"
+                $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+                if ("${{ parameters.syftConfigFile }}") {
+                    $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
+                }
+                Write-Host ("Command: {0}\syft.exe {1}" -f "${{ parameters.syftInstallDir }}", ($syftArgs -join ' '))
+                & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
             }
             else {
+                Write-Host "Skipping unsupported JSON file: $($file.Name)"
                 continue
             }
-            Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
-            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
-            if ("${{ parameters.syftConfigFile }}") {
-                $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
-            }
-            & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
         }
 
   # Publish the generated SBOM files as an artifact if enabled.
