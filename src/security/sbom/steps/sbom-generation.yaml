@@ -41,6 +41,18 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
+        # Log the current GitHub branch information
+        $branchName = $env:BUILD_SOURCEBRANCHNAME
+        $branchRef = $env:BUILD_SOURCEBRANCH
+        $prSource = $env:SYSTEM_PULLREQUEST_SOURCEBRANCH
+        $prTarget = $env:SYSTEM_PULLREQUEST_TARGETBRANCH
+        if (![string]::IsNullOrWhiteSpace($prSource)) {
+          Write-Host "Building PR from $prSource into $prTarget"
+        }
+        else {
+          Write-Host "Building branch: $branchName ($branchRef)"
+        }
+
         $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
         if (-Not (Test-Path $dependencyLockDir)) {
           # If the parameter isn’t set, assume the default download path.
