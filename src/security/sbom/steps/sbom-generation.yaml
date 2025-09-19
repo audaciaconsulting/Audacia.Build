@@ -169,7 +169,9 @@ steps:
           $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
           $fileName = "{0}-sbom.{1}" -f $base, $fileExt
           $outFile = Join-Path $dotnetOut $fileName
-          $args = @($p, "-o", $dotnetOut, "-F", ($cdxOutputFormat -eq 'xml' ? 'Xml' : 'Json'), "-fn", $fileName)
+          $formatArg = 'Json'
+          if ($cdxOutputFormat -eq 'xml') { $formatArg = 'Xml' }
+          $args = @($p, "-o", $dotnetOut, "-F", $formatArg, "-fn", $fileName)
           if ($env:GITHUB_TOKEN) {
             $args += @("-egl", "-gbt", $env:GITHUB_TOKEN)
           } elseif ($env:GITHUB_USERNAME -and $env:GITHUB_TOKEN) {
