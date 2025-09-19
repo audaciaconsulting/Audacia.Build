@@ -107,7 +107,7 @@ steps:
           if ($canUseCdx) {
             Push-Location $projDir
             try {
-              & npx -y @cyclonedx/cyclonedx-npm --package-lock-only --output-format $cdxOutputFormat --output-file $outputFile $manifest.FullName
+              & npx -y @cyclonedx/cyclonedx-npm --output-format $cdxOutputFormat --output-file $outputFile $manifest.FullName
               $exit = $LASTEXITCODE
             } catch { $exit = 1 } finally { Pop-Location | Out-Null }
             if ($exit -eq 0 -and (Test-Path $outputFile)) { $npmSuccess++; continue }
