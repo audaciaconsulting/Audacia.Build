@@ -39,7 +39,7 @@ steps:
       checkLatest: true
 
   # Install Syft for fallback and for .NET deps processing.
-  - script: |
+  - bash: |
       echo "Installing Syft into ${{ parameters.syftInstallDir }}"
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
     displayName: Install Syft
@@ -82,7 +82,7 @@ steps:
           New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
         
-        $syftBinary = if ($IsWindows) { "syft.exe" } else { "syft" }
+        $syftBinary = if (($PSVersionTable.PSEdition -eq 'Desktop') -or ($env:OS -eq 'Windows_NT')) { "syft.exe" } else { "syft" }
         $syftPath = Join-Path "${{ parameters.syftInstallDir }}" $syftBinary
         $syftExists = Test-Path $syftPath
         
@@ -137,7 +137,7 @@ steps:
               npm ci --ignore-scripts --no-audit --no-fund
               $args = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile)
               if ("${{ parameters.includeLicenseTexts }}" -eq "True") { $args += @("--gather-license-texts") }
-              npx -y @cyclonedx/cyclonedx-npm @args
+              npx -y '@cyclonedx/cyclonedx-npm' @args
               $exit = $LASTEXITCODE
             } catch { $exit = 1 } finally { Pop-Location | Out-Null }
         
