@@ -20,8 +20,24 @@ parameters:
   - name: syftConfigFile
     type: string
     default: ''                                   # Optional Syft configuration file path.
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
 
 steps:
+  # Ensure Node is available (cyclonedx-npm needs modern Node/npm).
+  - task: UseNode@1
+    displayName: Use Node.js ${{ parameters.nodeVersion }}
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+      checkLatest: true
+
   # Install Syft for fallback and for .NET deps processing.
   - script: |
       echo "Installing Syft into ${{ parameters.syftInstallDir }}"
@@ -36,6 +52,16 @@ steps:
       artifact: lock-deps-files
       path: ${{ parameters.dependencyLockArtifactDirectory }}
 
+  # Install CycloneDX .NET global tool (for richer license resolution in NuGet).
+  - task: PowerShell@2
+    displayName: Install CycloneDX .NET tool
+    inputs:
+      targetType: inline
+      script: |
+        dotnet tool update --global CycloneDX || dotnet tool install --global CycloneDX
+        $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
+        Write-Host "##vso[task.prependpath]$dotnetTools"
+
   # Generate SBOMs for npm and .NET inputs with minimal, action-oriented logging.
   - task: PowerShell@2
     displayName: Generate SBOMs (npm + .NET)
@@ -46,76 +72,78 @@ steps:
         if (-Not (Test-Path $dependencyLockDir)) {
           $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
         }
-
+        
         $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
         if (-Not (Test-Path $sbomOutputDir)) {
           New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
-
-        $syftPath   = Join-Path "${{ parameters.syftInstallDir }}" "syft.exe"
+        
+        $syftBinary = if ($IsWindows) { "syft.exe" } else { "syft" }
+        $syftPath = Join-Path "${{ parameters.syftInstallDir }}" $syftBinary
         $syftExists = Test-Path $syftPath
-
+        
         $requestedFormat = "${{ parameters.outputFormat }}"
         $cdxOutputFormat = if ($requestedFormat -match '(?i)xml') { 'xml' } else { 'json' }
-        $fileExt         = if ($requestedFormat -match '(?i)xml') { 'xml' } else { 'json' }
-
+        $fileExt = if ($requestedFormat -match '(?i)xml') { 'xml' } else { 'json' }
+        
         function Get-AppNameFromPackageJson([string]$manifestPath) {
           try {
             $pkg = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
             $name = $pkg.name
           } catch { $name = $null }
-
+        
           if ([string]::IsNullOrWhiteSpace($name)) {
             $name = Split-Path (Split-Path $manifestPath -Parent) -Leaf
           }
-
-          if ($name -match '^@[^/]+/(.+)$') { $name = $Matches[1] }  # drop npm scope
+        
+          if ($name -match '^@[^/]+/(.+)$') { $name = $Matches[1] }
           $name = $name.ToLowerInvariant()
-
-          # Windows-safe filename: strip reserved characters and trailing dot/space
+        
           $name = $name -replace '[<>:"/\\|?*]', '-'
           $name = $name.Trim().TrimEnd('.',' ')
           if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
           return $name
         }
-
-        # Detect if CycloneDX npm CLI is available; otherwise fallback to Syft.
+        
         $haveNode = $false; $haveNpm = $false; $haveNpx = $false
-        try { & node --version  | Out-Null; $haveNode = $true } catch { }
-        try { & npm  --version  | Out-Null; $haveNpm  = $true } catch { }
-        try { & npx  --version  | Out-Null; $haveNpx  = $true } catch { }
+        try { & node --version | Out-Null; $haveNode = $true } catch { }
+        try { & npm --version | Out-Null; $haveNpm = $true } catch { }
+        try { & npx --version | Out-Null; $haveNpx = $true } catch { }
         $canUseCdx = ($haveNode -and $haveNpm -and $haveNpx)
-
-        $npmProjects = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "package.json" -File |
-          Where-Object { Test-Path (Join-Path $_.Directory.FullName "package-lock.json") }
-
+        
+        $npmProjects = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "package.json" -File | Where-Object { Test-Path (Join-Path $_.Directory.FullName "package-lock.json") }
+        
         $npmSuccess = 0; $npmFallback = 0; $npmFailed = 0
         Write-Host "npm projects discovered: $($npmProjects.Count)"
-
+        
         foreach ($manifest in $npmProjects) {
-          $projDir   = $manifest.Directory.FullName
-          $lockPath  = Join-Path $projDir "package-lock.json"
-          $projRel   = $projDir.Substring($dependencyLockDir.Length).TrimStart('\','/')
+          $projDir = $manifest.Directory.FullName
+          $projRel = $projDir.Substring($dependencyLockDir.Length).TrimStart('\','/')
           if ([string]::IsNullOrWhiteSpace($projRel)) { $projRel = "root" }
-          $safeRel   = ($projRel -replace '[:*?\"<>|]', '_')
-
-          $appName   = Get-AppNameFromPackageJson $manifest.FullName
+          $safeRel = ($projRel -replace '[:*?\"<>|]', '_')
+        
+          $appName = Get-AppNameFromPackageJson $manifest.FullName
           $projOutDir = Join-Path $sbomOutputDir ("npm\" + $safeRel)
           if (-not (Test-Path $projOutDir)) { New-Item -ItemType Directory -Path $projOutDir -Force | Out-Null }
           $outputFile = Join-Path $projOutDir ("{0}-sbom.{1}" -f $appName, $fileExt)
-
+        
           if ($canUseCdx) {
             Push-Location $projDir
             try {
-              & npx -y @cyclonedx/cyclonedx-npm --output-format $cdxOutputFormat --output-file $outputFile $manifest.FullName
+              npm ci --ignore-scripts --no-audit --no-fund
+              $args = @("--output-format", $cdxOutputFormat, "--output-file", $outputFile)
+              if ("${{ parameters.includeLicenseTexts }}" -eq "True") { $args += @("--gather-license-texts") }
+              npx -y @cyclonedx/cyclonedx-npm @args
               $exit = $LASTEXITCODE
             } catch { $exit = 1 } finally { Pop-Location | Out-Null }
+        
             if ($exit -eq 0 -and (Test-Path $outputFile)) { $npmSuccess++; continue }
-            Write-Host "CycloneDX npm failed for: $projDir"
+            Write-Warning "cyclonedx-npm failed for: $projDir"
           }
-
+        
           if ($syftExists) {
-            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$lockPath")
+            $env:SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES = "true"
+            $syftArgs = @("-o", "$requestedFormat=$outputFile", "$projDir")
             if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
             & $syftPath @syftArgs
             if (Test-Path $outputFile) { $npmFallback++ } else { $npmFailed++ }
@@ -123,24 +151,49 @@ steps:
             $npmFailed++
           }
         }
-
+        
+        Write-Host "npm SBOMs: success=$npmSuccess, fallback_syft=$npmFallback, failed=$npmFailed"
+        
+        $dotnetOut = Join-Path $sbomOutputDir "dotnet"
+        if (-not (Test-Path $dotnetOut)) { New-Item -ItemType Directory -Path $dotnetOut | Out-Null }
+        
+        $dotnetProjectsParam = '${{ parameters.dotnetProjectsMultiline }}'
+        $dotnetProjects = $dotnetProjectsParam -split "`r?`n" | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+        
+        $cdxDotnetOk = 0; $cdxDotnetFail = 0
+        foreach ($p in $dotnetProjects) {
+          $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
+          $fileName = "{0}-sbom.{1}" -f $base, $fileExt
+          $outFile = Join-Path $dotnetOut $fileName
+          $args = @($p, "-o", $dotnetOut, "-F", ($cdxOutputFormat -eq 'xml' ? 'Xml' : 'Json'), "-fn", $fileName)
+          if ($env:GITHUB_TOKEN) {
+            $args += @("-egl", "-gbt", $env:GITHUB_TOKEN)
+          } elseif ($env:GITHUB_USERNAME -and $env:GITHUB_TOKEN) {
+            $args += @("-egl", "-gu", $env:GITHUB_USERNAME, "-gt", $env:GITHUB_TOKEN)
+          }
+          try {
+            & cyclonedx @args
+            if (Test-Path $outFile) { $cdxDotnetOk++ } else { $cdxDotnetFail++ }
+          } catch {
+            $cdxDotnetFail++
+          }
+        }
+        
         $depsFiles = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "*.deps.json" -File
-        $dotnetSuccess = 0; $dotnetFailed = 0
-        Write-Host ".NET deps files discovered: $($depsFiles.Count)"
-
+        $dotnetSyftOk = 0; $dotnetSyftFail = 0
         foreach ($file in $depsFiles) {
-          if (-not $syftExists) { $dotnetFailed++; continue }
+          if (-not $syftExists) { $dotnetSyftFail++; continue }
           $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
-          $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.$fileExt")
-          $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+          $outputFile = Join-Path -Path $dotnetOut -ChildPath ("$nameWithoutDeps-sbom.$fileExt")
+          $syftArgs = @("-o", "$requestedFormat=$outputFile", "$($file.FullName)")
           if ("${{ parameters.syftConfigFile }}") { $syftArgs += @("-c", "${{ parameters.syftConfigFile }}") }
           & $syftPath @syftArgs
-          if (Test-Path $outputFile) { $dotnetSuccess++ } else { $dotnetFailed++ }
+          if (Test-Path $outputFile) { $dotnetSyftOk++ } else { $dotnetSyftFail++ }
         }
-
+        
         Write-Host "SBOM generation summary:"
         Write-Host "  npm: success=$npmSuccess, fallback_syft=$npmFallback, failed=$npmFailed"
-        Write-Host "  .NET: success=$dotnetSuccess, failed=$dotnetFailed"
+        Write-Host "  dotnet: cyclonedx_ok=$cdxDotnetOk, cyclonedx_failed=$cdxDotnetFail, syft_ok=$dotnetSyftOk, syft_failed=$dotnetSyftFail"
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
