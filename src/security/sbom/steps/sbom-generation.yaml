@@ -58,7 +58,11 @@ steps:
     inputs:
       targetType: inline
       script: |
-        dotnet tool update --global CycloneDX || dotnet tool install --global CycloneDX
+        & dotnet tool update --global CycloneDX
+        if ($LASTEXITCODE -ne 0) {
+          & dotnet tool install --global CycloneDX
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
+        }
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
         Write-Host "##vso[task.prependpath]$dotnetTools"
 
