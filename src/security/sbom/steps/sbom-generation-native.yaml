@@ -4,7 +4,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'     # Ignored internally; we always emit JSON per your request.
+    default: 'cyclonedx-json'     # Ignored internally; we always emit JSON.
   - name: publishArtifact
     type: boolean
     default: true
@@ -19,30 +19,28 @@ parameters:
     default: true
   - name: npmRootsMultiline
     type: string
-    default: ''                    # Optional: one root per line; otherwise auto-discover via package-lock.json
+    default: ''                    # Optional: one root per line; otherwise auto-discover (npm only)
   - name: dotnetProjectsMultiline
     type: string
     default: ''                    # One .sln/.csproj path per line
 
 steps:
-  # Grouped logs render nicely in Azure DevOps
   - powershell: |
       Write-Host "##[group]Environment & Parameters"
       Write-Host "Agent.OS: $env:AGENT_OS"
       Write-Host "Output format: JSON (forced)"
       Write-Host "Include license texts: ${{ parameters.includeLicenseTexts }}"
       Write-Host "SBOM output dir: ${{ parameters.sbomOutputDir }}"
+      Write-Host "Sources: $(Build.SourcesDirectory)"
       Write-Host "##[endgroup]"
     displayName: Log parameters
 
-  # Node for cyclonedx-npm
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: true
 
-  # Install CycloneDX .NET global tool (robust on Windows agents)
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
     inputs:
@@ -50,38 +48,22 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
         Write-Host "##[group]Install CycloneDX .NET tool"
-
-        # Try update first; if it fails (not installed), install.
         dotnet tool update --global CycloneDX
         if ($LASTEXITCODE -ne 0) {
           Write-Host "cyclonedx-dotnet not found; installing..."
           dotnet tool install --global CycloneDX
           if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
         }
-
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
-
-        # Make it available both now (this task) and later (subsequent tasks)
+        # make it available now and for later tasks
         $env:PATH = "$dotnetTools;$env:PATH"
         Write-Host "##vso[task.prependpath]$dotnetTools"
-
-        # Verify install (try common command names)
-        $versionOk = $false
-        try { cyclonedx --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
-        if (-not $versionOk) {
-          try { CycloneDX --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
-        }
-        if (-not $versionOk) {
-          try { dotnet CycloneDX --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
-        }
-        if (-not $versionOk) {
-          throw "CycloneDX CLI not found on PATH after install; PATH=$env:PATH"
-        }
-
+        # verify via 'dotnet CycloneDX' (works even if shim name differs)
+        dotnet CycloneDX --version
+        if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
         Write-Host "Installed tools in: $dotnetTools"
         Write-Host "##[endgroup]"
 
-  # Ensure output structure exists
   - powershell: |
       New-Item -ItemType Directory -Path "${{ parameters.sbomOutputDir }}" -Force | Out-Null
       New-Item -ItemType Directory -Path (Join-Path "${{ parameters.sbomOutputDir }}" "npm") -Force | Out-Null
@@ -90,37 +72,49 @@ steps:
 
   # npm SBOMs with cyclonedx-npm (JSON)
   - powershell: |
-      Write-Host "##[group]Discover npm projects"
+      $ErrorActionPreference = 'Stop'
+      Write-Host "##[group]Discover JS package managers"
+      $repoRoot = "$(Build.SourcesDirectory)"
+      $locks_npm  = Get-ChildItem -Path $repoRoot -Recurse -Filter 'package-lock.json' -File
+      Write-Host "Found npm package-lock.json: $($locks_npm.Count)"
+      if ($locks_pnpm.Count -gt 0) {
+        Write-Host "##vso[task.logissue type=warning]Detected pnpm-lock.yaml ($($locks_pnpm.Count)). @cyclonedx/cyclonedx-npm does not support PNPM; use @cyclonedx/cyclonedx-pnpm instead."
+      }
+      Write-Host "##[endgroup]"
+
+      Write-Host "##[group]Resolve roots"
       $rootsParam = @()
       $raw = @'
       ${{ parameters.npmRootsMultiline }}
       '@
       $rootsParam = $raw -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
-
-      $repoRoot = "$(Build.SourcesDirectory)"
-      $projects = @()
+      $projects = New-Object System.Collections.ArrayList
 
       if ($rootsParam.Count -gt 0) {
         foreach ($r in $rootsParam) {
           if (Test-Path (Join-Path $r 'package-lock.json')) {
-            $projects += $r
+            [void]$projects.Add($r)
             Write-Host "Root (param): $r"
           } else {
-            Write-Warning "No package-lock.json found under: $r (skipped)"
+            Write-Warning "No package-lock.json under: $r (skipped)"
           }
         }
       } else {
-        $locks = Get-ChildItem -Path $repoRoot -Recurse -Filter 'package-lock.json' -File
-        foreach ($l in $locks) {
-          $projects += $l.Directory.FullName
-          Write-Host "Root (auto): $($l.Directory.FullName)"
-        }
+        foreach ($l in $locks_npm)  { [void]$projects.Add($l.Directory.FullName) }
+        $projects = $projects | Select-Object -Unique
+        foreach ($p in $projects) { Write-Host "Root (auto): $p" }
       }
       Write-Host "##[endgroup]"
 
+      $count = ($projects | Measure-Object).Count
+      if ($count -eq 0) {
+        Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Ensure lockfiles are committed or pass npmRootsMultiline."
+        Write-Host "##[section]npm summary → ok=0, failed=0"
+        return
+      }
+
       $npmOk = 0; $npmFail = 0
-      $format = 'json'
-      $fileExt = 'json'
+      $format = 'json'; $fileExt = 'json'
 
       foreach ($proj in $projects) {
         $name = Split-Path $proj -Leaf
@@ -130,12 +124,12 @@ steps:
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
         $outFile = Join-Path $outDir ("$safe-sbom.$fileExt")
 
-        Write-Host "##[group]npm → $proj"
+        Write-Host "##[group]JS SBOM → $proj"
         Push-Location $proj
         try {
-          # cyclonedx-npm reads package-lock.json directly
           $args = @('--output-format', $format, '--output-file', $outFile)
           if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
+          # cyclonedx-npm auto-detects npm via lockfile presence
           npx -y '@cyclonedx/cyclonedx-npm' @args
           if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
         } catch {
@@ -149,10 +143,9 @@ steps:
       }
 
       Write-Host "##[section]npm summary → ok=$npmOk, failed=$npmFail"
-      if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some npm SBOMs failed" }
-    displayName: Generate npm SBOMs (cyclonedx-npm, JSON)
+      if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed" }
+    displayName: Generate JS SBOMs (npm, JSON)
 
-  # .NET SBOMs with CycloneDX .NET (JSON)
   - powershell: |
       Write-Host "##[group].NET projects"
       $raw = @'
@@ -168,10 +161,9 @@ steps:
       }
 
       $outDir = Join-Path "${{ parameters.sbomOutputDir }}" "dotnet"
-      $format = 'Json'
-      $ext = 'json'
-
+      $format = 'Json'; $ext = 'json'
       $ok = 0; $fail = 0
+
       foreach ($p in $projPaths) {
         $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
         $fileName = "{0}-sbom.{1}" -f $base, $ext
@@ -179,8 +171,8 @@ steps:
         Write-Host "##[group].NET → $p"
         try {
           dotnet restore "$p" | Out-Null
-          cyclonedx "$p" -o "$outDir" -F "$format" -fn "$fileName"
-          if ($LASTEXITCODE -ne 0) { throw "cyclonedx exit code: $LASTEXITCODE" }
+          dotnet CycloneDX "$p" -o "$outDir" -F "$format" -fn "$fileName"
+          if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
           if (Test-Path (Join-Path $outDir $fileName)) { $ok++ } else { $fail++ }
         } catch {
           Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"
