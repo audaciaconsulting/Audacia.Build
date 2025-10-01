@@ -4,7 +4,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'     # cyclonedx-json | cyclonedx-xml
+    default: 'cyclonedx-json'     # Ignored internally; we always emit JSON per your request.
   - name: publishArtifact
     type: boolean
     default: true
@@ -29,7 +29,7 @@ steps:
   - powershell: |
       Write-Host "##[group]Environment & Parameters"
       Write-Host "Agent.OS: $env:AGENT_OS"
-      Write-Host "Output format: ${{ parameters.outputFormat }}"
+      Write-Host "Output format: JSON (forced)"
       Write-Host "Include license texts: ${{ parameters.includeLicenseTexts }}"
       Write-Host "SBOM output dir: ${{ parameters.sbomOutputDir }}"
       Write-Host "##[endgroup]"
@@ -88,7 +88,7 @@ steps:
       New-Item -ItemType Directory -Path (Join-Path "${{ parameters.sbomOutputDir }}" "dotnet") -Force | Out-Null
     displayName: Prepare output folders
 
-  # npm SBOMs with cyclonedx-npm (no Syft fallback)
+  # npm SBOMs with cyclonedx-npm (JSON)
   - powershell: |
       Write-Host "##[group]Discover npm projects"
       $rootsParam = @()
@@ -119,8 +119,8 @@ steps:
       Write-Host "##[endgroup]"
 
       $npmOk = 0; $npmFail = 0
-      $format = ('${{ parameters.outputFormat }}' -match '(?i)xml') ? 'xml' : 'json'
-      $fileExt = $format
+      $format = 'json'
+      $fileExt = 'json'
 
       foreach ($proj in $projects) {
         $name = Split-Path $proj -Leaf
@@ -150,9 +150,9 @@ steps:
 
       Write-Host "##[section]npm summary → ok=$npmOk, failed=$npmFail"
       if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some npm SBOMs failed" }
-    displayName: Generate npm SBOMs (cyclonedx-npm only)
+    displayName: Generate npm SBOMs (cyclonedx-npm, JSON)
 
-  # .NET SBOMs with CycloneDX .NET
+  # .NET SBOMs with CycloneDX .NET (JSON)
   - powershell: |
       Write-Host "##[group].NET projects"
       $raw = @'
@@ -168,8 +168,8 @@ steps:
       }
 
       $outDir = Join-Path "${{ parameters.sbomOutputDir }}" "dotnet"
-      $format = ('${{ parameters.outputFormat }}' -match '(?i)xml') ? 'Xml' : 'Json'
-      $ext = ( $format -eq 'Xml' ) ? 'xml' : 'json'
+      $format = 'Json'
+      $ext = 'json'
 
       $ok = 0; $fail = 0
       foreach ($p in $projPaths) {
@@ -193,7 +193,7 @@ steps:
 
       Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
       if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed" }
-    displayName: Generate .NET SBOMs (CycloneDX)
+    displayName: Generate .NET SBOMs (CycloneDX, JSON)
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
