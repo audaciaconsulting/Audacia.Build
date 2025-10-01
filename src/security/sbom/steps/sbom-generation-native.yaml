@@ -19,7 +19,7 @@ parameters:
     default: true
   - name: npmRootsMultiline
     type: string
-    default: ''                    # Optional: one root per line; otherwise we auto-discover via package-lock.json
+    default: ''                    # Optional: one root per line; otherwise auto-discover via package-lock.json
   - name: dotnetProjectsMultiline
     type: string
     default: ''                    # One .sln/.csproj path per line
@@ -42,7 +42,7 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: true
 
-  # Install CycloneDX .NET global tool
+  # Install CycloneDX .NET global tool (robust on Windows agents)
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
     inputs:
@@ -60,10 +60,23 @@ steps:
         }
 
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
+
+        # Make it available both now (this task) and later (subsequent tasks)
+        $env:PATH = "$dotnetTools;$env:PATH"
         Write-Host "##vso[task.prependpath]$dotnetTools"
 
-        # Log version to confirm install worked
-        & "$dotnetTools\cyclonedx" --version
+        # Verify install (try common command names)
+        $versionOk = $false
+        try { cyclonedx --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
+        if (-not $versionOk) {
+          try { CycloneDX --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
+        }
+        if (-not $versionOk) {
+          try { dotnet CycloneDX --version; if ($LASTEXITCODE -eq 0) { $versionOk = $true } } catch {}
+        }
+        if (-not $versionOk) {
+          throw "CycloneDX CLI not found on PATH after install; PATH=$env:PATH"
+        }
 
         Write-Host "Installed tools in: $dotnetTools"
         Write-Host "##[endgroup]"
@@ -166,7 +179,7 @@ steps:
         Write-Host "##[group].NET → $p"
         try {
           dotnet restore "$p" | Out-Null
-          & cyclonedx "$p" -o "$outDir" -F "$format" -fn "$fileName"
+          cyclonedx "$p" -o "$outDir" -F "$format" -fn "$fileName"
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx exit code: $LASTEXITCODE" }
           if (Test-Path (Join-Path $outDir $fileName)) { $ok++ } else { $fail++ }
         } catch {
