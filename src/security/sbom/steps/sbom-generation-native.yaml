@@ -42,16 +42,41 @@ steps:
       checkLatest: true
 
   - powershell: |
-      # Show exactly which Node/NPM/NPX we are using after UseNode@1.
-      Write-Host "##[group]Node tooling version check"
-      Get-Command node -ErrorAction SilentlyContinue | Format-List *
-      Get-Command npm  -ErrorAction SilentlyContinue | Format-List *
-      Get-Command npx  -ErrorAction SilentlyContinue | Format-List *
-      node --version
-      npm  --version
-      npx  --version
+      # Find the Node tool selected by UseNode@1 in the hosted tool cache and
+      # compute the matching npm.cmd and npx.cmd so we never hit the old Node 10 shims.
+      $ErrorActionPreference = 'Stop'
+
+      function Get-NodeToolPaths {
+        param([string]$major = '20')
+        $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
+        if (-not (Test-Path $root)) { throw "Node tools directory not found: $root" }
+        $ver = Get-ChildItem $root -Directory -Name | Where-Object { $_ -like "$major.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+        if (-not $ver) { throw "No Node $major.* found under $root" }
+        $bin = Join-Path (Join-Path $root $ver) 'x64'
+        $node = Join-Path $bin 'node.exe'
+        $npm  = Join-Path $bin 'npm.cmd'
+        $npx  = Join-Path $bin 'npx.cmd'
+        if (-not (Test-Path $node)) { throw "node.exe not found at $node" }
+        if (-not (Test-Path $npm))  { throw "npm.cmd not found at $npm" }
+        if (-not (Test-Path $npx))  { throw "npx.cmd not found at $npx" }
+        [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
+      }
+
+      $tool = Get-NodeToolPaths -major '20'
+
+      Write-Host "##[group]Node tooling (resolved)"
+      & $tool.Node --version
+      & $tool.Npm  --version
+      & $tool.Npx  --version
+      Write-Host "Resolved bin: $($tool.Bin)"
       Write-Host "##[endgroup]"
-    displayName: Debug - show Node/npm/npx in PATH
+
+      # Persist for subsequent steps in this job (not strictly required since we call absolute paths)
+      Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($tool.Bin)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($tool.Node)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($tool.Npm)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NPX]$($tool.Npx)"
+    displayName: Debug - resolve Node 20 toolchain paths
 
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
@@ -67,10 +92,8 @@ steps:
           if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
         }
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
-        # make it available now and for later tasks
         $env:PATH = "$dotnetTools;$env:PATH"
         Write-Host "##vso[task.prependpath]$dotnetTools"
-        # verify via 'dotnet CycloneDX' (works even if shim name differs)
         dotnet CycloneDX --version
         if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
         Write-Host "Installed tools in: $dotnetTools"
@@ -85,6 +108,13 @@ steps:
   # npm SBOMs with cyclonedx-npm (JSON) — autodetect package-lock.json; fallback to package.json + create lockfile
   - powershell: |
       $ErrorActionPreference = 'Stop'
+
+      # Use the Node 20 toolchain we resolved earlier
+      $npx = "$(SBOM_NPX)"
+      $npm = "$(SBOM_NPM)"
+      if (-not (Test-Path $npx) -or -not (Test-Path $npm)) {
+        throw "Resolved npm/npx not found. Did the previous step set SBOM_NPX/SBOM_NPM?"
+      }
 
       Write-Host "##[group]Discover JS manifests"
       $repoRoot = "$(System.DefaultWorkingDirectory)"
@@ -123,8 +153,8 @@ steps:
 
       $count = ($projects | Measure-Object).Count
       if ($count -eq 0) {
-        Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Set npmRootsMultiline or commit lockfiles."
         Write-Host "##[section]npm summary → ok=0, failed=0"
+        Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Set npmRootsMultiline or commit lockfiles."
         exit 0
       }
 
@@ -144,16 +174,16 @@ steps:
         try {
           $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
           if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
-            # Create a lockfile quickly without installing packages
+            # Create a lockfile quickly without installing packages (using Node 20 npm)
             Write-Host "No package-lock.json; creating one with 'npm install --package-lock-only'"
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            & $npm install --package-lock-only --ignore-scripts --no-audit --no-fund
             $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
             if (-not $hasLock) { throw "Failed to create package-lock.json" }
           }
           $args = @('--output-format', $format, '--output-file', $outFile)
           if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
-          # Force latest CLI and ensure we pass a command to npx
-          npx --yes @cyclonedx/cyclonedx-npm@latest @args
+          # Use the Node 20 npx directly; also pin to latest CLI
+          & $npx --yes @cyclonedx/cyclonedx-npm@latest @args
           if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
         } catch {
           Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
