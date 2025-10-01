@@ -106,7 +106,7 @@ steps:
       New-Item -ItemType Directory -Path (Join-Path "${{ parameters.sbomOutputDir }}" "dotnet") -Force | Out-Null
     displayName: Prepare output folders
 
-  # npm SBOMs with cyclonedx-npm (JSON) — autodetect package-lock.json; fallback to package.json + create lockfile
+  # npm SBOMs with cyclonedx-npm (JSON) — autodetect package-lock.json; fallback to package.json + create lockfile + install
   - powershell: |
       $ErrorActionPreference = 'Stop'
 
@@ -171,16 +171,27 @@ steps:
         try {
           $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
           if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
-            # Create a lockfile quickly without installing packages (using Node 20 npm)
+            # 1) Create a lockfile WITHOUT running lifecycle scripts
             Write-Host "No package-lock.json; creating one with 'npm install --package-lock-only'"
             npm install --package-lock-only --ignore-scripts --no-audit --no-fund
             $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
             if (-not $hasLock) { throw "Failed to create package-lock.json" }
           }
+
+          # 2) Ensure node_modules is present so 'npm ls' (used by cyclonedx-npm) works
+          $nodeModules = Join-Path $proj 'node_modules'
+          $needInstall = -not (Test-Path $nodeModules) -or @((Get-ChildItem -Path $nodeModules -Force -ErrorAction SilentlyContinue) | Measure-Object).Count -eq 0
+          if ($needInstall) {
+            Write-Host "Installing dependencies with 'npm ci' to materialize dependency tree for SBOM"
+            npm ci --ignore-scripts --no-audit --no-fund --no-progress
+          }
+
           $args = @('--output-format', $format, '--output-file', $outFile)
           if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
+
           # Ensure npx runs a real command with the pinned package, under Node 20
           npx --yes -p @cyclonedx/cyclonedx-npm@latest cyclonedx-npm @args
+
           if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
         } catch {
           Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
