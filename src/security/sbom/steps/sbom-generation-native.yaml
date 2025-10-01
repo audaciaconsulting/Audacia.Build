@@ -41,11 +41,9 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: true
 
+  # Resolve the Node 20 tool, then prepend it to PATH for the rest of the job
   - powershell: |
-      # Find the Node tool selected by UseNode@1 in the hosted tool cache and
-      # compute the matching npm.cmd and npx.cmd so we never hit the old Node 10 shims.
       $ErrorActionPreference = 'Stop'
-
       function Get-NodeToolPaths {
         param([string]$major = '20')
         $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
@@ -61,7 +59,6 @@ steps:
         if (-not (Test-Path $npx))  { throw "npx.cmd not found at $npx" }
         [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
       }
-
       $tool = Get-NodeToolPaths -major '20'
 
       Write-Host "##[group]Node tooling (resolved)"
@@ -71,12 +68,16 @@ steps:
       Write-Host "Resolved bin: $($tool.Bin)"
       Write-Host "##[endgroup]"
 
-      # Persist for subsequent steps in this job (not strictly required since we call absolute paths)
+      # Make Node20 first in PATH for *subprocesses* that the CLI spawns.
+      Write-Host "##vso[task.prependpath]$($tool.Bin)"
+      $env:PATH = "$($tool.Bin);$env:PATH"
+
+      # Also publish variables for convenience (absolute calls still work).
       Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($tool.Bin)"
       Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($tool.Node)"
       Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($tool.Npm)"
       Write-Host "##vso[task.setvariable variable=SBOM_NPX]$($tool.Npx)"
-    displayName: Debug - resolve Node 20 toolchain paths
+    displayName: Debug - resolve & pin Node 20 on PATH
 
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
@@ -109,12 +110,8 @@ steps:
   - powershell: |
       $ErrorActionPreference = 'Stop'
 
-      # Use the Node 20 toolchain we resolved earlier
-      $npx = "$(SBOM_NPX)"
-      $npm = "$(SBOM_NPM)"
-      if (-not (Test-Path $npx) -or -not (Test-Path $npm)) {
-        throw "Resolved npm/npx not found. Did the previous step set SBOM_NPX/SBOM_NPM?"
-      }
+      # Belt & braces: ensure Node20 bin is first in PATH in THIS step too
+      if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
 
       Write-Host "##[group]Discover JS manifests"
       $repoRoot = "$(System.DefaultWorkingDirectory)"
@@ -176,14 +173,14 @@ steps:
           if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
             # Create a lockfile quickly without installing packages (using Node 20 npm)
             Write-Host "No package-lock.json; creating one with 'npm install --package-lock-only'"
-            & $npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
             $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
             if (-not $hasLock) { throw "Failed to create package-lock.json" }
           }
           $args = @('--output-format', $format, '--output-file', $outFile)
           if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
-          # Use the Node 20 npx directly; also pin to latest CLI
-          & $npx --yes @cyclonedx/cyclonedx-npm@latest @args
+          # Ensure npx runs a real command with the pinned package, under Node 20
+          npx --yes -p @cyclonedx/cyclonedx-npm@latest cyclonedx-npm @args
           if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
         } catch {
           Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
