@@ -41,6 +41,18 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: true
 
+  - powershell: |
+      # Show exactly which Node/NPM/NPX we are using after UseNode@1.
+      Write-Host "##[group]Node tooling version check"
+      Get-Command node -ErrorAction SilentlyContinue | Format-List *
+      Get-Command npm  -ErrorAction SilentlyContinue | Format-List *
+      Get-Command npx  -ErrorAction SilentlyContinue | Format-List *
+      node --version
+      npm  --version
+      npx  --version
+      Write-Host "##[endgroup]"
+    displayName: Debug - show Node/npm/npx in PATH
+
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
     inputs:
@@ -70,7 +82,7 @@ steps:
       New-Item -ItemType Directory -Path (Join-Path "${{ parameters.sbomOutputDir }}" "dotnet") -Force | Out-Null
     displayName: Prepare output folders
 
-  # npm SBOMs with cyclonedx-npm (JSON) — autodetect package-lock.json; fallback to package.json + npm ci
+  # npm SBOMs with cyclonedx-npm (JSON) — autodetect package-lock.json; fallback to package.json + create lockfile
   - powershell: |
       $ErrorActionPreference = 'Stop'
 
@@ -113,7 +125,7 @@ steps:
       if ($count -eq 0) {
         Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Set npmRootsMultiline or commit lockfiles."
         Write-Host "##[section]npm summary → ok=0, failed=0"
-        return
+        exit 0
       }
 
       $npmOk = 0; $npmFail = 0
@@ -132,12 +144,16 @@ steps:
         try {
           $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
           if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
-            Write-Host "No package-lock.json; running 'npm ci' to materialize dependency graph"
-            npm ci --ignore-scripts --no-audit --no-fund
+            # Create a lockfile quickly without installing packages
+            Write-Host "No package-lock.json; creating one with 'npm install --package-lock-only'"
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
+            if (-not $hasLock) { throw "Failed to create package-lock.json" }
           }
           $args = @('--output-format', $format, '--output-file', $outFile)
           if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
-          npx -y '@cyclonedx/cyclonedx-npm' @args
+          # Force latest CLI and ensure we pass a command to npx
+          npx --yes @cyclonedx/cyclonedx-npm@latest @args
           if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
         } catch {
           Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
@@ -151,6 +167,7 @@ steps:
 
       Write-Host "##[section]npm summary → ok=$npmOk, failed=$npmFail"
       if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed" }
+      if ($npmFail -gt 0) { exit 1 }
     displayName: Generate JS SBOMs (npm, JSON)
 
   - powershell: |
@@ -164,7 +181,7 @@ steps:
 
       if ($projPaths.Count -eq 0) {
         Write-Host "##vso[task.logissue type=warning].NET project list empty; skipping"
-        return
+        exit 0
       }
 
       $outDir = Join-Path "${{ parameters.sbomOutputDir }}" "dotnet"
@@ -193,6 +210,7 @@ steps:
 
       Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
       if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed" }
+      if ($fail -gt 0) { exit 1 }
     displayName: Generate .NET SBOMs (CycloneDX, JSON)
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
