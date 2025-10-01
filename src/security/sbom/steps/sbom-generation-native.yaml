@@ -170,6 +170,7 @@ steps:
 
         Write-Host "##[group].NET → $p"
         try {
+          # Uses credentials established by NuGetAuthenticate + pre-warmed assets from DotNetCoreCLI@2 restore
           dotnet restore "$p" | Out-Null
           dotnet CycloneDX "$p" -o "$outDir" -F "$format" -fn "$fileName"
           if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
