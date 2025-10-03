@@ -36,6 +36,13 @@ steps:
           if ("${{ parameters.failOnUploadError }}" -eq "true") { exit 1 } else { exit 0 }
         }
 
+        # ---- Guard: ensure API URL/KEY are set ----
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+        Write-Host "Using Dependency-Track API base: $base"
+
         $rows = New-Object System.Collections.Generic.List[object]
 
         function Get-AppNameFromSbom([string]$path) {
@@ -76,17 +83,16 @@ steps:
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
         $http.Timeout = [TimeSpan]::FromMinutes(10)
-        $http.DefaultRequestHeaders.Add('X-Api-Key', "$(DT_API_KEY)")
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
-          $base = "$(DT_API_URL)".TrimEnd('/')
           $uri  = "$base$path"
           $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
           if ($body -ne $null) {
             $json = $body | ConvertTo-Json -Depth 8
             $msg.Content = New-Object System.Net.Http.StringContent($json, [Text.Encoding]::UTF8, 'application/json')
           }
-          $msg.Headers.Add('X-Api-Key', "$(DT_API_KEY)")
+          $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
           $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
           if (-not $resp.IsSuccessStatusCode) {
             $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
@@ -145,7 +151,7 @@ steps:
               $fileContent = [System.Net.Http.StreamContent]::new($fs)
               $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
               $mp.Add($fileContent, 'bom', $f.Name)
-              $resp = $http.PostAsync("$(DT_API_URL.TrimEnd('/'))/v1/bom", $mp).GetAwaiter().GetResult()
+              $resp = $http.PostAsync("$base/v1/bom", $mp).GetAwaiter().GetResult()
             } finally { $fs.Dispose() }
 
             if (-not $resp.IsSuccessStatusCode) {
