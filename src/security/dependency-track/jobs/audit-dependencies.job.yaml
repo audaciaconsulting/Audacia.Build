@@ -57,10 +57,7 @@ jobs:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
     dependsOn: generate_sbom
-    condition: and(
-      succeeded(),
-      eq(dependencies.generate_sbom.outputs['exportSbomReady.sbomReady'], 'true')
-    )
+    condition: and(succeeded(), eq(dependencies.generate_sbom.outputs['exportSbomReady.sbomReady'], 'true'))
 
   # 3) Deactivate (runs if upload succeeded AND toggle is true)
   - template: /src/security/dependency-track/jobs/deactivate-nonlatest.job.yaml@templates
@@ -68,7 +65,4 @@ jobs:
       artifactName: ${{ parameters.artifactName }}
       tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
     dependsOn: upload_sbom
-    condition: and(
-      succeeded(),
-      eq('${{ parameters.deactivateOld }}', 'true')
-    )
+    condition: and(succeeded(), eq('${{ parameters.deactivateOld }}', 'true'))
