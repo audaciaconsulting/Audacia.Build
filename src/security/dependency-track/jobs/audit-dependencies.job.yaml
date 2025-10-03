@@ -1,7 +1,5 @@
-# Job template: end-to-end SBOM audit (Generate → Upload to Dependency Track → Deactivate Old Versions)
-# Usage: include under a stage's `jobs:` in a pipeline.
+# Job template: end-to-end SBOM audit (Generate → Upload → Deactivate)
 parameters:
-  # Generate parameters
   - name: dotnetProjectsMultiline
     type: string
     default: ''
@@ -23,13 +21,9 @@ parameters:
   - name: includeLicenseTexts
     type: boolean
     default: true
-
-  # Upload parameters
   - name: failOnUploadError
     type: boolean
     default: true
-
-  # Deactivate parameters
   - name: deactivateOld
     type: boolean
     default: true
@@ -51,18 +45,18 @@ jobs:
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  # 2) Upload (runs if generate succeeded AND sbomReady==true)
+  # 2) Upload (depends on generate + sbomReady)
   - template: /src/security/dependency-track/jobs/upload-sbom.job.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
-    dependsOn: generate_sbom
-    condition: and(succeeded(), eq(dependencies.generate_sbom.outputs['exportSbomReady.sbomReady'], 'true'))
+      dependsOn: generate_sbom
+      condition: and(succeeded(), eq(dependencies.generate_sbom.outputs['exportSbomReady.sbomReady'], 'true'))
 
-  # 3) Deactivate (runs if upload succeeded AND toggle is true)
+  # 3) Deactivate (depends on upload + toggle)
   - template: /src/security/dependency-track/jobs/deactivate-nonlatest.job.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
-    dependsOn: upload_sbom
-    condition: and(succeeded(), eq('${{ parameters.deactivateOld }}', 'true'))
+      dependsOn: upload_sbom
+      condition: and(succeeded(), eq('${{ parameters.deactivateOld }}', 'true'))

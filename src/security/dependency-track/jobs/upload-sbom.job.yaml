@@ -6,10 +6,18 @@ parameters:
   - name: failOnUploadError
     type: boolean
     default: true
+  - name: dependsOn
+    type: object
+    default: []
+  - name: condition
+    type: string
+    default: succeeded()
 
 jobs:
   - job: upload_sbom
     displayName: "Upload SBOM & Log Summary"
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
     steps:
       - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
         parameters:
