@@ -1,0 +1,17 @@
+# Job template: Download SBOM artifact and upload via Dependency-Track API
+parameters:
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+  - name: failOnUploadError
+    type: boolean
+    default: true
+
+jobs:
+  - job: upload_sbom
+    displayName: "Upload SBOM & Log Summary"
+    steps:
+      - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          failOnUploadError: ${{ parameters.failOnUploadError }}
