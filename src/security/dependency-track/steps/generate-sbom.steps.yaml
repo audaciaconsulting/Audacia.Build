@@ -1,11 +1,10 @@
-# Template: generate SBOMs for npm + .NET, and publish artifact.
+# Template: generate SBOMs (npm + .NET), publish artifact if requested.
 parameters:
-  - name: apiProjectPath
+  # Accept ANY number of .NET project paths
+  - name: dotnetProjectsMultiline
     type: string
-  - name: uiProjectPath
-    type: string
-  - name: functionsProjectPath
-    type: string
+    default: ''
+  # Accept ANY number of npm roots (optional; your sbom-generation-native can also auto-discover)
   - name: npmRootsMultiline
     type: string
     default: ''
@@ -44,12 +43,11 @@ steps:
 
   - task: DotNetCoreCLI@2
     displayName: "Restore (pre-warm for CycloneDX)"
+    condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
     inputs:
       command: restore
       projects: |
-        ${{ parameters.apiProjectPath }}
-        ${{ parameters.uiProjectPath }}
-        ${{ parameters.functionsProjectPath }}
+        ${{ parameters.dotnetProjectsMultiline }}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
 
   - pwsh: |
@@ -62,7 +60,7 @@ steps:
       Write-Host "##[endgroup]"
     displayName: "Debug: list npm manifests"
 
-  # Reuse your existing SBOM generator template already living in Audacia.Build
+  # Reuse your existing shared generator template
   - template: /src/security/sbom/steps/sbom-generation-native.yaml@templates
     parameters:
       publishArtifact: ${{ parameters.publishArtifact }}
@@ -73,9 +71,7 @@ steps:
       npmRootsMultiline: |
         ${{ parameters.npmRootsMultiline }}
       dotnetProjectsMultiline: |
-        ${{ parameters.apiProjectPath }}
-        ${{ parameters.uiProjectPath }}
-        ${{ parameters.functionsProjectPath }}
+        ${{ parameters.dotnetProjectsMultiline }}
 
   - pwsh: |
       if (Test-Path '$(Agent.TempDirectory)/sbom') {
@@ -88,7 +84,6 @@ steps:
     name: checkSbom
     displayName: "Detect SBOM folder"
 
-  # Fallback publish (only if the generation template did not publish, or to ensure visibility)
   - task: PublishPipelineArtifact@1
     displayName: "Publish SBOM artifact (fallback)"
     condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
