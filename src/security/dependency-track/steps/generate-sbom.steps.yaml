@@ -1,0 +1,98 @@
+# Template: generate SBOMs for npm + .NET, and publish artifact.
+parameters:
+  - name: apiProjectPath
+    type: string
+  - name: uiProjectPath
+    type: string
+  - name: functionsProjectPath
+    type: string
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+  - name: publishArtifact
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+
+steps:
+  - checkout: self
+    clean: true
+    submodules: true
+    lfs: true
+    fetchDepth: 0
+
+  - task: Cache@2
+    displayName: "Cache NuGet global-packages"
+    inputs:
+      key: 'nuget | "$(Agent.OS)" | **/*.csproj,**/*.props,**/*.targets'
+      restoreKeys: 'nuget | "$(Agent.OS)"'
+      path: 'C:\Users\VssAdministrator\.nuget\packages'
+
+  - task: NuGetAuthenticate@1
+    displayName: "Authenticate to Azure Artifacts"
+
+  - task: DotNetCoreCLI@2
+    displayName: "Restore (pre-warm for CycloneDX)"
+    inputs:
+      command: restore
+      projects: |
+        ${{ parameters.apiProjectPath }}
+        ${{ parameters.uiProjectPath }}
+        ${{ parameters.functionsProjectPath }}
+      vstsFeed: 'Audacia.Public/AudaciaPublic'
+
+  - pwsh: |
+      Write-Host "##[group]Debug: list npm manifests"
+      Write-Host "Workspace root: $(System.DefaultWorkingDirectory)"
+      "---- package-lock.json files ----"
+      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package-lock.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+      "---- package.json files ----"
+      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+      Write-Host "##[endgroup]"
+    displayName: "Debug: list npm manifests"
+
+  # Reuse your existing SBOM generator template already living in Audacia.Build
+  - template: /src/security/sbom/steps/sbom-generation-native.yaml@templates
+    parameters:
+      publishArtifact: ${{ parameters.publishArtifact }}
+      artifactName: ${{ parameters.artifactName }}
+      outputFormat: ${{ parameters.outputFormat }}
+      nodeVersion: ${{ parameters.nodeVersion }}
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+      npmRootsMultiline: |
+        ${{ parameters.npmRootsMultiline }}
+      dotnetProjectsMultiline: |
+        ${{ parameters.apiProjectPath }}
+        ${{ parameters.uiProjectPath }}
+        ${{ parameters.functionsProjectPath }}
+
+  - pwsh: |
+      if (Test-Path '$(Agent.TempDirectory)/sbom') {
+        Write-Host "SBOM folder found."
+        Write-Host "##vso[task.setvariable variable=sbomExists]true"
+      } else {
+        Write-Host "SBOM folder NOT found."
+        Write-Host "##vso[task.setvariable variable=sbomExists]false"
+      }
+    name: checkSbom
+    displayName: "Detect SBOM folder"
+
+  # Fallback publish (only if the generation template did not publish, or to ensure visibility)
+  - task: PublishPipelineArtifact@1
+    displayName: "Publish SBOM artifact (fallback)"
+    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
+    inputs:
+      targetPath: $(Agent.TempDirectory)/sbom
+      publishLocation: pipeline
+      artifact: ${{ parameters.artifactName }}
