@@ -40,6 +40,7 @@ steps:
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
 
+        # ---------- Helpers ----------
         function Derive-ProjectNamesFromSboms([string]$root) {
           $names = New-Object System.Collections.Generic.List[string]
           if (-not (Test-Path $root)) { return @() }
@@ -47,10 +48,13 @@ steps:
           foreach ($f in $files) {
             try {
               $name = (Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json -ea Stop).metadata.component.name
-              if ($name) { $names.Add($name) }
-            } catch { }
+              if ($name) { $names.Add($name) } else { $names.Add($f.Directory.Parent.BaseName) }
+            } catch {
+              # fallback to folder name if JSON parse fails
+              $names.Add($f.Directory.Parent.BaseName)
+            }
           }
-          return ($names | Select-Object -Unique)
+          return ($names | Where-Object { $_ } | Select-Object -Unique)
         }
 
         Add-Type -AssemblyName System.Net.Http
@@ -67,11 +71,90 @@ steps:
           }
           $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
           $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+          $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
           if (-not $resp.IsSuccessStatusCode) {
-            $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             throw "API $method $path failed ($($resp.StatusCode)): $text"
           }
-          return $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          return $text
         }
 
-        # ...rest of your script unchanged...
+        function Get-ProjectsByName([string]$name) {
+          $results = @()
+          $page=1
+          while ($true) {
+            $json = Invoke-DtApi GET "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=500&page=$page"
+            $arr = @()
+            if ($json) { $arr = $json | ConvertFrom-Json }
+            if (-not $arr -or $arr.Count -eq 0) { break }
+            $results += $arr
+            if ($arr.Count -lt 500) { break }
+            $page++
+          }
+          return $results
+        }
+
+        function Get-ProjectSiblings([string]$name, [string]$parentName) {
+          # Prefer siblings under the same parent container
+          $candidates = Get-ProjectsByName -name $name | Where-Object { $_.parent -and $_.parent.name -eq $parentName }
+          if (-not $candidates -or $candidates.Count -eq 0) {
+            Write-Host "No siblings found under parent '$parentName'. Falling back to name-only search."
+            $candidates = Get-ProjectsByName -name $name
+          }
+          return $candidates
+        }
+
+        function Deactivate-NonLatest([string]$appName) {
+          $parentName = "$appName.ProjectContainer"
+          $siblings = Get-ProjectSiblings -name $appName -parentName $parentName
+
+          # Keep only active items that are not latest. (If 'active' missing, treat as active=true)
+          $targets = $siblings | Where-Object {
+            $isActive = ($_.PSObject.Properties.Name -contains 'active') ? ($_.active -ne $false) : $true
+            $isActive -and ($_.isLatest -ne $true)
+          }
+
+          $total = ($targets | Measure-Object).Count
+          Write-Host "Found $total non-latest active version(s) for project name '$appName'."
+
+          $ok=0; $fail=0
+          foreach ($s in $targets) {
+            try {
+              Write-Host "Deactivating: $($s.name) $($s.version) (uuid=$($s.uuid))"
+              [void](Invoke-DtApi PATCH "/v1/project/$($s.uuid)" @{ active = $false })
+              $ok++
+            } catch {
+              $fail++
+              $msg = $_.Exception.Message
+              if ($msg -match '(?i)forbidden|403') {
+                Write-Warning "Deactivate failed (Forbidden). Ensure DT_API_KEY has Project/Portfolio Management permissions and access to this project/tags. UUID=$($s.uuid)"
+              } else {
+                Write-Warning "Deactivate failed for UUID=$($s.uuid): $msg"
+              }
+            }
+          }
+          return @{ ok = $ok; fail = $fail; total = $total }
+        }
+        # ---------- /Helpers ----------
+
+        $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        $projectNames = Derive-ProjectNamesFromSboms $sbomRoot
+        if (-not $projectNames -or $projectNames.Count -eq 0) {
+          Write-Warning "Could not derive any project names from SBOMs in $sbomRoot. Nothing to deactivate."
+          exit 0
+        }
+
+        Write-Host "Projects discovered from SBOMs: $($projectNames -join ', ')"
+
+        $totalOk=0; $totalFail=0; $totalTargets=0
+        foreach ($name in $projectNames) {
+          $res = Deactivate-NonLatest -appName $name
+          $totalOk += [int]$res.ok
+          $totalFail += [int]$res.fail
+          $totalTargets += [int]$res.total
+        }
+
+        Write-Host "##[section]Deactivation summary → candidates=$totalTargets, deactivated=$totalOk, failed=$totalFail"
+        # Do NOT fail the job on deactivation failures; just warn
+        if ($totalFail -gt 0) {
+          Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY Project/Portfolio Management and ensure tag-based PAC allows access."
+        }
