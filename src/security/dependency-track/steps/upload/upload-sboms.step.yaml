@@ -14,6 +14,8 @@ steps:
       ENV_NAME: $(ENV_NAME)
       RELEASE_NUMBER: $(RELEASE_NUMBER)
       ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+      SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson)
+      PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv)
     inputs:
       pwsh: true
       targetType: inline
@@ -27,15 +29,15 @@ steps:
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
 
-        # Get file paths from previous step
-        $filesJson = "$(discoverSboms.sbomFilesJson)"
+        # Get file paths from environment variable (safer than inline injection)
+        $filesJson = $env:SBOM_FILES_JSON
         if (-not $filesJson -or $filesJson -eq "[]") {
           Write-Host "No SBOM files to upload"
           if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { exit 0 }
         }
 
         $filePaths = $filesJson | ConvertFrom-Json
-        $tagsCsv = "$(buildTags.projectTagsCsv)"
+        $tagsCsv = $env:PROJECT_TAGS_CSV
 
         $rows = New-Object System.Collections.Generic.List[object]
 
