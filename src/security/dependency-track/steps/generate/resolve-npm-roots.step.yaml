@@ -10,9 +10,6 @@ steps:
     inputs:
       targetType: inline
       script: |
-        # Resolves npm project roots from multiline parameter or auto-discovery.
-        param()
-        
         $ErrorActionPreference = 'Stop'
         $RootsMultiline = '${{ parameters.npmRootsMultiline }}'
         $WorkspaceRoot = '$(System.DefaultWorkingDirectory)'

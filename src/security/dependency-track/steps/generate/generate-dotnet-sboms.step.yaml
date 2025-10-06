@@ -23,9 +23,6 @@ steps:
     inputs:
       targetType: inline
       script: |
-        # Generates .NET SBOMs using CycloneDX for the specified .NET project paths.
-        param()
-        
         $ErrorActionPreference = 'Stop'
         $DotnetProjectsJson = '$(resolveDotnetProjects.dotnetProjectsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/dotnet'

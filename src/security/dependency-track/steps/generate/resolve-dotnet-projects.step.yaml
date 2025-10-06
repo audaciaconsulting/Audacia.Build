@@ -10,9 +10,6 @@ steps:
     inputs:
       targetType: inline
       script: |
-        # Resolves .NET project paths from multiline parameter.
-        param()
-        
         $ErrorActionPreference = 'Stop'
         $ProjectsMultiline = '${{ parameters.dotnetProjectsMultiline }}'
 
