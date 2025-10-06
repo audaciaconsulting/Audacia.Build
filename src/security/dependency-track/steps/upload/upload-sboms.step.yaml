@@ -1,0 +1,173 @@
+# Template: upload SBOMs to Dependency-Track
+parameters:
+  - name: failOnUploadError
+    type: boolean
+    default: true
+
+steps:
+  - task: PowerShell@2
+    displayName: "Upload SBOMs to Dependency-Track"
+    env:
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      CLIENT_NAME: $(CLIENT_NAME)
+      ENV_NAME: $(ENV_NAME)
+      RELEASE_NUMBER: $(RELEASE_NUMBER)
+      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        
+        # ---- Guard: ensure API URL/KEY are set ----
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+        Write-Host "Using Dependency-Track API base: $base"
+
+        # Get file paths from previous step
+        $filesJson = "$(discoverSboms.sbomFilesJson)"
+        if (-not $filesJson -or $filesJson -eq "[]") {
+          Write-Host "No SBOM files to upload"
+          if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { exit 0 }
+        }
+
+        $filePaths = $filesJson | ConvertFrom-Json
+        $tagsCsv = "$(buildTags.projectTagsCsv)"
+
+        $rows = New-Object System.Collections.Generic.List[object]
+
+        function Get-AppNameFromSbom([string]$path) {
+          try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
+        }
+        function Get-DeployableFromPath([string]$path) {
+          ([IO.Path]::GetFileNameWithoutExtension($path) -replace '-sbom$','') -replace '[^\w\.-]','-'
+        }
+        function Get-FileSizeKB([string]$path) {
+          [math]::Round((Get-Item -LiteralPath $path).Length / 1kb, 0)
+        }
+        function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
+          if (-not $token) { return $false }
+          $deadline = (Get-Date).AddSeconds($timeoutSec)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $json = Invoke-DtApi GET "/v1/bom/token/$token"
+              if ($json) {
+                $st = $json | ConvertFrom-Json
+                if ($null -ne $st.processing) {
+                  Write-Host "BOM token $token status: " + ($(if($st.processing){'PROCESSING'}else{'DONE'}))
+                  if (-not $st.processing) { return $true }
+                  Start-Sleep -Seconds 2
+                  continue
+                }
+              }
+            } catch {
+              if ($_.Exception.Message -match '404') {
+                Write-Host "BOM token $token status: DONE (token not found)"
+                return $true
+              }
+            }
+            Start-Sleep -Seconds 2
+          }
+          return $false
+        }
+
+        Add-Type -AssemblyName System.Net.Http
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.Timeout = [TimeSpan]::FromMinutes(10)
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
+          $uri  = "$base$path"
+          $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
+          if ($body -ne $null) {
+            $json = $body | ConvertTo-Json -Depth 8
+            $msg.Content = New-Object System.Net.Http.StringContent($json, [Text.Encoding]::UTF8, 'application/json')
+          }
+          $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
+          $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+          if (-not $resp.IsSuccessStatusCode) {
+            $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            throw "API $method $path failed ($($resp.StatusCode)): $text"
+          }
+          return $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        }
+
+        $uploaded = 0; $failed = 0
+        foreach ($filePath in $filePaths) {
+          $f = Get-Item -LiteralPath $filePath
+          $appName = Get-AppNameFromSbom $f.FullName
+          if (-not $appName) { $appName = $f.Directory.Parent.BaseName }
+          $projectName    = $appName
+          $parentName     = "$appName.ProjectContainer"
+          $parentVersion  = ""
+          $projectVersion = "release/{0}" -f "$env:RELEASE_NUMBER"
+          $deployable     = Get-DeployableFromPath $f.FullName
+
+          Write-Host "##[group]Uploading SBOM -> $projectName @ $projectVersion"
+          $note = ''
+          try {
+            $mp = [System.Net.Http.MultipartFormDataContent]::new()
+            $mp.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
+            $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
+            $mp.Add([System.Net.Http.StringContent]::new($projectName), 'projectName')
+            $mp.Add([System.Net.Http.StringContent]::new($projectVersion), 'projectVersion')
+            $mp.Add([System.Net.Http.StringContent]::new($parentName), 'parentName')
+            $mp.Add([System.Net.Http.StringContent]::new($parentVersion), 'parentVersion')
+            if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
+              $mp.Add([System.Net.Http.StringContent]::new($tagsCsv), 'projectTags')
+            }
+
+            $fs = [System.IO.File]::OpenRead($f.FullName)
+            try {
+              $fileContent = [System.Net.Http.StreamContent]::new($fs)
+              $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
+              $mp.Add($fileContent, 'bom', $f.Name)
+              $resp = $http.PostAsync("$base/v1/bom", $mp).GetAwaiter().GetResult()
+            } finally { $fs.Dispose() }
+
+            if (-not $resp.IsSuccessStatusCode) {
+              $body = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              throw "HTTP $($resp.StatusCode) - $body"
+            }
+
+            $json = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+            $note = "token: $($json.token)"
+            Write-Host "Uploaded OK: $($f.FullName)  ($note)"
+            $uploaded++
+
+            [void](Wait-BomProcessed -token $json.token -timeoutSec 120)
+          } catch {
+            $note = $_.Exception.Message
+            Write-Warning "Upload failed for $($f.FullName): $note"
+            $failed++
+          } finally {
+            $rows.Add([pscustomobject]@{
+              File     = $f.Name
+              SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
+              Project  = $projectName
+              Version  = $projectVersion
+              Result   = $(if ($note -like 'token:*') {'OK'} else {'FAILED'})
+              Note     = $note
+            })
+            Write-Host "##[endgroup]"
+          }
+        }
+
+        Write-Host "##[section]Dependency-Track upload summary → ok=$uploaded, failed=$failed"
+
+        $md = New-Object System.Collections.Generic.List[string]
+        $md.Add("# Dependency-Track Upload Summary")
+        $md.Add("")
+        $md.Add("| File | Size (KB) | Project | Version | Result | Note |")
+        $md.Add("|---|---:|---|---|---|---|")
+        foreach ($r in $rows) {
+          $md.Add("| $($r.File) | $([int]$r.SizeKB) | $($r.Project) | $($r.Version) | $($r.Result) | $($r.Note -replace '\r?\n',' ') |")
+        }
+        $summaryPath = Join-Path $env:AGENT_TEMPDIRECTORY "dt-upload-summary.md"
+        Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
+        Write-Host "##vso[task.uploadsummary]$summaryPath"
+
+        if (("${{ parameters.failOnUploadError }}" -eq "True") -and ($failed -gt 0)) { exit 1 }

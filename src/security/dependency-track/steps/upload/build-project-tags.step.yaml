@@ -1,0 +1,30 @@
+# Template: build project tags from environment variables
+steps:
+  - task: PowerShell@2
+    displayName: "Build project tags"
+    name: buildTags
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        
+        # Build tags (env + optional ADDITIONAL_TAGS)
+        $tags = New-Object System.Collections.Generic.List[string]
+        $tags.Add("env:$env:ENV_NAME")
+        
+        if ($env:ADDITIONAL_TAGS -and $env:ADDITIONAL_TAGS.Trim().Length -gt 0) {
+          $extraTags = $env:ADDITIONAL_TAGS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          foreach ($t in $extraTags) { $tags.Add($t) }
+        }
+        
+        $tagsCsv = ''
+        if ($tags.Count -gt 0) {
+          $seen = @{}
+          $deduped = $tags | Where-Object { if ($seen.ContainsKey($_)) { $false } else { $seen[$_] = $true; $true } }
+          $tagsCsv = $deduped -join ','
+        }
+        
+        Write-Host "Final projectTags CSV: '$tagsCsv'"
+        Write-Host "##vso[task.setvariable variable=projectTagsCsv;isOutput=true]$tagsCsv"
+

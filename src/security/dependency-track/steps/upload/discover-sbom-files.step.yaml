@@ -1,0 +1,30 @@
+# Template: discover SBOM JSON files and output as JSON array
+steps:
+  - task: PowerShell@2
+    displayName: "Discover SBOM files"
+    name: discoverSboms
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        $sbomRoot = "$(Agent.TempDirectory)/sbom"
+        
+        if (-not (Test-Path $sbomRoot)) {
+          Write-Host "##vso[task.logissue type=warning]No SBOM directory at $sbomRoot"
+          Write-Host "##vso[task.setvariable variable=sbomFilesJson;isOutput=true][]"
+          return
+        }
+        
+        $files = Get-ChildItem -Path $sbomRoot -Recurse -Filter *.json -File
+        if (-not $files) {
+          Write-Host "##vso[task.logissue type=warning]No SBOM JSON files found under $sbomRoot"
+          Write-Host "##vso[task.setvariable variable=sbomFilesJson;isOutput=true][]"
+          return
+        }
+        
+        $filePaths = $files | ForEach-Object { $_.FullName }
+        $filesJson = $filePaths | ConvertTo-Json -Compress
+        Write-Host "Found $($files.Count) SBOM files"
+        Write-Host "##vso[task.setvariable variable=sbomFilesJson;isOutput=true]$filesJson"
+

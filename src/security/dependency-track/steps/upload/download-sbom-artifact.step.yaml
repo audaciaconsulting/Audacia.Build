@@ -1,0 +1,12 @@
+# Template: download SBOM artifact to temp directory
+parameters:
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: "Download SBOM artifact"
+    inputs:
+      artifact: ${{ parameters.artifactName }}
+      path: $(Agent.TempDirectory)/sbom
