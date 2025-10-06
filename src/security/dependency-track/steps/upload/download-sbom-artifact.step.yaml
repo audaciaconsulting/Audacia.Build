@@ -1,10 +1,16 @@
 # Template: download SBOM artifact to temp directory
 parameters:
+  # Parameter: artifactName
+  # - Specifies the name of the artifact to download
+  # - Default value is 'sbom-files'
   - name: artifactName
     type: string
     default: 'sbom-files'
 
 steps:
+  # Step: Download SBOM artifact
+  # - Uses the `DownloadPipelineArtifact` task to download the specified artifact
+  # - Downloads the artifact to the temporary directory `$(Agent.TempDirectory)/sbom`
   - task: DownloadPipelineArtifact@2
     displayName: "Download SBOM artifact"
     inputs:

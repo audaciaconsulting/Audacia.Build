@@ -1,21 +1,31 @@
 # Template: upload SBOMs to Dependency-Track
 parameters:
+  # Parameter: failOnUploadError
+  # - Specifies whether the pipeline should fail if any SBOM upload fails
+  # - Default value is true
   - name: failOnUploadError
     type: boolean
     default: true
 
 steps:
+  # Step: Upload SBOMs to Dependency-Track
+  # - Uses PowerShell to upload SBOM files to Dependency-Track
+  # - Requires Dependency-Track API URL and API key to be set as environment variables
+  # - Retrieves SBOM file paths and project tags from previous pipeline steps
+  # - Uploads each SBOM file and logs the result
+  # - Generates a summary of the upload process and uploads it as a pipeline summary
   - task: PowerShell@2
     displayName: "Upload SBOMs to Dependency-Track"
     env:
-      DT_API_URL: $(DT_API_URL)
-      DT_API_KEY: $(DT_API_KEY)
-      CLIENT_NAME: $(CLIENT_NAME)
-      ENV_NAME: $(ENV_NAME)
-      RELEASE_NUMBER: $(RELEASE_NUMBER)
-      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
-      SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson)
-      PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv)
+      # Environment variables required for Dependency-Track API
+      DT_API_URL: $(DT_API_URL) # Dependency-Track API base URL
+      DT_API_KEY: $(DT_API_KEY) # Dependency-Track API key
+      CLIENT_NAME: $(CLIENT_NAME) # Client name for tagging
+      ENV_NAME: $(ENV_NAME) # Environment name for tagging
+      RELEASE_NUMBER: $(RELEASE_NUMBER) # Release number for versioning
+      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS) # Additional tags for projects
+      SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson) # JSON array of SBOM file paths
+      PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv) # CSV of project tags
     inputs:
       pwsh: true
       targetType: inline
@@ -23,13 +33,14 @@ steps:
         $ErrorActionPreference = 'Stop'
         
         # ---- Guard: ensure API URL/KEY are set ----
+        # Validate that the Dependency-Track API URL and API key are provided
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
 
-        # Get file paths from environment variable (safer than inline injection)
+        # Retrieve SBOM file paths from the environment variable
         $filesJson = $env:SBOM_FILES_JSON
         if (-not $filesJson -or $filesJson -eq "[]") {
           Write-Host "No SBOM files to upload"
@@ -39,17 +50,29 @@ steps:
         $filePaths = $filesJson | ConvertFrom-Json
         $tagsCsv = $env:PROJECT_TAGS_CSV
 
+        # Initialize a list to store upload results
         $rows = New-Object System.Collections.Generic.List[object]
 
+        # Function: Get-AppNameFromSbom
+        # - Extracts the application name from the SBOM file metadata
         function Get-AppNameFromSbom([string]$path) {
           try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
         }
+
+        # Function: Get-DeployableFromPath
+        # - Derives a deployable name from the SBOM file path
         function Get-DeployableFromPath([string]$path) {
           ([IO.Path]::GetFileNameWithoutExtension($path) -replace '-sbom$','') -replace '[^\w\.-]','-'
         }
+
+        # Function: Get-FileSizeKB
+        # - Calculates the file size in kilobytes
         function Get-FileSizeKB([string]$path) {
           [math]::Round((Get-Item -LiteralPath $path).Length / 1kb, 0)
         }
+
+        # Function: Wait-BomProcessed
+        # - Waits for the SBOM processing to complete in Dependency-Track
         function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
           if (-not $token) { return $false }
           $deadline = (Get-Date).AddSeconds($timeoutSec)
@@ -76,11 +99,14 @@ steps:
           return $false
         }
 
+        # Initialize HTTP client for API requests
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
         $http.Timeout = [TimeSpan]::FromMinutes(10)
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
+        # Function: Invoke-DtApi
+        # - Sends an HTTP request to the Dependency-Track API
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
           $uri  = "$base$path"
           $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
@@ -97,6 +123,7 @@ steps:
           return $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         }
 
+        # Upload each SBOM file and log the result
         $uploaded = 0; $failed = 0
         foreach ($filePath in $filePaths) {
           $f = Get-Item -LiteralPath $filePath
@@ -158,8 +185,10 @@ steps:
           }
         }
 
+        # Log a summary of the upload process
         Write-Host "##[section]Dependency-Track upload summary → ok=$uploaded, failed=$failed"
 
+        # Generate a Markdown summary of the upload results
         $md = New-Object System.Collections.Generic.List[string]
         $md.Add("# Dependency-Track Upload Summary")
         $md.Add("")
@@ -172,4 +201,5 @@ steps:
         Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
         Write-Host "##vso[task.uploadsummary]$summaryPath"
 
+        # Fail the pipeline if uploads failed and failOnUploadError is true
         if (("${{ parameters.failOnUploadError }}" -eq "True") -and ($failed -gt 0)) { exit 1 }

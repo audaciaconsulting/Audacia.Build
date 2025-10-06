@@ -1,5 +1,11 @@
 # Template: build project tags from environment variables
 steps:
+  # Step: Build project tags
+  # - Uses PowerShell to construct a list of project tags based on environment variables
+  # - Includes a mandatory tag for the environment (`env:$env:ENV_NAME`)
+  # - Optionally includes additional tags from the `ADDITIONAL_TAGS` environment variable
+  # - Deduplicates tags and converts them into a CSV format
+  # - Sets the resulting CSV as an output variable `projectTagsCsv` for use in subsequent steps
   - task: PowerShell@2
     displayName: "Build project tags"
     name: buildTags
@@ -7,24 +13,35 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
         
-        # Build tags (env + optional ADDITIONAL_TAGS)
+        # Initialize a list to store tags
         $tags = New-Object System.Collections.Generic.List[string]
+        
+        # Add the mandatory environment tag
         $tags.Add("env:$env:ENV_NAME")
         
+        # Check if additional tags are provided and process them
         if ($env:ADDITIONAL_TAGS -and $env:ADDITIONAL_TAGS.Trim().Length -gt 0) {
+          # Split the additional tags by comma, trim whitespace, and filter out empty values
           $extraTags = $env:ADDITIONAL_TAGS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+          # Add each additional tag to the list
           foreach ($t in $extraTags) { $tags.Add($t) }
         }
         
+        # Initialize the CSV string for tags
         $tagsCsv = ''
+        
+        # If there are tags, deduplicate them and join into a CSV string
         if ($tags.Count -gt 0) {
-          $seen = @{}
+          $seen = @{} # Hashtable to track seen tags
           $deduped = $tags | Where-Object { if ($seen.ContainsKey($_)) { $false } else { $seen[$_] = $true; $true } }
-          $tagsCsv = $deduped -join ','
+          $tagsCsv = $deduped -join ',' # Join deduplicated tags into a CSV
         }
         
+        # Log the final CSV of project tags
         Write-Host "Final projectTags CSV: '$tagsCsv'"
+        
+        # Set the CSV as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=projectTagsCsv;isOutput=true]$tagsCsv"
-

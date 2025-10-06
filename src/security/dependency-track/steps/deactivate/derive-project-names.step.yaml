@@ -1,5 +1,12 @@
 # Template: derive project names from SBOM files and output as CSV
 steps:
+  # Step: Derive project names from SBOM files
+  # - Uses PowerShell to extract project names from SBOM JSON files
+  # - Searches recursively for `.json` files in the SBOM root directory
+  # - Extracts the `metadata.component.name` field from each SBOM file
+  # - Falls back to the parent folder name if the field is missing or JSON parsing fails
+  # - Deduplicates the project names and outputs them as a CSV
+  # - Sets the resulting CSV as an output variable `projectNamesCsv` for use in subsequent steps
   - task: PowerShell@2
     name: deriveProjectNames
     displayName: "Derive project names from SBOM files"
@@ -7,25 +14,41 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
 
+        # Function: Derive-ProjectNamesFromSboms
+        # - Derives project names from SBOM JSON files in the specified root directory
+        # - Returns a unique list of project names
         function Derive-ProjectNamesFromSboms([string]$root) {
+          # Initialize a list to store project names
           $names = New-Object System.Collections.Generic.List[string]
+          # Return an empty array if the root directory does not exist
           if (-not (Test-Path $root)) { return @() }
+          # Search for JSON files recursively under the root directory
           $files = Get-ChildItem -Path $root -Recurse -Filter *.json -File -EA SilentlyContinue
           foreach ($f in $files) {
             try {
+              # Attempt to extract the project name from the SBOM metadata
               $name = (Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json -ea Stop).metadata.component.name
-              if ($name) { $names.Add($name) } else { $names.Add($f.Directory.Parent.BaseName) }
+              if ($name) { 
+                $names.Add($name) 
+              } else { 
+                # Fallback to the parent folder name if the name is missing
+                $names.Add($f.Directory.Parent.BaseName) 
+              }
             } catch {
-              # fallback to folder name if JSON parse fails
+              # Fallback to the parent folder name if JSON parsing fails
               $names.Add($f.Directory.Parent.BaseName)
             }
           }
+          # Return a deduplicated list of project names
           return ($names | Where-Object { $_ } | Select-Object -Unique)
         }
 
+        # Define the root directory for SBOM files
         $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        # Derive project names from the SBOM files
         $projectNames = Derive-ProjectNamesFromSboms $sbomRoot
         
         if (-not $projectNames -or $projectNames.Count -eq 0) {
@@ -33,7 +56,9 @@ steps:
           $csvOutput = ""
         } else {
           Write-Host "Projects discovered from SBOMs: $($projectNames -join ', ')"
+          # Convert the project names to a CSV string
           $csvOutput = $projectNames -join ','
         }
 
+        # Set the CSV string as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=projectNamesCsv;isOutput=true]$csvOutput"

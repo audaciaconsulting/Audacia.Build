@@ -1,14 +1,26 @@
 # Template: optionally download SBOM artifact for project name derivation
 parameters:
+  # Parameter: artifactName
+  # - Specifies the name of the artifact to download
+  # - Default value is 'sbom-files'
   - name: artifactName
     type: string
     default: 'sbom-files'
 
+  # Parameter: tryDownloadArtifact
+  # - Specifies whether to attempt downloading the SBOM artifact
+  # - Default value is true
   - name: tryDownloadArtifact
     type: boolean
     default: true
 
 steps:
+  # Step: Conditionally download SBOM artifact
+  # - Downloads the specified SBOM artifact if `tryDownloadArtifact` is true
+  # - Uses the `DownloadPipelineArtifact` task to download the artifact
+  # - Downloads the artifact to the temporary directory `$(Agent.TempDirectory)/sbom`
+  # - Continues execution even if the download fails
+  # - Always runs this step regardless of pipeline conditions
   - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: "Try to download SBOM artifact (optional)"
