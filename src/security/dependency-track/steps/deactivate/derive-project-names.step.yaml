@@ -1,0 +1,39 @@
+# Template: derive project names from SBOM files and output as CSV
+steps:
+  - task: PowerShell@2
+    name: deriveProjectNames
+    displayName: "Derive project names from SBOM files"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        function Derive-ProjectNamesFromSboms([string]$root) {
+          $names = New-Object System.Collections.Generic.List[string]
+          if (-not (Test-Path $root)) { return @() }
+          $files = Get-ChildItem -Path $root -Recurse -Filter *.json -File -EA SilentlyContinue
+          foreach ($f in $files) {
+            try {
+              $name = (Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json -ea Stop).metadata.component.name
+              if ($name) { $names.Add($name) } else { $names.Add($f.Directory.Parent.BaseName) }
+            } catch {
+              # fallback to folder name if JSON parse fails
+              $names.Add($f.Directory.Parent.BaseName)
+            }
+          }
+          return ($names | Where-Object { $_ } | Select-Object -Unique)
+        }
+
+        $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        $projectNames = Derive-ProjectNamesFromSboms $sbomRoot
+        
+        if (-not $projectNames -or $projectNames.Count -eq 0) {
+          Write-Warning "Could not derive any project names from SBOMs in $sbomRoot. Nothing to deactivate."
+          $csvOutput = ""
+        } else {
+          Write-Host "Projects discovered from SBOMs: $($projectNames -join ', ')"
+          $csvOutput = $projectNames -join ','
+        }
+
+        Write-Host "##vso[task.setvariable variable=projectNamesCsv;isOutput=true]$csvOutput"

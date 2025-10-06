@@ -1,0 +1,128 @@
+# Template: deactivate non-latest project versions in Dependency-Track
+parameters:
+  - name: projectNamesCsv
+    type: string
+    default: ''
+
+steps:
+  - task: PowerShell@2
+    displayName: "Deactivate non-latest versions in Dependency-Track"
+    env:
+      PROJECT_NAMES_CSV: ${{ parameters.projectNamesCsv }}
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      ENV_NAME: $(ENV_NAME)
+      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        # ---- Guard: ensure API URL/KEY are set ----
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+        Write-Host "Using Dependency-Track API base: $base"
+
+        # Early exit if no project names
+        if ([string]::IsNullOrWhiteSpace($env:PROJECT_NAMES_CSV)) {
+          Write-Warning "No project names provided. Nothing to deactivate."
+          exit 0
+        }
+
+        Add-Type -AssemblyName System.Net.Http
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.Timeout = [TimeSpan]::FromMinutes(10)
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
+          $uri  = "$base$path"
+          $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
+          if ($body -ne $null) {
+            $json = $body | ConvertTo-Json -Depth 8
+            $msg.Content = New-Object System.Net.Http.StringContent($json, [Text.Encoding]::UTF8, 'application/json')
+          }
+          $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
+          $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+          $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if (-not $resp.IsSuccessStatusCode) {
+            throw "API $method $path failed ($($resp.StatusCode)): $text"
+          }
+          return $text
+        }
+
+        function Get-ProjectsByName([string]$name) {
+          $results = @()
+          $page=1
+          while ($true) {
+            $json = Invoke-DtApi GET "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=500&page=$page"
+            $arr = @()
+            if ($json) { $arr = $json | ConvertFrom-Json }
+            if (-not $arr -or $arr.Count -eq 0) { break }
+            $results += $arr
+            if ($arr.Count -lt 500) { break }
+            $page++
+          }
+          return $results
+        }
+
+        function Get-ProjectSiblings([string]$name, [string]$parentName) {
+          # Prefer siblings under the same parent container
+          $candidates = Get-ProjectsByName -name $name | Where-Object { $_.parent -and $_.parent.name -eq $parentName }
+          if (-not $candidates -or $candidates.Count -eq 0) {
+            Write-Host "No siblings found under parent '$parentName'. Falling back to name-only search."
+            $candidates = Get-ProjectsByName -name $name
+          }
+          return $candidates
+        }
+
+        function Deactivate-NonLatest([string]$appName) {
+          $parentName = "$appName.ProjectContainer"
+          $siblings = Get-ProjectSiblings -name $appName -parentName $parentName
+
+          # Keep only active items that are not latest. (If 'active' missing, treat as active=true)
+          $targets = $siblings | Where-Object {
+            $isActive = ($_.PSObject.Properties.Name -contains 'active') ? ($_.active -ne $false) : $true
+            $isActive -and ($_.isLatest -ne $true)
+          }
+
+          $total = ($targets | Measure-Object).Count
+          Write-Host "Found $total non-latest active version(s) for project name '$appName'."
+
+          $ok=0; $fail=0
+          foreach ($s in $targets) {
+            try {
+              Write-Host "Deactivating: $($s.name) $($s.version) (uuid=$($s.uuid))"
+              [void](Invoke-DtApi PATCH "/v1/project/$($s.uuid)" @{ active = $false })
+              $ok++
+            } catch {
+              $fail++
+              $msg = $_.Exception.Message
+              if ($msg -match '(?i)forbidden|403') {
+                Write-Warning "Deactivate failed (Forbidden). Ensure DT_API_KEY has Project/Portfolio Management permissions and access to this project/tags. UUID=$($s.uuid)"
+              } else {
+                Write-Warning "Deactivate failed for UUID=$($s.uuid): $msg"
+              }
+            }
+          }
+          return @{ ok = $ok; fail = $fail; total = $total }
+        }
+
+        # Parse project names from CSV
+        $projectNames = $env:PROJECT_NAMES_CSV -split ',' | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+
+        $totalOk=0; $totalFail=0; $totalTargets=0
+        foreach ($name in $projectNames) {
+          $res = Deactivate-NonLatest -appName $name
+          $totalOk += [int]$res.ok
+          $totalFail += [int]$res.fail
+          $totalTargets += [int]$res.total
+        }
+
+        Write-Host "##[section]Deactivation summary → candidates=$totalTargets, deactivated=$totalOk, failed=$totalFail"
+        # Do NOT fail the job on deactivation failures; just warn
+        if ($totalFail -gt 0) {
+          Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY Project/Portfolio Management and ensure tag-based PAC allows access."
+        }
