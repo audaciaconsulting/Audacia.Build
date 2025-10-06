@@ -45,16 +45,17 @@ steps:
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  # 2) Upload
-  # (upload template already handles "no SBOM folder" gracefully according to 'failOnUploadError')
+  # 2) Upload (gated by sbomExists var set by generate template)
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
+    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
 
-  # 3) Deactivate (conditionally enabled)
-  - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
-    parameters:
-      enabled: ${{ parameters.deactivateOld }}
-      artifactName: ${{ parameters.artifactName }}
-      tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
+  # 3) Deactivate (toggle + run only if prior steps succeeded)
+  - ${{ if eq(parameters.deactivateOld, true) }}:
+      - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
+        condition: succeeded()
