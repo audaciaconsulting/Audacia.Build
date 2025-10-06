@@ -8,9 +8,22 @@ steps:
   - task: PowerShell@2
     displayName: "Resolve .NET project paths"
     inputs:
-      targetType: filePath
-      filePath: $(System.DefaultWorkingDirectory)/src/security/dependency-track/scripts/resolve-dotnet-projects.ps1
-      arguments: >
-        -ProjectsMultiline '${{ parameters.dotnetProjectsMultiline }}'
+      targetType: inline
+      script: |
+        # Resolves .NET project paths from multiline parameter.
+        param()
+        
+        $ErrorActionPreference = 'Stop'
+        $ProjectsMultiline = '${{ parameters.dotnetProjectsMultiline }}'
+
+        Write-Host "##[group].NET projects"
+        $projPaths = $ProjectsMultiline -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
+        $projPaths | ForEach-Object { Write-Host "Path: $_" }
+        Write-Host "##[endgroup]"
+
+        $projectsArray = @($projPaths)
+        $dotnetProjectsJson = $projectsArray | ConvertTo-Json -Compress
+        Write-Host "##vso[task.setvariable variable=dotnetProjectsJson;isOutput=true]$dotnetProjectsJson"
+        Write-Host "Resolved .NET projects JSON: $dotnetProjectsJson"
       pwsh: true
     name: resolveDotnetProjects
