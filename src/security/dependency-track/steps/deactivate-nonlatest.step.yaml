@@ -8,8 +8,6 @@ parameters:
     default: true
 
 steps:
-  - checkout: none
-
   - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
       - task: DownloadPipelineArtifact@2
         displayName: "Try to download SBOM artifact (optional)"
