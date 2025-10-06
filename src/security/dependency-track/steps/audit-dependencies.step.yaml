@@ -50,7 +50,6 @@ steps:
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
-    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
 
   # 3) Deactivate (toggle + run only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:
@@ -58,4 +57,3 @@ steps:
         parameters:
           artifactName: ${{ parameters.artifactName }}
           tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
-        condition: succeeded()
