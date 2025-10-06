@@ -1,0 +1,60 @@
+# Steps template: end-to-end SBOM audit (Generate → Upload → Deactivate)
+parameters:
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+  - name: publishArtifact
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+  - name: failOnUploadError
+    type: boolean
+    default: true
+  - name: deactivateOld
+    type: boolean
+    default: true
+  - name: tryDownloadArtifact
+    type: boolean
+    default: true
+
+steps:
+  # 1) Generate
+  - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
+    parameters:
+      dotnetProjectsMultiline: |
+        ${{ parameters.dotnetProjectsMultiline }}
+      npmRootsMultiline: |
+        ${{ parameters.npmRootsMultiline }}
+      publishArtifact: ${{ parameters.publishArtifact }}
+      artifactName: ${{ parameters.artifactName }}
+      outputFormat: ${{ parameters.outputFormat }}
+      nodeVersion: ${{ parameters.nodeVersion }}
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+
+  # 2) Upload
+  # (upload template already handles "no SBOM folder" gracefully according to 'failOnUploadError')
+  - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
+    parameters:
+      artifactName: ${{ parameters.artifactName }}
+      failOnUploadError: ${{ parameters.failOnUploadError }}
+
+  # 3) Deactivate (conditionally enabled)
+  - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
+    parameters:
+      enabled: ${{ parameters.deactivateOld }}
+      artifactName: ${{ parameters.artifactName }}
+      tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
