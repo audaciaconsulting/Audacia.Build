@@ -1,22 +1,34 @@
 # Template: install CycloneDX .NET tool
 steps:
+  # Step: Install CycloneDX .NET tool
+  # - Uses PowerShell to install or update the CycloneDX .NET global tool
+  # - Ensures the tool is available in the PATH environment variable
+  # - Verifies the installation by checking the CycloneDX CLI version
   - task: PowerShell@2
     displayName: Install CycloneDX .NET tool
     inputs:
       targetType: inline
       script: |
+        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
+
         Write-Host "##[group]Install CycloneDX .NET tool"
+
+        # Attempt to update the CycloneDX .NET tool; install it if the update fails
         dotnet tool update --global CycloneDX
         if ($LASTEXITCODE -ne 0) {
           dotnet tool install --global CycloneDX
           if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
         }
+
+        # Add the .NET tools directory to the PATH environment variable
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
         $env:PATH = "$dotnetTools;$env:PATH"
         Write-Host "##vso[task.prependpath]$dotnetTools"
+
+        # Verify the installation by checking the CycloneDX CLI version
         dotnet CycloneDX --version
         if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
+
         Write-Host "Installed tools in: $dotnetTools"
         Write-Host "##[endgroup]"
-

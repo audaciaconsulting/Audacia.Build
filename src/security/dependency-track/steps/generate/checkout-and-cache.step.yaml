@@ -1,11 +1,21 @@
 # Template: checkout source code and setup NuGet caching
 steps:
+  # Step: Checkout the source code repository
+  # - Ensures a clean working directory by removing any untracked files
+  # - Includes submodules for projects that depend on them
+  # - Enables support for Git Large File Storage (LFS)
+  # - Fetches the full commit history for accurate versioning (fetchDepth: 0)
   - checkout: self
     clean: true
     submodules: true
     lfs: true
     fetchDepth: 0
 
+  # Step: Cache NuGet global-packages
+  # - Uses the Cache@2 task to cache NuGet packages for faster builds
+  # - The cache key is based on the operating system and project files (*.csproj, *.props, *.targets)
+  # - Restores the cache if available; otherwise, creates a new cache
+  # - Cache path: C:\Users\VssAdministrator\.nuget\packages
   - task: Cache@2
     displayName: "Cache NuGet global-packages"
     inputs:
@@ -13,5 +23,8 @@ steps:
       restoreKeys: 'nuget | "$(Agent.OS)"'
       path: 'C:\Users\VssAdministrator\.nuget\packages'
 
+  # Step: Authenticate to Azure Artifacts
+  # - Uses the NuGetAuthenticate@1 task to authenticate with Azure Artifacts
+  # - Ensures secure access to private NuGet feeds during the build process
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"

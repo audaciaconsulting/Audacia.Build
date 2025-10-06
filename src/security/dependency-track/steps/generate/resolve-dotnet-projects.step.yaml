@@ -1,26 +1,48 @@
 # Template: resolve .NET projects from multiline parameter
 parameters:
+  # Parameter: dotnetProjectsMultiline
+  # - A multiline string containing paths to .NET projects
+  # - Default value is an empty string
   - name: dotnetProjectsMultiline
     type: string
     default: ''
 
 steps:
+  # Step: Resolve .NET project paths
+  # - Uses PowerShell to process the `dotnetProjectsMultiline` parameter
+  # - Splits the multiline string into individual project paths
+  # - Filters out empty lines and comments (lines starting with '#')
+  # - Logs each resolved project path for debugging purposes
+  # - Converts the list of project paths into a JSON array
+  # - Sets the JSON array as an output variable `dotnetProjectsJson` for use in subsequent steps
   - task: PowerShell@2
     displayName: "Resolve .NET project paths"
     inputs:
       targetType: inline
       script: |
+        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
+
+        # Read the multiline parameter containing project paths
         $ProjectsMultiline = '${{ parameters.dotnetProjectsMultiline }}'
 
         Write-Host "##[group].NET projects"
+
+        # Split the multiline string into individual paths, trim whitespace, and filter out invalid lines
         $projPaths = $ProjectsMultiline -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
+
         $projPaths | ForEach-Object { Write-Host "Path: $_" }
+
+        # End the .NET projects group log
         Write-Host "##[endgroup]"
 
+        # Convert the list of project paths to a JSON array
         $projectsArray = @($projPaths)
         $dotnetProjectsJson = $projectsArray | ConvertTo-Json -Compress
+
+        # Set the JSON array as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=dotnetProjectsJson;isOutput=true]$dotnetProjectsJson"
+
         Write-Host "Resolved .NET projects JSON: $dotnetProjectsJson"
       pwsh: true
     name: resolveDotnetProjects
