@@ -1,32 +1,53 @@
 # Steps template: end-to-end SBOM audit (Generate → Upload → Deactivate)
 parameters:
+  # One .NET project path per line. List all deployables (API/UI/Functions).
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+
+  # One npm root per line (optional; auto-discovery falls back to lockfiles).
   - name: npmRootsMultiline
     type: string
     default: ''
+
+  # Publish generated SBOMs as a pipeline artifact.
+  # Recommendation: true in mainline/multi-consumer scenarios; false for ephemeral PR runs.
   - name: publishArtifact
     type: boolean
     default: true
+
+  # Artifact name when publishArtifact=true.
   - name: artifactName
     type: string
     default: 'sbom-files'
-  - name: outputFormat
-    type: string
-    default: 'cyclonedx-json'
+
+  # Node major used for cyclonedx-npm.
+  # Recommendation: pin to LTS (e.g., 20.x).
   - name: nodeVersion
     type: string
     default: '20.x'
+
+  # Embed license texts into SBOMs (primarily via cyclonedx-npm).
+  # Pros: richer compliance evidence. Cons: larger SBOMs, slightly longer generation.
+  # Recommendation: true in mainline; false in fast PR paths if runtime/size matter.
   - name: includeLicenseTexts
     type: boolean
     default: true
+
+  # Fail the job if any upload to Dependency-Track fails.
+  # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
   - name: failOnUploadError
     type: boolean
     default: true
+
+  # Deactivate older versions (mark active=false on all non-latest).
+  # Recommendation: true in mainline to keep the portfolio tidy; false in PR/dry-run.
   - name: deactivateOld
     type: boolean
     default: true
+
+  # Best-effort attempt to download the SBOM artifact before deactivation.
+  # Recommendation: true unless you guarantee SBOMs are already on disk in this job.
   - name: tryDownloadArtifact
     type: boolean
     default: true
@@ -41,7 +62,6 @@ steps:
         ${{ parameters.npmRootsMultiline }}
       publishArtifact: ${{ parameters.publishArtifact }}
       artifactName: ${{ parameters.artifactName }}
-      outputFormat: ${{ parameters.outputFormat }}
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 

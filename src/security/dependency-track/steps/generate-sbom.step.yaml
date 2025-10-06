@@ -1,26 +1,42 @@
 # Template: generate SBOMs (npm + .NET), publish artifact if requested.
+# Outputs:
+#   - Sets pipeline variable `sbomExists` = true/false
+#   - Publishes artifact if publishArtifact=true
 
 parameters:
-  # Accept ANY number of .NET project paths
+  # Accept ANY number of .NET project paths (one per line).
+  # Recommendation: list all deployables (API, Blazor UI, Functions, etc.)
   - name: dotnetProjectsMultiline
     type: string
     default: ''
-  # Accept ANY number of npm roots (optional; generation also auto-discovers)
+
+  # Accept ANY number of npm roots (optional; auto-discovery falls back to package-lock.json / package.json).
+  # Recommendation: set explicitly for monorepos to avoid scanning unrelated directories.
   - name: npmRootsMultiline
     type: string
     default: ''
+
+  # Whether to publish the generated SBOMs as a pipeline artifact.
+  # Recommendation: true for multi-stage/mainline (traceability, reuse); false only for ephemeral/PR runs.
   - name: publishArtifact
     type: boolean
     default: true
+
+  # Name of the published artifact when publishArtifact=true.
   - name: artifactName
     type: string
     default: 'sbom-files'
-  - name: outputFormat
-    type: string
-    default: 'cyclonedx-json'
+
+  # Node version used for npm generation (cyclonedx-npm).
+  # Recommendation: pin to an LTS (e.g., 20.x) for reproducibility.
   - name: nodeVersion
     type: string
     default: '20.x'
+
+  # When true, attempt to embed license texts into the SBOM (mainly via cyclonedx-npm).
+  # Pros: richer compliance evidence (components[].licenses[].license.text).
+  # Cons: larger SBOM size & slightly longer generation.
+  # Recommendation: true for mainline/compliance; false for fast PR validation if runtime/size is a concern.
   - name: includeLicenseTexts
     type: boolean
     default: true

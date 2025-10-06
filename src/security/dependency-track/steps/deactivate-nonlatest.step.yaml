@@ -3,6 +3,11 @@ parameters:
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # If true (recommended): attempt to download the SBOM artifact so we can
+  # derive project names from the generated BOMs. This is safe (continueOnError) and
+  # allows the template to run standalone as well as after "upload".
+  # Set to false only if you guarantee SBOMs are already present in $(Agent.TempDirectory)/sbom.
   - name: tryDownloadArtifact
     type: boolean
     default: true

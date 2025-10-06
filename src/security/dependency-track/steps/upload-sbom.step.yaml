@@ -1,8 +1,12 @@
 # Template: download SBOM artifact and upload via Dependency-Track API.
 parameters:
+  # Name of the artifact to download (produced by generate-sbom template).
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # If true: fail the job when any upload fails.
+  # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
   - name: failOnUploadError
     type: boolean
     default: true
