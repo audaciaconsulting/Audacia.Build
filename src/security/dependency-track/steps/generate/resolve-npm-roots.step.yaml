@@ -1,0 +1,17 @@
+# Template: resolve npm roots from parameter or auto-discovery
+parameters:
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+
+steps:
+  - task: PowerShell@2
+    displayName: "Resolve npm project roots"
+    inputs:
+      targetType: filePath
+      filePath: $(System.DefaultWorkingDirectory)/src/security/dependency-track/scripts/resolve-npm-roots.ps1
+      arguments: >
+        -RootsMultiline '${{ parameters.npmRootsMultiline }}'
+        -WorkspaceRoot '$(System.DefaultWorkingDirectory)'
+      pwsh: true
+    name: resolveNpmRoots

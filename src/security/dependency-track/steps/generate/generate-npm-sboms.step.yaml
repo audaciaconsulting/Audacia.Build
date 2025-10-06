@@ -1,0 +1,22 @@
+# Template: generate npm SBOMs using CycloneDX
+parameters:
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+
+steps:
+  - powershell: |
+      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
+      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
+    displayName: "Prepare npm SBOM output folders"
+
+  - task: PowerShell@2
+    displayName: "Generate npm SBOMs (CycloneDX, JSON)"
+    inputs:
+      targetType: filePath
+      filePath: $(System.DefaultWorkingDirectory)/src/security/dependency-track/scripts/generate-npm-sboms.ps1
+      arguments: >
+        -NpmRootsJson '$(resolveNpmRoots.npmRootsJson)'
+        -OutputDir '$(Agent.TempDirectory)/sbom/npm'
+        -IncludeLicenseTexts $${{ parameters.includeLicenseTexts }}
+      pwsh: true

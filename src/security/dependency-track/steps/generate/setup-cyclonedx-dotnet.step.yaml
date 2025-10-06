@@ -1,0 +1,22 @@
+# Template: install CycloneDX .NET tool
+steps:
+  - task: PowerShell@2
+    displayName: Install CycloneDX .NET tool
+    inputs:
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        Write-Host "##[group]Install CycloneDX .NET tool"
+        dotnet tool update --global CycloneDX
+        if ($LASTEXITCODE -ne 0) {
+          dotnet tool install --global CycloneDX
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
+        }
+        $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
+        $env:PATH = "$dotnetTools;$env:PATH"
+        Write-Host "##vso[task.prependpath]$dotnetTools"
+        dotnet CycloneDX --version
+        if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
+        Write-Host "Installed tools in: $dotnetTools"
+        Write-Host "##[endgroup]"
+

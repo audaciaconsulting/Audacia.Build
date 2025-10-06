@@ -1,0 +1,17 @@
+# Template: checkout source code and setup NuGet caching
+steps:
+  - checkout: self
+    clean: true
+    submodules: true
+    lfs: true
+    fetchDepth: 0
+
+  - task: Cache@2
+    displayName: "Cache NuGet global-packages"
+    inputs:
+      key: 'nuget | "$(Agent.OS)" | **/*.csproj,**/*.props,**/*.targets'
+      restoreKeys: 'nuget | "$(Agent.OS)"'
+      path: 'C:\Users\VssAdministrator\.nuget\packages'
+
+  - task: NuGetAuthenticate@1
+    displayName: "Authenticate to Azure Artifacts"

@@ -1,0 +1,12 @@
+# Template: discover and log npm manifests (package.json and package-lock.json)
+steps:
+  - pwsh: |
+      Write-Host "##[group]Debug: list npm manifests"
+      Write-Host "Workspace root: $(System.DefaultWorkingDirectory)"
+      "---- package-lock.json files ----"
+      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package-lock.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+      "---- package.json files ----"
+      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+      Write-Host "##[endgroup]"
+    displayName: "Discover and log npm manifests"
+

@@ -1,0 +1,13 @@
+# Template: detect SBOM folder and set sbomExists variable
+steps:
+  - pwsh: |
+      if (Test-Path '$(Agent.TempDirectory)/sbom') {
+        Write-Host "SBOM folder found."
+        Write-Host "##vso[task.setvariable variable=sbomExists]true"
+      } else {
+        Write-Host "SBOM folder NOT found."
+        Write-Host "##vso[task.setvariable variable=sbomExists]false"
+      }
+    name: checkSbom
+    displayName: "Detect SBOM folder and set sbomExists variable"
+

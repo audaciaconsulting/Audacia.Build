@@ -42,44 +42,10 @@ parameters:
     default: true
 
 steps:
-  - checkout: self
-    clean: true
-    submodules: true
-    lfs: true
-    fetchDepth: 0
+  # 1) Checkout and setup caching
+  - template: /src/security/dependency-track/steps/generate/checkout-and-cache.step.yaml@templates
 
-  - task: Cache@2
-    displayName: "Cache NuGet global-packages"
-    inputs:
-      key: 'nuget | "$(Agent.OS)" | **/*.csproj,**/*.props,**/*.targets'
-      restoreKeys: 'nuget | "$(Agent.OS)"'
-      path: 'C:\Users\VssAdministrator\.nuget\packages'
-
-  - task: NuGetAuthenticate@1
-    displayName: "Authenticate to Azure Artifacts"
-
-  - task: DotNetCoreCLI@2
-    displayName: "Restore (pre-warm for CycloneDX)"
-    condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
-    inputs:
-      command: restore
-      projects: |
-        ${{ parameters.dotnetProjectsMultiline }}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
-
-  - pwsh: |
-      Write-Host "##[group]Debug: list npm manifests"
-      Write-Host "Workspace root: $(System.DefaultWorkingDirectory)"
-      "---- package-lock.json files ----"
-      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package-lock.json -File -EA SilentlyContinue | Select-Object -Expand FullName
-      "---- package.json files ----"
-      Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package.json -File -EA SilentlyContinue | Select-Object -Expand FullName
-      Write-Host "##[endgroup]"
-    displayName: "Debug: list npm manifests"
-
-  # ----------------------------
-  # Inlined "sbom-generation-native" (Node + CycloneDX + actual generation)
-  # ----------------------------
+  # 2) Log environment and parameters
   - powershell: |
       Write-Host "##[group]Environment & Parameters"
       Write-Host "Agent.OS: $env:AGENT_OS"
@@ -88,239 +54,44 @@ steps:
       Write-Host "SBOM output dir: $(Agent.TempDirectory)/sbom"
       Write-Host "Sources: $(System.DefaultWorkingDirectory)"
       Write-Host "##[endgroup]"
-    displayName: Log parameters
+    displayName: "Log environment and parameters"
 
-  - task: UseNode@1
-    displayName: Use Node.js ${{ parameters.nodeVersion }}
-    inputs:
-      versionSpec: ${{ parameters.nodeVersion }}
-      checkLatest: true
+  # 3) Discover npm manifests for debugging
+  - template: /src/security/dependency-track/steps/generate/discover-npm-manifests.step.yaml@templates
 
-  - powershell: |
-      $ErrorActionPreference = 'Stop'
-      function Get-NodeToolPaths {
-        param([string]$major = '20')
-        $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
-        if (-not (Test-Path $root)) { throw "Node tools directory not found: $root" }
-        $ver = Get-ChildItem $root -Directory -Name | Where-Object { $_ -like "$major.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
-        if (-not $ver) { throw "No Node $major.* found under $root" }
-        $bin = Join-Path (Join-Path $root $ver) 'x64'
-        $node = Join-Path $bin 'node.exe'
-        $npm  = Join-Path $bin 'npm.cmd'
-        $npx  = Join-Path $bin 'npx.cmd'
-        if (-not (Test-Path $node)) { throw "node.exe not found at $node" }
-        if (-not (Test-Path $npm))  { throw "npm.cmd not found at $npm" }
-        if (-not (Test-Path $npx))  { throw "npx.cmd not found at $npx" }
-        [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
-      }
-      $tool = Get-NodeToolPaths -major '20'
+  # 4) Setup Node.js tooling
+  - template: /src/security/dependency-track/steps/generate/setup-node.step.yaml@templates
+    parameters:
+      nodeVersion: ${{ parameters.nodeVersion }}
 
-      Write-Host "##[group]Node tooling (resolved)"
-      & $tool.Node --version
-      & $tool.Npm  --version
-      & $tool.Npx  --version
-      Write-Host "Resolved bin: $($tool.Bin)"
-      Write-Host "##[endgroup]"
+  # 5) Setup CycloneDX .NET tool
+  - template: /src/security/dependency-track/steps/generate/setup-cyclonedx-dotnet.step.yaml@templates
 
-      Write-Host "##vso[task.prependpath]$($tool.Bin)"
-      $env:PATH = "$($tool.Bin);$env:PATH"
+  # 6) Resolve npm roots from parameter or auto-discovery
+  - template: /src/security/dependency-track/steps/generate/resolve-npm-roots.step.yaml@templates
+    parameters:
+      npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
-      Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($tool.Bin)"
-      Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($tool.Node)"
-      Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($tool.Npm)"
-      Write-Host "##vso[task.setvariable variable=SBOM_NPX]$($tool.Npx)"
-    displayName: "Debug - resolve & pin Node 20 on PATH"
+  # 7) Resolve .NET projects from multiline parameter
+  - template: /src/security/dependency-track/steps/generate/resolve-dotnet-projects.step.yaml@templates
+    parameters:
+      dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  - task: PowerShell@2
-    displayName: Install CycloneDX .NET tool
-    inputs:
-      targetType: inline
-      script: |
-        $ErrorActionPreference = 'Stop'
-        Write-Host "##[group]Install CycloneDX .NET tool"
-        dotnet tool update --global CycloneDX
-        if ($LASTEXITCODE -ne 0) {
-          dotnet tool install --global CycloneDX
-          if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
-        }
-        $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
-        $env:PATH = "$dotnetTools;$env:PATH"
-        Write-Host "##vso[task.prependpath]$dotnetTools"
-        dotnet CycloneDX --version
-        if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
-        Write-Host "Installed tools in: $dotnetTools"
-        Write-Host "##[endgroup]"
+  # 8) Generate npm SBOMs
+  - template: /src/security/dependency-track/steps/generate/generate-npm-sboms.step.yaml@templates
+    parameters:
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  - powershell: |
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
-    displayName: Prepare output folders
+  # 9) Generate .NET SBOMs
+  - template: /src/security/dependency-track/steps/generate/generate-dotnet-sboms.step.yaml@templates
+    parameters:
+      dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  - powershell: |
-      $ErrorActionPreference = 'Stop'
-      if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
+  # 10) Detect SBOM folder and set sbomExists variable
+  - template: /src/security/dependency-track/steps/generate/detect-sbom-folder.step.yaml@templates
 
-      Write-Host "##[group]Discover JS manifests"
-      $repoRoot = "$(System.DefaultWorkingDirectory)"
-      $locks_npm = Get-ChildItem -Path $repoRoot -Recurse -Filter 'package-lock.json' -File -ErrorAction SilentlyContinue
-      $pkgs      = Get-ChildItem -Path $repoRoot -Recurse -Filter 'package.json'      -File -ErrorAction SilentlyContinue
-      Write-Host "Found package-lock.json: $($locks_npm.Count)"
-      Write-Host "Found package.json:      $($pkgs.Count)"
-      Write-Host "##[endgroup]"
-
-      Write-Host "##[group]Resolve roots"
-      $raw = @'
-      ${{ parameters.npmRootsMultiline }}
-      '@
-      $rootsParam = $raw -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
-      $projects = New-Object System.Collections.ArrayList
-
-      if ($rootsParam.Count -gt 0) {
-        foreach ($r in $rootsParam) {
-          if (Test-Path (Join-Path $r 'package.json')) {
-            [void]$projects.Add($r)
-            Write-Host "Root (param): $r"
-          } else {
-            Write-Warning "package.json not found under: $r (skipped)"
-          }
-        }
-      } else {
-        if ($locks_npm.Count -gt 0) {
-          foreach ($l in $locks_npm) { [void]$projects.Add($l.Directory.FullName) }
-        } elseif ($pkgs.Count -gt 0) {
-          foreach ($p in $pkgs) { [void]$projects.Add($p.Directory.FullName) }
-        }
-        $projects = $projects | Select-Object -Unique
-        foreach ($p in $projects) { Write-Host "Root (auto): $p" }
-      }
-      Write-Host "##[endgroup]"
-
-      $count = ($projects | Measure-Object).Count
-      if ($count -eq 0) {
-        Write-Host "##[section]npm summary → ok=0, failed=0"
-        Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Set npmRootsMultiline or commit lockfiles."
-        exit 0
-      }
-
-      $npmOk = 0; $npmFail = 0
-      $format = 'json'; $fileExt = 'json'
-
-      foreach ($proj in $projects) {
-        $name = Split-Path $proj -Leaf
-        if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
-        $safe = ($name -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
-        $outDir = Join-Path "$(Agent.TempDirectory)/sbom" ("npm\" + $safe)
-        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $outFile = Join-Path $outDir ("$safe-sbom.$fileExt")
-
-        Write-Host "##[group]JS SBOM → $proj"
-        Push-Location $proj
-        try {
-          $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
-          if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-            $hasLock = Test-Path -LiteralPath (Join-Path $proj 'package-lock.json')
-            if (-not $hasLock) { throw "Failed to create package-lock.json" }
-          }
-
-          $nodeModules = Join-Path $proj 'node_modules'
-          $needInstall = -not (Test-Path $nodeModules) -or @((Get-ChildItem -Path $nodeModules -Force -ErrorAction SilentlyContinue) | Measure-Object).Count -eq 0
-          if ($needInstall) {
-            npm ci --ignore-scripts --no-audit --no-fund --no-progress
-          }
-
-          $args = @('--output-format', $format, '--output-file', $outFile)
-          if ('${{ parameters.includeLicenseTexts }}' -eq 'True') { $args += @('--gather-license-texts') }
-
-          npx --yes -p @cyclonedx/cyclonedx-npm@latest cyclonedx-npm @args
-
-          if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
-        } catch {
-          Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
-          $npmFail++
-        } finally {
-          Pop-Location | Out-Null
-          Write-Host "Output: $outFile"
-          Write-Host "##[endgroup]"
-        }
-      }
-
-      Write-Host "##[section]npm summary → ok=$npmOk, failed=$npmFail"
-      if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed" }
-      if ($npmFail -gt 0) { exit 1 }
-    displayName: "Generate JS SBOMs (npm, JSON)"
-
-  - powershell: |
-      Write-Host "##[group].NET projects"
-      $raw = @'
-      ${{ parameters.dotnetProjectsMultiline }}
-      '@
-      $projPaths = $raw -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
-      $projPaths | ForEach-Object { Write-Host "Path: $_" }
-      Write-Host "##[endgroup]"
-
-      if ($projPaths.Count -eq 0) {
-        Write-Host "##vso[task.logissue type=warning].NET project list empty; skipping"
-        exit 0
-      }
-
-      $outDir = Join-Path "$(Agent.TempDirectory)/sbom" "dotnet"
-      $format = 'Json'; $ext = 'json'
-      $ok = 0; $fail = 0
-
-      foreach ($p in $projPaths) {
-        $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
-        $fileName = "{0}-sbom.{1}" -f $base, $ext
-
-        Write-Host "##[group].NET → $p"
-        try {
-          dotnet restore "$p" | Out-Null
-          dotnet CycloneDX "$p" -o "$outDir" -F "$format" -fn "$fileName"
-          if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
-          if (Test-Path (Join-Path $outDir $fileName)) { $ok++ } else { $fail++ }
-        } catch {
-          Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"
-          $fail++
-        } finally {
-          Write-Host "Output: $(Join-Path $outDir $fileName)"
-          Write-Host "##[endgroup]"
-        }
-      }
-
-      Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
-      if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed" }
-      if ($fail -gt 0) { exit 1 }
-    displayName: "Generate .NET SBOMs (CycloneDX, JSON)"
-
-  - ${{ if eq(parameters.publishArtifact, true) }}:
-      - task: PublishPipelineArtifact@1
-        displayName: "Publish SBOM artifact"
-        inputs:
-          targetPath: "$(Agent.TempDirectory)/sbom"
-          publishLocation: pipeline
-          artifact: ${{ parameters.artifactName }}
-
-  # ----------------------------
-  # /Inlined generation
-  # ----------------------------
-
-  - pwsh: |
-      if (Test-Path '$(Agent.TempDirectory)/sbom') {
-        Write-Host "SBOM folder found."
-        Write-Host "##vso[task.setvariable variable=sbomExists]true"
-      } else {
-        Write-Host "SBOM folder NOT found."
-        Write-Host "##vso[task.setvariable variable=sbomExists]false"
-      }
-    name: checkSbom
-    displayName: "Detect SBOM folder"
-
-  # Keep the original "fallback" publish in case publishArtifact above is toggled off.
-  - task: PublishPipelineArtifact@1
-    displayName: "Publish SBOM artifact (fallback)"
-    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
-    inputs:
-      targetPath: $(Agent.TempDirectory)/sbom
-      publishLocation: pipeline
-      artifact: ${{ parameters.artifactName }}
+  # 11) Publish SBOM artifact (conditional and fallback)
+  - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
+    parameters:
+      publishArtifact: ${{ parameters.publishArtifact }}
+      artifactName: ${{ parameters.artifactName }}

@@ -1,0 +1,29 @@
+# Template: generate .NET SBOMs using CycloneDX
+parameters:
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+
+steps:
+  - powershell: |
+      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
+    displayName: "Prepare .NET SBOM output folders"
+
+  - task: DotNetCoreCLI@2
+    displayName: "Restore .NET projects (pre-warm for CycloneDX)"
+    condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
+    inputs:
+      command: restore
+      projects: |
+        ${{ parameters.dotnetProjectsMultiline }}
+      vstsFeed: 'Audacia.Public/AudaciaPublic'
+
+  - task: PowerShell@2
+    displayName: "Generate .NET SBOMs (CycloneDX, JSON)"
+    inputs:
+      targetType: filePath
+      filePath: $(System.DefaultWorkingDirectory)/src/security/dependency-track/scripts/generate-dotnet-sboms.ps1
+      arguments: >
+        -DotnetProjectsJson '$(resolveDotnetProjects.dotnetProjectsJson)'
+        -OutputDir '$(Agent.TempDirectory)/sbom/dotnet'
+      pwsh: true

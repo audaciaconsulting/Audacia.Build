@@ -1,0 +1,47 @@
+# Template: setup Node.js and expose tooling paths
+parameters:
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+
+steps:
+  - task: UseNode@1
+    displayName: Use Node.js ${{ parameters.nodeVersion }}
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+      checkLatest: true
+
+  - powershell: |
+      $ErrorActionPreference = 'Stop'
+      function Get-NodeToolPaths {
+        param([string]$major = '20')
+        $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
+        if (-not (Test-Path $root)) { throw "Node tools directory not found: $root" }
+        $ver = Get-ChildItem $root -Directory -Name | Where-Object { $_ -like "$major.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+        if (-not $ver) { throw "No Node $major.* found under $root" }
+        $bin = Join-Path (Join-Path $root $ver) 'x64'
+        $node = Join-Path $bin 'node.exe'
+        $npm  = Join-Path $bin 'npm.cmd'
+        $npx  = Join-Path $bin 'npx.cmd'
+        if (-not (Test-Path $node)) { throw "node.exe not found at $node" }
+        if (-not (Test-Path $npm))  { throw "npm.cmd not found at $npm" }
+        if (-not (Test-Path $npx))  { throw "npx.cmd not found at $npx" }
+        [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
+      }
+      $tool = Get-NodeToolPaths -major '20'
+
+      Write-Host "##[group]Node tooling (resolved)"
+      & $tool.Node --version
+      & $tool.Npm  --version
+      & $tool.Npx  --version
+      Write-Host "Resolved bin: $($tool.Bin)"
+      Write-Host "##[endgroup]"
+
+      Write-Host "##vso[task.prependpath]$($tool.Bin)"
+      $env:PATH = "$($tool.Bin);$env:PATH"
+
+      Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($tool.Bin)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($tool.Node)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($tool.Npm)"
+      Write-Host "##vso[task.setvariable variable=SBOM_NPX]$($tool.Npx)"
+    displayName: "Setup Node.js tooling and expose paths"

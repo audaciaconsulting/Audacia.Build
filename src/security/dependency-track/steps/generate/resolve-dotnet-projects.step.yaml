@@ -1,0 +1,16 @@
+# Template: resolve .NET projects from multiline parameter
+parameters:
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+
+steps:
+  - task: PowerShell@2
+    displayName: "Resolve .NET project paths"
+    inputs:
+      targetType: filePath
+      filePath: $(System.DefaultWorkingDirectory)/src/security/dependency-track/scripts/resolve-dotnet-projects.ps1
+      arguments: >
+        -ProjectsMultiline '${{ parameters.dotnetProjectsMultiline }}'
+      pwsh: true
+    name: resolveDotnetProjects

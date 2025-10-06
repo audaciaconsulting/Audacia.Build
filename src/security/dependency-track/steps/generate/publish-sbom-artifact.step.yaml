@@ -1,0 +1,26 @@
+# Template: publish SBOM artifact (conditional on publishArtifact parameter)
+parameters:
+  - name: publishArtifact
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+steps:
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: "Publish SBOM artifact"
+        inputs:
+          targetPath: "$(Agent.TempDirectory)/sbom"
+          publishLocation: pipeline
+          artifact: ${{ parameters.artifactName }}
+
+  # Keep the original "fallback" publish in case publishArtifact above is toggled off.
+  - task: PublishPipelineArtifact@1
+    displayName: "Publish SBOM artifact (fallback)"
+    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
+    inputs:
+      targetPath: $(Agent.TempDirectory)/sbom
+      publishLocation: pipeline
+      artifact: ${{ parameters.artifactName }}
