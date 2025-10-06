@@ -12,12 +12,14 @@ steps:
 
   - task: DownloadPipelineArtifact@2
     displayName: "Download SBOM artifact"
+    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
     inputs:
       artifact: ${{ parameters.artifactName }}
       path: $(Agent.TempDirectory)/sbom
 
   - task: PowerShell@2
     displayName: "Upload SBOMs to Dependency-Track"
+    condition: and(succeeded(), eq(variables['sbomExists'], 'true'))
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
