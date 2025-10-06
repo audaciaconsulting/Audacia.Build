@@ -1,0 +1,20 @@
+# Template: optionally download SBOM artifact for project name derivation
+parameters:
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+  - name: tryDownloadArtifact
+    type: boolean
+    default: true
+
+steps:
+  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: "Try to download SBOM artifact (optional)"
+        inputs:
+          artifact: ${{ parameters.artifactName }}
+          path: $(Agent.TempDirectory)/sbom
+          buildType: current
+        continueOnError: true
+        condition: always()
