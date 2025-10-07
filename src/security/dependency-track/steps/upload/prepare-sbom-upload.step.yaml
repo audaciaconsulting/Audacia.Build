@@ -1,0 +1,96 @@
+# Step: Discover SBOMs → Validate API & list → Build upload plan
+# Exports (as output variables on this step):
+#   - sbomFilesJson     : JSON array of absolute file paths
+#   - UploadPlanPath    : absolute path to dt-upload-plan.json
+#   - UploadMatrixPath  : same as UploadPlanPath (backwards-compat for existing templates)
+
+steps:
+  - task: PowerShell@2
+    name: preflight
+    displayName: "Prepare SBOM upload (discover → validate → plan)"
+    env:
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      RELEASE_NUMBER: $(RELEASE_NUMBER)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        # --- 1) Discover SBOM files -----------------------------------------------------------
+        $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        $files = @()
+        if (Test-Path -LiteralPath $sbomRoot) {
+          $files = Get-ChildItem -Path $sbomRoot -Recurse -Filter *.json -File -EA SilentlyContinue
+        }
+
+        Write-Host "##[group]SBOM discovery"
+        Write-Host "Location: $sbomRoot"
+        if (-not $files -or $files.Count -eq 0) {
+          Write-Warning "No SBOM JSON files found."
+        } else {
+          "{0,-6} {1,-10} {2}" -f "Index","Size(KB)","Path" | Write-Host
+          "{0,-6} {1,-10} {2}" -f "-----","--------","----" | Write-Host
+          $i = 0
+          foreach ($f in $files) {
+            "{0,-6} {1,10} {2}" -f $i, ([int]([math]::Round($f.Length/1kb,0))), $f.FullName | Write-Host
+            $i++
+          }
+          Write-Host ("Total: {0} file(s)" -f $files.Count)
+        }
+        Write-Host "##[endgroup]"
+
+        # Export file list for downstream steps (compatible shape)
+        $filesJson = @($files | ForEach-Object { $_.FullName }) | ConvertTo-Json -Compress
+        if (-not $filesJson) { $filesJson = '[]' }
+        Write-Host "##vso[task.setvariable variable=sbomFilesJson;isOutput=true]$filesJson"
+
+        # --- 2) Validate API config & file list -----------------------------------------------
+        Write-Host "##[group]Preflight validation"
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          Write-Error "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        if (-not $files -or $files.Count -eq 0) {
+          Write-Error "No SBOM files to upload."
+        }
+        Write-Host "API base: $($env:DT_API_URL.TrimEnd('/'))"
+        Write-Host "Release number: $($env:RELEASE_NUMBER)"
+        Write-Host "Files to process: $($files.Count)"
+        Write-Host "##[endgroup]"
+
+        # --- 3) Build upload plan --------------------------------------------------------------
+        $rows = @()
+        Write-Host "##[group]Upload plan (Project, Version)"
+        foreach ($f in $files) {
+          if ($f.Length -eq 0) { throw "Empty file: $($f.FullName)" }
+          try { $json = Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json } catch { throw "Invalid JSON: $($f.FullName)" }
+
+          $name = $null
+          if ($json -and $json.metadata -and $json.metadata.component -and $json.metadata.component.name) {
+            $name = [string]$json.metadata.component.name
+          }
+          if (-not $name) { $name = (Split-Path (Split-Path -Parent $f.FullName) -Leaf) }
+          if ([string]::IsNullOrWhiteSpace($name)) { throw "Cannot determine project name for: $($f.FullName)" }
+
+          $ver = "release/$($env:RELEASE_NUMBER)"
+          "{0,-50} {1}" -f $name, $ver | Write-Host
+
+          $rows += [pscustomobject]@{
+            FilePath       = (Resolve-Path -LiteralPath $f.FullName).Path
+            ProjectName    = $name
+            ProjectVersion = $ver
+          }
+        }
+        Write-Host "##[endgroup]"
+
+        $planJson = $rows | ConvertTo-Json -Compress
+        $planPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-plan.json'
+        Set-Content -LiteralPath $planPath -Value $planJson -Encoding UTF8
+
+        # Export with new and legacy variable names to keep other templates unchanged
+        Write-Host "##vso[task.setvariable variable=UploadPlanPath;isOutput=true]$planPath"
+        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$planPath"
+
+        Write-Host "##[section]Preflight summary"
+        Write-Host ("Files: {0}  |  Upload plan: {1}" -f $rows.Count, $planPath)

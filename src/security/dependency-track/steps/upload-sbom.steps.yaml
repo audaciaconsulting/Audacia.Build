@@ -42,14 +42,8 @@ steps:
     parameters:
       requireProjectTags: ${{ parameters.requireProjectTags }}
 
-  # Discover SBOM JSON files and output as JSON array
-  - template: /src/security/dependency-track/steps/upload/discover-sbom-files.step.yaml@templates
-
-  # Validate inputs and files presence
-  - template: /src/security/dependency-track/steps/upload/validate-inputs.step.yaml@templates
-
-  # Pre-flight validation to build upload matrix file
-  - template: /src/security/dependency-track/steps/upload/preflight-validate-sboms.step.yaml@templates
+  # Preflight: discover → validate → plan
+  - template: /src/security/dependency-track/steps/upload/prepare-sbom-upload.step.yaml@templates
 
   # Perform uploads atomically with internal rollback
   - template: /src/security/dependency-track/steps/upload/perform-uploads.step.yaml@templates
