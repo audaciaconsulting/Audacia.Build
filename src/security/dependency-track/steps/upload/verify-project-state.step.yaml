@@ -1,0 +1,148 @@
+# Template: verify that uploaded (Project, Version) pairs exist and are latest in Dependency-Track
+# Reads from env:
+#   - DT_API_URL, DT_API_KEY        : server + auth
+#   - UPLOADED_ROWS_JSON            : JSON array of objects with at least { "Project": "...", "Version": "..." }
+#
+# Output:
+#   - Uploads a markdown summary to the job timeline (success/fail table)
+#   - Sets pipeline variable verifyLatestOk = true|false
+
+parameters:
+  # If true, fail the step when any uploaded project isn't marked isLatest=true
+  - name: enforce
+    type: boolean
+    default: false
+
+steps:
+  - task: PowerShell@2
+    displayName: "Verify Dependency-Track project state (post-upload)"
+    env:
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      UPLOADED_ROWS_JSON: $(UPLOADED_ROWS_JSON)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+
+        # Parse the rows we uploaded earlier
+        $rows = @()
+        try {
+          $rows = $env:UPLOADED_ROWS_JSON | ConvertFrom-Json
+        } catch {
+          Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."
+        }
+
+        if (-not $rows -or $rows.Count -eq 0) {
+          Write-Warning "No uploaded rows provided; nothing to verify."
+          Write-Host "##vso[task.setvariable variable=verifyLatestOk]true"
+          exit 0
+        }
+
+        Add-Type -AssemblyName System.Net.Http
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.Timeout = [TimeSpan]::FromMinutes(5)
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+
+        function Invoke-Dt([string]$method, [string]$path) {
+          $uri = "$base$path"
+          $msg = [System.Net.Http.HttpRequestMessage]::new($method, $uri)
+          $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+          $txt  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if ($resp.IsSuccessStatusCode) { return $txt }
+          throw "API $method $path failed ($($resp.StatusCode)): $txt"
+        }
+
+        $report = New-Object System.Collections.Generic.List[object]
+        $notLatest = 0
+        $missing   = 0
+
+        foreach ($r in $rows) {
+          $name = $r.Project
+          $ver  = $r.Version
+
+          if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($ver)) {
+            $report.Add([pscustomobject]@{
+              Project = $name
+              Version = $ver
+              Exists  = 'NO'
+              IsLatest = 'n/a'
+              Note    = 'Missing project or version in input'
+            })
+            $missing++
+            continue
+          }
+
+          try {
+            $qName = [System.Web.HttpUtility]::UrlEncode($name)
+            $qVer  = [System.Web.HttpUtility]::UrlEncode($ver)
+            $json  = Invoke-Dt -method GET -path "/v1/project/lookup?name=$qName&version=$qVer"
+            $obj   = $null
+            if ($json) { $obj = $json | ConvertFrom-Json }
+
+            if ($null -eq $obj) {
+              $report.Add([pscustomobject]@{
+                Project  = $name
+                Version  = $ver
+                Exists   = 'NO'
+                IsLatest = 'n/a'
+                Note     = 'Not found by lookup'
+              })
+              $missing++
+              continue
+            }
+
+            $isLatest = $false
+            if ($obj.PSObject.Properties.Name -contains 'isLatest') { $isLatest = [bool]$obj.isLatest }
+
+            if (-not $isLatest) { $notLatest++ }
+
+            $report.Add([pscustomobject]@{
+              Project  = $obj.name
+              Version  = $obj.version
+              Exists   = 'YES'
+              IsLatest = $(if($isLatest){'YES'}else{'NO'})
+              Note     = $(if($isLatest){''}else{'Expected latest but server disagrees'})
+            })
+          } catch {
+            $report.Add([pscustomobject]@{
+              Project  = $name
+              Version  = $ver
+              Exists   = 'ERROR'
+              IsLatest = 'n/a'
+              Note     = $_.Exception.Message
+            })
+          }
+        }
+
+        $okCount = ($report | Where-Object { $_.Exists -eq 'YES' -and $_.IsLatest -eq 'YES' } | Measure-Object).Count
+
+        # Write a small markdown summary
+        $md = New-Object System.Collections.Generic.List[string]
+        $md.Add("# Dependency-Track Post-Upload Verification")
+        $md.Add("")
+        $md.Add("**Server:** $base")
+        $md.Add("")
+        $md.Add("| Project | Version | Exists | isLatest | Note |")
+        $md.Add("|---|---|---|---|---|")
+        foreach ($row in $report) {
+          $md.Add("| {0} | {1} | {2} | {3} | {4} |" -f $row.Project, $row.Version, $row.Exists, $row.IsLatest, ($row.Note -replace '\r?\n',' '))
+        }
+        $md.Add("")
+        $md.Add("**Summary:** ok(latest)=$okCount, notLatest=$notLatest, missing=$missing")
+        $summaryPath = Join-Path $env:AGENT_TEMPDIRECTORY "dt-verify-latest.md"
+        Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
+        Write-Host "##vso[task.uploadsummary]$summaryPath"
+
+        $allGood = ($notLatest -eq 0) -and ($missing -eq 0)
+        Write-Host "##vso[task.setvariable variable=verifyLatestOk]$($allGood.ToString().ToLower())"
+
+        if ("${{ parameters.enforce }}" -eq "True" -and -not $allGood) {
+          throw "Verification failed: some projects are not latest or missing."
+        }
