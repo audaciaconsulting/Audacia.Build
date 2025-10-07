@@ -143,7 +143,65 @@ steps:
           return $false
         }
 
-        # ---- New Functions for ACID Compliance ----
+        # ---- Two-mode rollback: DELETE → PATCH active=false fallback ----
+        function Invoke-RollbackUploads {
+          if (-not "${{ parameters.enableRollback }}" -eq "True") {
+            Write-Host "Rollback disabled, skipping cleanup"
+            return
+          }
+
+          $deletedOk = 0
+          $deactivatedOk = 0
+          $failed = 0
+        
+          Write-Host "##[warning]Starting rollback for $($uploadedProjects.Count) uploaded project(s)..."
+        
+          foreach ($project in $uploadedProjects) {
+            try {
+              $deleteUri = "/v1/project/$($project.Uuid)"
+              try {
+                # Primary rollback path: hard delete the project that was created in this run
+                [void](Invoke-DtApi -method DELETE -path $deleteUri -baseUrl $base)
+                $deletedOk++
+                Write-Host "✓ Rolled back via DELETE: $($project.Name) @ $($project.Version)"
+              } catch {
+                # Fallback rollback path: if DELETE fails, deactivate instead of leaving it active
+                $delErr = $_.Exception.Message
+                Write-Warning "DELETE failed for $($project.Name) ($($project.Uuid)): $delErr. Attempting PATCH active=false fallback."
+
+                try {
+                  [void](Invoke-DtApi -method PATCH -path "/v1/project/$($project.Uuid)" -body @{ active = $false } -baseUrl $base)
+                  $deactivatedOk++
+                  Write-Host "✓ Rolled back via PATCH active=false: $($project.Name) @ $($project.Version)"
+                } catch {
+                  $patchErr = $_.Exception.Message
+                  Write-Warning "Fallback PATCH active=false failed for $($project.Name) ($($project.Uuid)): $patchErr"
+                  $failed++
+                }
+              }
+            } catch {
+              $failed++
+              Write-Warning "Unexpected rollback error for $($project.Name) ($($project.Uuid)): $($_.Exception.Message)"
+            }
+          }
+
+          Write-Host "##[section]Rollback summary → deleted=$deletedOk, deactivated=$deactivatedOk, failed=$failed"
+        }
+        
+        function Get-ProjectByNameAndVersion([string]$projectName, [string]$projectVersion) {
+          try {
+            $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
+            $encodedVersion = [System.Web.HttpUtility]::UrlEncode($projectVersion)
+            $searchResult = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encodedName&version=$encodedVersion" -baseUrl $base
+            return $searchResult | ConvertFrom-Json
+          } catch {
+            return $null
+          }
+        }
+
+        # ---- PHASE 1: PRE-FLIGHT VALIDATION ----
+        Write-Host "##[section]Phase 1: Pre-flight Validation"
+        Write-Host "Validating all $($filePaths.Count) SBOM files before upload..."
         
         function Test-SbomValidation([string]$filePath) {
           Write-Host "Validating SBOM: $filePath"
@@ -209,49 +267,6 @@ steps:
         
           return $validationResult
         }
-        
-        function Invoke-RollbackUploads {
-          if (-not "${{ parameters.enableRollback }}" -eq "True") {
-            Write-Host "Rollback disabled, skipping cleanup"
-            return
-          }
-        
-          Write-Host "##[warning]Starting rollback process for $($uploadedProjects.Count) uploaded projects..."
-        
-          foreach ($project in $uploadedProjects) {
-            try {
-              Write-Host "Rolling back project: $($project.Name) @ $($project.Version)"
-        
-              $deleteUri = "/v1/project/$($project.Uuid)"
-              try {
-                Invoke-DtApi -method DELETE -path $deleteUri -baseUrl $base | Out-Null
-                Write-Host "✓ Successfully rolled back: $($project.Name)"
-              } catch {
-                Write-Warning "Failed to rollback project $($project.Name): $($_.Exception.Message)"
-              }
-        
-            } catch {
-              Write-Warning "Error during rollback of $($project.Name): $($_.Exception.Message)"
-            }
-          }
-        
-          Write-Host "Rollback process completed"
-        }
-        
-        function Get-ProjectByNameAndVersion([string]$projectName, [string]$projectVersion) {
-          try {
-            $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
-            $encodedVersion = [System.Web.HttpUtility]::UrlEncode($projectVersion)
-            $searchResult = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encodedName&version=$encodedVersion" -baseUrl $base
-            return $searchResult | ConvertFrom-Json
-          } catch {
-            return $null
-          }
-        }
-
-        # ---- PHASE 1: PRE-FLIGHT VALIDATION ----
-        Write-Host "##[section]Phase 1: Pre-flight Validation"
-        Write-Host "Validating all $($filePaths.Count) SBOM files before upload..."
         
         $allValid = $true
         foreach ($filePath in $filePaths) {
