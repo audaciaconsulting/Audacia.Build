@@ -18,6 +18,11 @@ parameters:
   - name: validationOnly
     type: boolean
     default: false
+  # New: how long to wait for BOM processing to complete (seconds)
+  # Set higher to avoid racing the server on large SBOMs.
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
 
 steps:
   # Step: Upload SBOMs to Dependency-Track with ACID compliance
@@ -360,7 +365,8 @@ steps:
               }
         
               $uploaded++
-              [void](Wait-BomProcessed -token $json.token -timeoutSec 120)
+              # CHANGED: use configurable timeout instead of hard-coded 120s
+              [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
         
               $rows.Add([pscustomobject]@{
                 File     = $f.Name

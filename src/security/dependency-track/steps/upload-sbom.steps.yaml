@@ -19,6 +19,10 @@ parameters:
   - name: validationOnly
     type: boolean
     default: false
+  # New: pass-through wait for BOM processing (seconds)
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
 
 steps:
   # Download SBOM artifact
@@ -40,3 +44,4 @@ steps:
       failOnUploadError: ${{ parameters.failOnUploadError }}
       enableRollback: ${{ parameters.enableRollback }}
       validationOnly: ${{ parameters.validationOnly }}
+      bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
