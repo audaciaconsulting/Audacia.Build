@@ -13,28 +13,21 @@ steps:
         if (Test-Path -LiteralPath $rowsPath) {
           try { $rows = Get-Content -Raw -LiteralPath $rowsPath | ConvertFrom-Json } catch { $rows=@() }
         }
-
-        # Normalize to array
         if ($rows -isnot [System.Collections.IEnumerable]) { $rows = @($rows) }
         if (-not $rows) { $rows = @() }
 
-        $md = New-Object System.Collections.Generic.List[string]
-        $md.Add("# Dependency-Track Upload Summary")
-        $md.Add("")
-        $md.Add("**Total Projects:** $($rows.Count)")
-        $md.Add("")
+        # ---- Console output (grouped) ----
+        Write-Host "##[group]Dependency-Track Upload Summary (console)"
+        Write-Host ("Total Projects: {0}" -f $rows.Count)
         if ($rows.Count -gt 0) {
-          $md.Add("| Project | Version |")
-          $md.Add("|---|---|")
+          # Emit a compact table to STDOUT for unfamiliar readers following the live log
+          "{0,-50} {1,-30}" -f "Project","Version" | Write-Host
+          "{0,-50} {1,-30}" -f "-------","-------" | Write-Host
           foreach ($r in $rows) {
-            $proj = [string]$r.Project
-            $ver  = [string]$r.Version
-            $md.Add("| $proj | $ver |")
+            "{0,-50} {1,-30}" -f ([string]$r.Project), ([string]$r.Version) | Write-Host
           }
         } else {
-          $md.Add("_No projects to list._")
+          Write-Host "_No projects to list._"
         }
-
-        $summary = Join-Path $env:AGENT_TEMPDIRECTORY "dt-upload-summary.md"
-        Set-Content -LiteralPath $summary -Value ($md -join "`r`n") -Encoding UTF8
-        Write-Host "##vso[task.uploadsummary]$summary"
+        Write-Host "##[endgroup]"
+        # Markdown summary and file upload removed as requested
