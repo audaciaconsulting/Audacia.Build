@@ -49,10 +49,10 @@ parameters:
     default: true
 
 steps:
-  # 1) Checkout and setup caching
+  # Checkout and setup caching
   - template: /src/security/dependency-track/steps/generate/checkout-and-cache.step.yaml@templates
 
-  # 2) Log environment and parameters
+  # Log environment and parameters
   - powershell: |
       Write-Host "##[group]Environment & Parameters"
       Write-Host "Agent.OS: $env:AGENT_OS"
@@ -64,41 +64,41 @@ steps:
       Write-Host "##[endgroup]"
     displayName: "Log environment and parameters"
 
-  # 3) Discover npm manifests for debugging
+  # Discover npm manifests for debugging
   - template: /src/security/dependency-track/steps/generate/discover-npm-manifests.step.yaml@templates
 
-  # 4) Setup Node.js tooling
+  # Setup Node.js tooling
   - template: /src/security/dependency-track/steps/generate/setup-node.step.yaml@templates
     parameters:
       nodeVersion: ${{ parameters.nodeVersion }}
 
-  # 5) Setup CycloneDX .NET tool
+  # Setup CycloneDX .NET tool
   - template: /src/security/dependency-track/steps/generate/setup-cyclonedx-dotnet.step.yaml@templates
 
-  # 6) Resolve npm roots from parameter or auto-discovery
+  # Resolve npm roots from parameter or auto-discovery
   - template: /src/security/dependency-track/steps/generate/resolve-npm-roots.step.yaml@templates
     parameters:
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
-  # 7) Resolve .NET projects from multiline parameter
+  # Resolve .NET projects from multiline parameter
   - template: /src/security/dependency-track/steps/generate/resolve-dotnet-projects.step.yaml@templates
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  # 8) Generate npm SBOMs
+  # Generate npm SBOMs
   - template: /src/security/dependency-track/steps/generate/generate-npm-sboms.step.yaml@templates
     parameters:
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  # 9) Generate .NET SBOMs
+  # Generate .NET SBOMs
   - template: /src/security/dependency-track/steps/generate/generate-dotnet-sboms.step.yaml@templates
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  # 10) Detect SBOM folder and set sbomExists variable
+  # Detect SBOM folder and set sbomExists variable
   - template: /src/security/dependency-track/steps/generate/detect-sbom-folder.step.yaml@templates
 
-  # 11) Validate that all expected SBOMs were generated (fail fast if not)
+  # Validate that all expected SBOMs were generated (fail fast if not)
   - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates
     parameters:
       strict: ${{ parameters.requireAllExpectedSboms }}
@@ -106,7 +106,7 @@ steps:
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
 
-  # 12) Publish SBOM artifact (conditional and fallback)
+  # Publish SBOM artifact (conditional and fallback)
   - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
     parameters:
       publishArtifact: ${{ parameters.publishArtifact }}
