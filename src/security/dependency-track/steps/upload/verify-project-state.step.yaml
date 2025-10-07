@@ -3,6 +3,9 @@ parameters:
   - name: enforce
     type: boolean
     default: false  # if true, fail if any project isn't latest / can't be found
+  - name: echoDetails
+    type: boolean
+    default: true   # NEW: echo row-by-row results to console
 
 steps:
   - task: PowerShell@2
@@ -10,7 +13,6 @@ steps:
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
-      # Comes from the upload step's output variable (always a JSON array string per upload-sboms.step.yaml)
       UPLOADED_ROWS_JSON: $(uploadScript.uploadedRowsJson)
     inputs:
       pwsh: true
@@ -24,18 +26,9 @@ steps:
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Verifying against: $base"
 
-        # Defensive default for empty/undefined input
         $raw = $env:UPLOADED_ROWS_JSON
         if (-not $raw -or [string]::IsNullOrWhiteSpace($raw)) { $raw = '[]' }
-
-        try {
-          $pairs = $raw | ConvertFrom-Json
-        } catch {
-          Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."
-          exit 1
-        }
-
-        # Normalize to array
+        try { $pairs = $raw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
         if ($pairs -isnot [System.Collections.IEnumerable]) { $pairs = @($pairs) }
         if (-not $pairs) { $pairs = @() }
 
@@ -45,8 +38,7 @@ steps:
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
-          $attempt = 0
-          $lastErr = $null
+          $attempt = 0; $lastErr = $null
           do {
             try {
               $uri  = "$baseUrl$path"
@@ -69,8 +61,7 @@ steps:
               if (-not $retryable -or $attempt -ge $retries) { throw $lastErr }
               $delay = [int][math]::Pow(2, [double]$attempt)
               Write-Warning "Transient error calling $path. Retry in ${delay}s (attempt $($attempt+1)/$retries): $($lastErr.Exception.Message)"
-              Start-Sleep -Seconds $delay
-              $attempt++
+              Start-Sleep -Seconds $delay; $attempt++
             }
           } while ($true)
         }
@@ -78,72 +69,48 @@ steps:
         $rows = New-Object System.Collections.Generic.List[object]
 
         foreach ($p in $pairs) {
-          $name = $p.Project
-          $version = $p.Version
-
+          $name = $p.Project; $version = $p.Version
           if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($version)) {
-            $rows.Add([pscustomobject]@{
-              Project = $name
-              Version = $version
-              Exists  = 'NO'
-              IsLatest = 'N/A'
-              Note    = 'Missing project or version value'
-            })
+            $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='NO'; IsLatest='N/A'; Note='Missing project or version value' })
             continue
           }
-
           $encName = [System.Web.HttpUtility]::UrlEncode($name)
           $encVer  = [System.Web.HttpUtility]::UrlEncode($version)
-
           try {
             $json = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encName&version=$encVer" -baseUrl $base
-            if (-not $json) {
-              $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='NO'; IsLatest='N/A'; Note='Not found' })
-              continue
-            }
+            if (-not $json) { $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='NO'; IsLatest='N/A'; Note='Not found' }); continue }
             $obj = $json | ConvertFrom-Json
-
             $exists   = ($null -ne $obj -and $obj.uuid)
             $isLatest = $false
             if ($exists -and ($obj.PSObject.Properties.Name -contains 'isLatest')) { $isLatest = [bool]$obj.isLatest }
-
             $rows.Add([pscustomobject]@{
-              Project = $name
-              Version = $version
-              Exists  = $(if($exists) {'YES'} else {'NO'})
-              IsLatest = $(if($exists) { $(if($isLatest){'YES'}else{'NO'}) } else {'N/A'})
+              Project = $name; Version = $version
+              Exists  = $(if($exists){'YES'} else {'NO'})
+              IsLatest= $(if($exists){ $(if($isLatest){'YES'}else{'NO'}) } else {'N/A'})
               Note    = $(if($exists) { "uuid=$($obj.uuid)" } else { "Not found" })
             })
           } catch {
-            $rows.Add([pscustomobject]@{
-              Project = $name
-              Version = $version
-              Exists  = 'UNKNOWN'
-              IsLatest = 'UNKNOWN'
-              Note    = "Lookup error: $($_.Exception.Message)"
-            })
+            $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='UNKNOWN'; IsLatest='UNKNOWN'; Note="Lookup error: $($_.Exception.Message)" })
           }
         }
 
-        # Build Markdown summary
-        $md = New-Object System.Collections.Generic.List[string]
-        $md.Add("# Dependency-Track Post-Upload Verification")
-        $md.Add("")
-        if ($rows.Count -eq 0) {
-          $md.Add("_No projects to verify (empty input)._")
-        } else {
-          $md.Add("| Project | Version | Exists | Is Latest | Note |")
-          $md.Add("|---|---|:---:|:---:|---|")
+        # ---- Console details (NEW) ----
+        Write-Host "##[group]Dependency-Track verification details (console)"
+        Write-Host ("Checked items: {0}" -f $rows.Count)
+        $missing = ($rows | Where-Object { $_.Exists -ne 'YES' }).Count
+        $notLatest = ($rows | Where-Object { $_.IsLatest -eq 'NO' }).Count
+        Write-Host ("Missing: {0} | Not latest: {1}" -f $missing, $notLatest)
+
+        if ("${{ parameters.echoDetails }}" -eq "True") {
+          "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "Project","Version","Exists","IsLatest","Note" | Write-Host
+          "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "-------","-------","------","--------","----" | Write-Host
           foreach ($r in $rows) {
-            $md.Add("| $($r.Project) | $($r.Version) | $($r.Exists) | $($r.IsLatest) | $($r.Note -replace '\r?\n',' ') |")
+            "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $r.Project, $r.Version, $r.Exists, $r.IsLatest, ($r.Note -replace '\r?\n',' ') | Write-Host
           }
         }
+        Write-Host "##[endgroup]"
 
-        $summaryPath = Join-Path $env:AGENT_TEMPDIRECTORY "dt-verify-summary.md"
-        Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
-        Write-Host "##vso[task.uploadsummary]$summaryPath"
-
-        # Enforce mode: fail if any row is not found or not latest
+        # Enforce (unchanged)
         $shouldFail = $false
         if ("${{ parameters.enforce }}" -eq "True") {
           foreach ($r in $rows) {

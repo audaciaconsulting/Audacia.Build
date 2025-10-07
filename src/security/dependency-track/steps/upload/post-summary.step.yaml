@@ -30,4 +30,3 @@ steps:
           Write-Host "_No projects to list._"
         }
         Write-Host "##[endgroup]"
-        # Markdown summary and file upload removed as requested
