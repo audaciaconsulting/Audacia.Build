@@ -328,8 +328,11 @@ steps:
             }
           }
 
-          # Export compact (Project,Version) JSON for the post-upload verifier
-          $rowsJson = ($rows | ForEach-Object { @{ Project = $_.Project; Version = $_.Version } } | ConvertTo-Json -Compress)
+          # Export compact (Project,Version) JSON for the post-upload verifier (always a JSON array)
+          $pairList = @()
+          foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
+          $rowsJson = ($pairList | ConvertTo-Json -Compress)
+          if (-not $rowsJson) { $rowsJson = '[]' }
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
 
           Write-Host "##[section]✅ All uploads completed successfully → ok=$uploaded"
@@ -340,8 +343,11 @@ steps:
             Invoke-RollbackUploads
           }
 
-          # Export whatever we have so the verifier can still run and report
-          $rowsJson = ($rows | ForEach-Object { @{ Project = $_.Project; Version = $_.Version } } | ConvertTo-Json -Compress)
+          # Export whatever we have so the verifier can still run and report (always a JSON array)
+          $pairList = @()
+          foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
+          $rowsJson = ($pairList | ConvertTo-Json -Compress)
+          if (-not $rowsJson) { $rowsJson = '[]' }
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
 
           $md = New-Object System.Collections.Generic.List[string]
