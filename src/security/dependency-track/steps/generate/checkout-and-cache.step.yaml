@@ -19,11 +19,70 @@ steps:
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
 
-  # Cache npm downloads (used when an npm install path is needed)
+  # Detect JS lockfiles so Cache@2 doesn't error when patterns match 0 files
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+      $root = '$(System.DefaultWorkingDirectory)'
+
+      $npmLocks  = Get-ChildItem -Path $root -Recurse -Filter 'package-lock.json' -File -EA SilentlyContinue
+      $yarnLocks = Get-ChildItem -Path $root -Recurse -Filter 'yarn.lock'         -File -EA SilentlyContinue
+      $pnpmLocks = Get-ChildItem -Path $root -Recurse -Filter 'pnpm-lock.yaml'    -File -EA SilentlyContinue
+
+      $hasNpm  = ($npmLocks.Count  -gt 0)
+      $hasYarn = ($yarnLocks.Count -gt 0)
+      $hasPnpm = ($pnpmLocks.Count -gt 0)
+
+      Write-Host "Detected lockfiles → npm=$hasNpm, yarn=$hasYarn, pnpm=$hasPnpm"
+
+      Write-Host "##vso[task.setvariable variable=hasNpmLock]$($hasNpm.ToString().ToLower())"
+      Write-Host "##vso[task.setvariable variable=hasYarnLock]$($hasYarn.ToString().ToLower())"
+      Write-Host "##vso[task.setvariable variable=hasPnpmLock]$($hasPnpm.ToString().ToLower())"
+    displayName: "Detect JS lockfiles for cache key"
+
+  # Cache npm downloads (npm lockfile)
   - task: Cache@2
-    displayName: "Cache npm cache folder"
+    displayName: "Cache npm cache folder (package-lock.json)"
+    condition: and(succeeded(), eq(variables['hasNpmLock'], 'true'))
     inputs:
       key: 'npm | "$(Agent.OS)" | **/package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '$(Pipeline.Workspace)/.npm'
+
+  # Cache npm downloads (yarn lockfile)
+  - task: Cache@2
+    displayName: "Cache npm cache folder (yarn.lock)"
+    condition: and(succeeded(),
+      and(ne(variables['hasNpmLock'], 'true'),
+      eq(variables['hasYarnLock'], 'true')))
+    inputs:
+      key: 'npm | "$(Agent.OS)" | **/yarn.lock'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '$(Pipeline.Workspace)/.npm'
+
+  # Cache npm downloads (pnpm lockfile)
+  - task: Cache@2
+    displayName: "Cache npm cache folder (pnpm-lock.yaml)"
+    condition: and(succeeded(),
+      and(ne(variables['hasNpmLock'], 'true'),
+      ne(variables['hasYarnLock'], 'true'),
+      eq(variables['hasPnpmLock'], 'true')))
+    inputs:
+      key: 'npm | "$(Agent.OS)" | **/pnpm-lock.yaml'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '$(Pipeline.Workspace)/.npm'
+
+  # Fallback: no lockfiles yet → generic cache key (prevents Cache@2 from erroring)
+  - task: Cache@2
+    displayName: "Cache npm cache folder (generic key)"
+    condition: and(succeeded(),
+      and(ne(variables['hasNpmLock'], 'true'),
+      ne(variables['hasYarnLock'], 'true'),
+      ne(variables['hasPnpmLock'], 'true')))
+    inputs:
+      key: 'npm | "$(Agent.OS)" | generic'
       restoreKeys: |
         npm | "$(Agent.OS)"
       path: '$(Pipeline.Workspace)/.npm'
