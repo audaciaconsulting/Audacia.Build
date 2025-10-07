@@ -380,7 +380,7 @@ steps:
         Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
         Write-Host "##vso[task.uploadsummary]$summaryPath"
 
-  # Post-upload verification probe (durability)
+  # Post-upload verification probe
   - template: /src/security/dependency-track/steps/upload/verify-project-state.step.yaml@templates
     parameters:
       enforce: false
