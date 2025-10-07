@@ -1,4 +1,9 @@
-# Template: build project tags from environment variables
+# Template: build project tags from environment variables (fail-closed when required)
+parameters:
+  - name: requireProjectTags
+    type: boolean
+    default: true  # if true, empty/invalid tags cause the step to fail
+
 steps:
   # Step: Build project tags
   # - Uses PowerShell to construct a list of project tags based on environment variables
@@ -13,35 +18,41 @@ steps:
       pwsh: true
       targetType: inline
       script: |
-        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
-        
-        # Initialize a list to store tags
         $tags = New-Object System.Collections.Generic.List[string]
-        
-        # Add the mandatory environment tag
-        $tags.Add("env:$env:ENV_NAME")
-        
-        # Check if additional tags are provided and process them
+
+        # Mandatory env tag
+        if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
+          if ("${{ parameters.requireProjectTags }}" -eq "True") {
+            throw "ENV_NAME not set; cannot build mandatory env:<ENV_NAME> tag."
+          } else {
+            Write-Warning "ENV_NAME not set; env tag will be omitted."
+          }
+        } else {
+          $tags.Add("env:$env:ENV_NAME")
+        }
+
+        # Optional extras
         if ($env:ADDITIONAL_TAGS -and $env:ADDITIONAL_TAGS.Trim().Length -gt 0) {
-          # Split the additional tags by comma, trim whitespace, and filter out empty values
           $extraTags = $env:ADDITIONAL_TAGS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-          # Add each additional tag to the list
           foreach ($t in $extraTags) { $tags.Add($t) }
         }
-        
-        # Initialize the CSV string for tags
+
+        # Dedup & CSV
         $tagsCsv = ''
-        
-        # If there are tags, deduplicate them and join into a CSV string
         if ($tags.Count -gt 0) {
-          $seen = @{} # Hashtable to track seen tags
-          $deduped = $tags | Where-Object { if ($seen.ContainsKey($_)) { $false } else { $seen[$_] = $true; $true } }
-          $tagsCsv = $deduped -join ',' # Join deduplicated tags into a CSV
+          $seen=@{}; $deduped = $tags | Where-Object { if ($seen.ContainsKey($_)) {$false} else {$seen[$_]=$true; $true} }
+          $tagsCsv = $deduped -join ','
         }
-        
-        # Log the final CSV of project tags
+
+        if ("${{ parameters.requireProjectTags }}" -eq "True") {
+          if ([string]::IsNullOrWhiteSpace($tagsCsv)) { throw "No project tags produced." }
+          if (-not ($tagsCsv -split ',' | Where-Object { $_ -like 'env:*' })) {
+            throw "Mandatory env:* tag missing."
+          }
+        } elseif ([string]::IsNullOrWhiteSpace($tagsCsv)) {
+          Write-Warning "No project tags produced (requireProjectTags=false)."
+        }
+
         Write-Host "Final projectTags CSV: '$tagsCsv'"
-        
-        # Set the CSV as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=projectTagsCsv;isOutput=true]$tagsCsv"
