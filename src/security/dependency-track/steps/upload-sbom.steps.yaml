@@ -10,20 +10,33 @@ parameters:
   - name: failOnUploadError
     type: boolean
     default: true
+  - name: requireProjectTags
+    type: boolean
+    default: true
+  - name: enableRollback
+    type: boolean
+    default: true
+  - name: validationOnly
+    type: boolean
+    default: false
 
 steps:
-  # Step 1: Download SBOM artifact
+  # Download SBOM artifact
   - template: /src/security/dependency-track/steps/upload/download-sbom-artifact.step.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
 
-  # Step 2: Build project tags from environment variables
+  # Build project tags from environment variables
   - template: /src/security/dependency-track/steps/upload/build-project-tags.step.yaml@templates
+    parameters:
+      requireProjectTags: ${{ parameters.requireProjectTags }}
 
-  # Step 3: Discover SBOM files and create JSON array
+  # Discover SBOM files and create JSON array
   - template: /src/security/dependency-track/steps/upload/discover-sbom-files.step.yaml@templates
 
-  # Step 4: Upload SBOMs to Dependency-Track
+  # Upload SBOMs to Dependency-Track
   - template: /src/security/dependency-track/steps/upload/upload-sboms.step.yaml@templates
     parameters:
       failOnUploadError: ${{ parameters.failOnUploadError }}
+      enableRollback: ${{ parameters.enableRollback }}
+      validationOnly: ${{ parameters.validationOnly }}
