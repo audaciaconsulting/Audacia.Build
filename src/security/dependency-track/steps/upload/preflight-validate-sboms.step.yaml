@@ -2,7 +2,7 @@
 steps:
   - task: PowerShell@2
     name: preflight
-    displayName: "Pre-flight validate SBOMs and build upload matrix"
+    displayName: "Inspect SBOMs & build upload plan"
     env:
       SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson)
       RELEASE_NUMBER: $(RELEASE_NUMBER)
@@ -22,9 +22,7 @@ steps:
           try { $json = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json } catch { throw "Invalid JSON: $f" }
 
           $name = $json.metadata.component.name
-          if (-not $name) {
-            $name = (Split-Path (Split-Path -Parent $f) -Leaf)
-          }
+          if (-not $name) { $name = (Split-Path (Split-Path -Parent $f) -Leaf) }
           if ([string]::IsNullOrWhiteSpace($name)) { throw "Cannot derive project name for: $f" }
 
           $rows += [pscustomobject]@{

@@ -1,7 +1,7 @@
 # Step: Validate API inputs and ensure we have files to process
 steps:
   - task: PowerShell@2
-    displayName: "Validate inputs and discover files"
+    displayName: "Sanity-check API config & SBOM list"
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)

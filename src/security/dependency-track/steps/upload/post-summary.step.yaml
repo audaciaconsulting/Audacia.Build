@@ -14,15 +14,23 @@ steps:
           try { $rows = Get-Content -Raw -LiteralPath $rowsPath | ConvertFrom-Json } catch { $rows=@() }
         }
 
+        # Normalize to array
+        if ($rows -isnot [System.Collections.IEnumerable]) { $rows = @($rows) }
+        if (-not $rows) { $rows = @() }
+
         $md = New-Object System.Collections.Generic.List[string]
         $md.Add("# Dependency-Track Upload Summary")
         $md.Add("")
-        $md.Add("**Total Projects:** {0}" -f $rows.Count)
+        $md.Add("**Total Projects:** $($rows.Count)")
         $md.Add("")
         if ($rows.Count -gt 0) {
           $md.Add("| Project | Version |")
           $md.Add("|---|---|")
-          foreach ($r in $rows) { $md.Add("| {0} | {1} |" -f $r.Project, $r.Version) }
+          foreach ($r in $rows) {
+            $proj = [string]$r.Project
+            $ver  = [string]$r.Version
+            $md.Add("| $proj | $ver |")
+          }
         } else {
           $md.Add("_No projects to list._")
         }
