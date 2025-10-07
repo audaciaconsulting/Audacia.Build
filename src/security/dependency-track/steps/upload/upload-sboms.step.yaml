@@ -384,7 +384,3 @@ steps:
   - template: /src/security/dependency-track/steps/upload/verify-project-state.step.yaml@templates
     parameters:
       enforce: false
-    env:
-      DT_API_URL: $(DT_API_URL)
-      DT_API_KEY: $(DT_API_KEY)
-      UPLOADED_ROWS_JSON: $(uploadScript.uploadedRowsJson)
