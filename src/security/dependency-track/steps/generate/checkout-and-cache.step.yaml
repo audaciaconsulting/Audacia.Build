@@ -1,21 +1,13 @@
-# Template: checkout source code and setup NuGet caching
+# Template: checkout source code and setup NuGet/npm caching
 steps:
-  # Step: Checkout the source code repository
-  # - Ensures a clean working directory by removing any untracked files
-  # - Includes submodules for projects that depend on them
-  # - Enables support for Git Large File Storage (LFS)
-  # - Fetches the full commit history for accurate versioning (fetchDepth: 0)
+  # Checkout the source code repository
   - checkout: self
     clean: true
     submodules: true
     lfs: true
     fetchDepth: 0
 
-  # Step: Cache NuGet global-packages
-  # - Uses the Cache@2 task to cache NuGet packages for faster builds
-  # - The cache key is based on the operating system and project files (*.csproj, *.props, *.targets)
-  # - Restores the cache if available; otherwise, creates a new cache
-  # - Cache path: C:\Users\VssAdministrator\.nuget\packages
+  # Cache NuGet global-packages
   - task: Cache@2
     displayName: "Cache NuGet global-packages"
     inputs:
@@ -23,8 +15,15 @@ steps:
       restoreKeys: 'nuget | "$(Agent.OS)"'
       path: 'C:\Users\VssAdministrator\.nuget\packages'
 
-  # Step: Authenticate to Azure Artifacts
-  # - Uses the NuGetAuthenticate@1 task to authenticate with Azure Artifacts
-  # - Ensures secure access to private NuGet feeds during the build process
+  # Authenticate to Azure Artifacts
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
+
+  # Cache npm downloads (used when an npm install path is needed)
+  - task: Cache@2
+    displayName: "Cache npm cache folder"
+    inputs:
+      key: 'npm | "$(Agent.OS)" | **/package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '$(Pipeline.Workspace)/.npm'

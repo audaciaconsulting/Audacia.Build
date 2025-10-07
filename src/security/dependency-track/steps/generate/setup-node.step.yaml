@@ -1,34 +1,21 @@
 # Template: setup Node.js and expose tooling paths
 parameters:
-  # Parameter: nodeVersion
-  # - Specifies the version of Node.js to use
-  # - Default value is '20.x'
   - name: nodeVersion
     type: string
     default: '20.x'
 
 steps:
-  # Step: Use Node.js
-  # - Configures the pipeline to use the specified Node.js version
-  # - Ensures the latest version matching the specification is used
+  # Use Node.js
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
       versionSpec: ${{ parameters.nodeVersion }}
-      checkLatest: true
+      checkLatest: false
 
-  # Step: Setup Node.js tooling and expose paths
-  # - Uses PowerShell to locate and validate the Node.js installation
-  # - Resolves paths for Node.js binaries (node.exe, npm.cmd, npx.cmd)
-  # - Logs the resolved versions and paths for debugging
-  # - Updates the PATH environment variable to include the Node.js binary directory
-  # - Sets pipeline variables for Node.js tooling paths (SBOM_NODE_BIN, SBOM_NODE, SBOM_NPM, SBOM_NPX)
+  # Setup Node.js tooling and expose paths
   - powershell: |
       $ErrorActionPreference = 'Stop'
 
-      # Function: Get-NodeToolPaths
-      # - Resolves the paths for Node.js binaries based on the major version
-      # - Throws an error if the binaries are not found
       function Get-NodeToolPaths {
         param([string]$major = '20')
         $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
@@ -45,10 +32,8 @@ steps:
         [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
       }
 
-      # Resolve Node.js tooling paths for the specified major version
       $tool = Get-NodeToolPaths -major '20'
 
-      # Log resolved Node.js versions and paths
       Write-Host "##[group]Node tooling (resolved)"
       & $tool.Node --version
       & $tool.Npm  --version
@@ -56,7 +41,6 @@ steps:
       Write-Host "Resolved bin: $($tool.Bin)"
       Write-Host "##[endgroup]"
 
-      # Update PATH and set pipeline variables for Node.js tooling
       Write-Host "##vso[task.prependpath]$($tool.Bin)"
       $env:PATH = "$($tool.Bin);$env:PATH"
 

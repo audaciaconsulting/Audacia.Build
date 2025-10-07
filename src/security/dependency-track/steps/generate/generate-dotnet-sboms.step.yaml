@@ -1,24 +1,16 @@
 # Template: generate .NET SBOMs using CycloneDX
 parameters:
-  # Parameter: dotnetProjectsMultiline
-  # - A multiline string containing paths to .NET projects
-  # - Default value is an empty string
   - name: dotnetProjectsMultiline
     type: string
     default: ''
 
 steps:
-  # Step: Prepare .NET SBOM output folders
-  # - Creates the directory `$(Agent.TempDirectory)/sbom/dotnet` for storing SBOM files
-  # - Ensures the directory exists before proceeding
+  # Prepare .NET SBOM output folders
   - powershell: |
       New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
     displayName: "Prepare .NET SBOM output folders"
 
-  # Step: Restore .NET projects (pre-warm for CycloneDX)
-  # - Restores NuGet packages for the specified .NET projects
-  # - Executes only if the `dotnetProjectsMultiline` parameter is not empty
-  # - Uses the `DotNetCoreCLI@2` task for the restore operation
+  # Restore .NET projects (pre-warm for CycloneDX)
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects (pre-warm for CycloneDX)"
     condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
@@ -28,54 +20,40 @@ steps:
         ${{ parameters.dotnetProjectsMultiline }}
       vstsFeed: 'Audacia.Public/AudaciaPublic'
 
-  # Step: Generate .NET SBOMs (CycloneDX, JSON)
-  # - Generates SBOMs for the specified .NET projects in JSON format using CycloneDX
-  # - Reads the list of project paths from the `resolveDotnetProjects.dotnetProjectsJson` variable
-  # - Logs warnings if the project list is invalid or empty
-  # - Iterates through each project, restores it, and generates an SBOM
-  # - Logs success or failure for each project and provides a summary
+  # Generate .NET SBOMs (CycloneDX, JSON)
   - task: PowerShell@2
     displayName: "Generate .NET SBOMs (CycloneDX, JSON)"
     inputs:
       targetType: inline
       script: |
-        # Set error handling to stop on errors
         $ErrorActionPreference = 'Stop'
 
-        # Read the JSON string containing .NET project paths
         $DotnetProjectsJson = '$(resolveDotnetProjects.dotnetProjectsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/dotnet'
 
-        # Initialize an empty array for project paths
         $projPaths = @()
         try {
-            # Attempt to parse the JSON string into an array
             $projPaths = $DotnetProjectsJson | ConvertFrom-Json
         } catch {
             Write-Host "##vso[task.logissue type=warning]Invalid dotnetProjectsJson: $DotnetProjectsJson"
             $projPaths = @()
         }
 
-        # Exit early if no projects are found
         if ($projPaths.Count -eq 0) {
             Write-Host "##vso[task.logissue type=warning].NET project list empty; skipping"
             exit 0
         }
 
-        # Define the output format and file extension for SBOMs
         $format = 'Json'; $ext = 'json'
         $ok = 0; $fail = 0
 
-        # Iterate through each project path
         foreach ($p in $projPaths) {
             $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
             $fileName = "{0}-sbom.{1}" -f $base, $ext
 
-            # Log the start of processing for the current project
             Write-Host "##[group].NET → $p"
             try {
-                # Restore the project and generate the SBOM
-                dotnet restore "$p" | Out-Null
+                # Removed duplicate restore; already restored above
                 dotnet CycloneDX "$p" -o "$OutputDir" -F "$format" -fn "$fileName"
                 if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
                 if (Test-Path (Join-Path $OutputDir $fileName)) { $ok++ } else { $fail++ }
