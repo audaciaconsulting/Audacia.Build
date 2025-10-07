@@ -43,7 +43,6 @@ steps:
         $ErrorActionPreference = 'Stop'
         
         # ---- Transaction State Management ----
-        # Track uploaded projects for rollback capability
         $uploadedProjects = @()
         $validationResults = @()
         $rollbackRequired = $false
@@ -85,20 +84,37 @@ steps:
           [math]::Round((Get-Item -LiteralPath $path).Length / 1kb, 0)
         }
 
-        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
-          $uri  = "$base$path"
-          $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
-          if ($body -ne $null) {
-            $json = $body | ConvertTo-Json -Depth 8
-            $msg.Content = New-Object System.Net.Http.StringContent($json, [Text.Encoding]::UTF8, 'application/json')
-          }
-          $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
-          $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
-          if (-not $resp.IsSuccessStatusCode) {
-            $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-            throw "API $method $path failed ($($resp.StatusCode)): $text"
-          }
-          return $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        # Resilient API invoker with exponential backoff on 5xx or transient errors
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
+          $attempt = 0
+          $lastErr = $null
+          do {
+            try {
+              $uri  = "$baseUrl$path"
+              $msg  = [System.Net.Http.HttpRequestMessage]::new($method, $uri)
+              if ($body -ne $null) {
+                $json = $body | ConvertTo-Json -Depth 8
+                $msg.Content = [System.Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json')
+              }
+              $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
+              $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+              $content = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($resp.IsSuccessStatusCode) { return $content }
+              if ([int]$resp.StatusCode -ge 500) { throw "HTTP $($resp.StatusCode): $content" }
+              throw "API $method $path failed ($($resp.StatusCode)): $content"
+            } catch {
+              $lastErr = $_
+              $retryable = ($lastErr.Exception -is [System.Net.Http.HttpRequestException]) -or
+                           ($lastErr.Exception -is [System.TimeoutException]) -or
+                           ($lastErr.Exception -is [System.Net.WebException]) -or
+                           ($lastErr.Exception.Message -match '^HTTP 5\d{2}:')
+              if (-not $retryable -or $attempt -ge $retries) { throw $lastErr }
+              $delay = [int][math]::Pow(2, [double]$attempt)
+              Write-Warning "Transient error calling $path. Retry in ${delay}s (attempt $($attempt+1)/$retries): $($lastErr.Exception.Message)"
+              Start-Sleep -Seconds $delay
+              $attempt++
+            }
+          } while ($true)
         }
 
         function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
@@ -106,7 +122,7 @@ steps:
           $deadline = (Get-Date).AddSeconds($timeoutSec)
           while ((Get-Date) -lt $deadline) {
             try {
-              $json = Invoke-DtApi GET "/v1/bom/token/$token"
+              $json = Invoke-DtApi -method GET -path "/v1/bom/token/$token" -baseUrl $base
               if ($json) {
                 $st = $json | ConvertFrom-Json
                 if ($null -ne $st.processing) {
@@ -138,16 +154,14 @@ steps:
             ProjectName = $null
             ProjectVersion = $null
           }
-          
+        
           try {
-            # Check if file exists and is readable
             if (-not (Test-Path $filePath)) {
               $validationResult.IsValid = $false
               $validationResult.Issues += "File does not exist"
               return $validationResult
             }
-            
-            # Check file size (reasonable limits)
+        
             $fileSize = (Get-Item $filePath).Length
             if ($fileSize -eq 0) {
               $validationResult.IsValid = $false
@@ -159,8 +173,7 @@ steps:
               $validationResult.Issues += "File too large (>100MB)"
               return $validationResult
             }
-            
-            # Validate JSON structure
+        
             try {
               $sbomContent = Get-Content -Raw -LiteralPath $filePath | ConvertFrom-Json
             } catch {
@@ -168,34 +181,32 @@ steps:
               $validationResult.Issues += "Invalid JSON format: $($_.Exception.Message)"
               return $validationResult
             }
-            
-            # Extract and validate project information
+        
             $f = Get-Item -LiteralPath $filePath
             $appName = Get-AppNameFromSbom $f.FullName
             if (-not $appName) { $appName = $f.Directory.Parent.BaseName }
-            
+        
             if ([string]::IsNullOrWhiteSpace($appName)) {
               $validationResult.IsValid = $false
               $validationResult.Issues += "Cannot determine project name"
               return $validationResult
             }
-            
+        
             $validationResult.ProjectName = $appName
             $validationResult.ProjectVersion = "release/{0}" -f "$env:RELEASE_NUMBER"
-            
-            # Validate required SBOM fields
+        
             if (-not $sbomContent.metadata) {
               $validationResult.IsValid = $false
               $validationResult.Issues += "Missing metadata section"
             }
-            
+        
             Write-Host "✓ SBOM validation passed: $filePath"
-            
+        
           } catch {
             $validationResult.IsValid = $false
             $validationResult.Issues += "Validation error: $($_.Exception.Message)"
           }
-          
+        
           return $validationResult
         }
         
@@ -204,28 +215,26 @@ steps:
             Write-Host "Rollback disabled, skipping cleanup"
             return
           }
-          
+        
           Write-Host "##[warning]Starting rollback process for $($uploadedProjects.Count) uploaded projects..."
-          
+        
           foreach ($project in $uploadedProjects) {
             try {
               Write-Host "Rolling back project: $($project.Name) @ $($project.Version)"
-              
-              # Attempt to delete the project version
+        
               $deleteUri = "/v1/project/$($project.Uuid)"
               try {
-                Invoke-DtApi DELETE $deleteUri
+                Invoke-DtApi -method DELETE -path $deleteUri -baseUrl $base | Out-Null
                 Write-Host "✓ Successfully rolled back: $($project.Name)"
               } catch {
                 Write-Warning "Failed to rollback project $($project.Name): $($_.Exception.Message)"
-                # Continue with other rollbacks even if one fails
               }
-              
+        
             } catch {
               Write-Warning "Error during rollback of $($project.Name): $($_.Exception.Message)"
             }
           }
-          
+        
           Write-Host "Rollback process completed"
         }
         
@@ -233,7 +242,7 @@ steps:
           try {
             $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
             $encodedVersion = [System.Web.HttpUtility]::UrlEncode($projectVersion)
-            $searchResult = Invoke-DtApi GET "/v1/project/lookup?name=$encodedName&version=$encodedVersion"
+            $searchResult = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encodedName&version=$encodedVersion" -baseUrl $base
             return $searchResult | ConvertFrom-Json
           } catch {
             return $null
@@ -248,7 +257,7 @@ steps:
         foreach ($filePath in $filePaths) {
           $validation = Test-SbomValidation $filePath
           $validationResults += $validation
-          
+        
           if (-not $validation.IsValid) {
             $allValid = $false
             Write-Error "❌ Validation failed for $filePath : $($validation.Issues -join ', ')"
@@ -269,7 +278,6 @@ steps:
         
         Write-Host "✅ All SBOMs passed pre-flight validation"
         
-        # Exit if validation-only mode is enabled
         if ("${{ parameters.validationOnly }}" -eq "True") {
           Write-Host "Validation-only mode enabled. Exiting without upload."
           exit 0
@@ -281,7 +289,7 @@ steps:
         try {
           $uploaded = 0
           $rows = New-Object System.Collections.Generic.List[object]
-          
+        
           foreach ($validation in $validationResults) {
             $filePath = $validation.FilePath
             $f = Get-Item -LiteralPath $filePath
@@ -292,11 +300,10 @@ steps:
             $deployable = Get-DeployableFromPath $f.FullName
 
             Write-Host "##[group]Uploading SBOM -> $projectName @ $projectVersion"
-            
+        
             try {
-              # Check if project already exists
               $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
-              
+        
               $mp = [System.Net.Http.MultipartFormDataContent]::new()
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
@@ -324,10 +331,8 @@ steps:
               $json = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
               $note = "token: $($json.token)"
               Write-Host "Uploaded OK: $($f.FullName)  ($note)"
-              
-              # Track successful upload for potential rollback
+        
               if (-not $existingProject) {
-                # Get the created project details for rollback tracking
                 $newProject = Get-ProjectByNameAndVersion $projectName $projectVersion
                 if ($newProject) {
                   $uploadedProjects += @{
@@ -338,10 +343,10 @@ steps:
                   }
                 }
               }
-              
+        
               $uploaded++
               [void](Wait-BomProcessed -token $json.token -timeoutSec 120)
-              
+        
               $rows.Add([pscustomobject]@{
                 File     = $f.Name
                 SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
@@ -350,39 +355,36 @@ steps:
                 Result   = 'OK'
                 Note     = $note
               })
-              
+        
             } catch {
-              # CRITICAL: Upload failed - trigger rollback if enabled
               $rollbackRequired = $true
               $errorMsg = $_.Exception.Message
               Write-Error "❌ Upload failed for $($f.FullName): $errorMsg"
-              
+        
               $rows.Add([pscustomobject]@{
                 File     = $f.Name
                 SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
                 Project  = $projectName
                 Version  = $projectVersion
-                Result   = 'FAILED'
+                Result  = 'FAILED'
                 Note     = $errorMsg
               })
-              
-              # Immediate failure and rollback for atomicity
+        
               throw "Upload failed for $($f.FullName): $errorMsg"
             } finally {
               Write-Host "##[endgroup]"
             }
           }
-          
+        
           Write-Host "##[section]✅ All uploads completed successfully → ok=$uploaded"
-          
+        
         } catch {
           Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
-          
+        
           if ($rollbackRequired -and $uploadedProjects.Count -gt 0) {
             Invoke-RollbackUploads
           }
-          
-          # Generate summary even on failure
+        
           $md = New-Object System.Collections.Generic.List[string]
           $md.Add("# Dependency-Track Upload Summary (FAILED)")
           $md.Add("")
@@ -396,7 +398,7 @@ steps:
           $summaryPath = Join-Path $env:AGENT_TEMPDIRECTORY "dt-upload-summary.md"
           Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
           Write-Host "##vso[task.uploadsummary]$summaryPath"
-          
+        
           if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 }
           return
         }
@@ -418,4 +420,3 @@ steps:
         $summaryPath = Join-Path $env:AGENT_TEMPDIRECTORY "dt-upload-summary.md"
         Set-Content -LiteralPath $summaryPath -Value ($md -join "`r`n") -Encoding UTF8
         Write-Host "##vso[task.uploadsummary]$summaryPath"
-

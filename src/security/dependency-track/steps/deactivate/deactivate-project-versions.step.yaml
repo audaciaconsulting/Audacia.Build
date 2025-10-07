@@ -38,52 +38,60 @@ steps:
         $ErrorActionPreference = 'Stop'
 
         # ---- Guard: ensure API URL/KEY are set ----
-        # Validate that the Dependency-Track API URL and API key are provided
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
 
-        # Early exit if no project names are provided
         if ([string]::IsNullOrWhiteSpace($env:PROJECT_NAMES_CSV)) {
           Write-Warning "No project names provided. Nothing to deactivate."
           exit 0
         }
 
-        # Add HTTP client for API requests
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
         $http.Timeout = [TimeSpan]::FromMinutes(10)
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
-        # Function: Invoke-DtApi
-        # - Sends an HTTP request to the Dependency-Track API
-        # - Handles errors and returns the response content
-        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null) {
-          $uri  = "$base$path"
-          $msg  = New-Object System.Net.Http.HttpRequestMessage($method, $uri)
-          if ($body -ne $null) {
-            $json = $body | ConvertTo-Json -Depth 8
-            $msg.Content = New-Object System.Net.Http.StringContent($json, [Text.Encoding]::UTF8, 'application/json')
-          }
-          $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
-          $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
-          $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          if (-not $resp.IsSuccessStatusCode) {
-            throw "API $method $path failed ($($resp.StatusCode)): $text"
-          }
-          return $text
+        # Resilient API invoker with exponential backoff on 5xx or transient errors
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
+          $attempt = 0
+          $lastErr = $null
+          do {
+            try {
+              $uri  = "$baseUrl$path"
+              $msg  = [System.Net.Http.HttpRequestMessage]::new($method, $uri)
+              if ($body -ne $null) {
+                $json = $body | ConvertTo-Json -Depth 8
+                $msg.Content = [System.Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json')
+              }
+              $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
+              $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+              $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($resp.IsSuccessStatusCode) { return $text }
+              if ([int]$resp.StatusCode -ge 500) { throw "HTTP $($resp.StatusCode): $text" }
+              throw "API $method $path failed ($($resp.StatusCode)): $text"
+            } catch {
+              $lastErr = $_
+              $retryable = ($lastErr.Exception -is [System.Net.Http.HttpRequestException]) -or
+                           ($lastErr.Exception -is [System.TimeoutException]) -or
+                           ($lastErr.Exception -is [System.Net.WebException]) -or
+                           ($lastErr.Exception.Message -match '^HTTP 5\d{2}:')
+              if (-not $retryable -or $attempt -ge $retries) { throw $lastErr }
+              $delay = [int][math]::Pow(2, [double]$attempt)
+              Write-Warning "Transient error calling $path. Retry in ${delay}s (attempt $($attempt+1)/$retries): $($lastErr.Exception.Message)"
+              Start-Sleep -Seconds $delay
+              $attempt++
+            }
+          } while ($true)
         }
 
-        # Function: Get-ProjectsByName
-        # - Retrieves projects from Dependency-Track by name
-        # - Supports pagination for large result sets
         function Get-ProjectsByName([string]$name) {
           $results = @()
           $page=1
           while ($true) {
-            $json = Invoke-DtApi GET "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=500&page=$page"
+            $json = Invoke-DtApi -method GET -path "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=500&page=$page" -baseUrl $base
             $arr = @()
             if ($json) { $arr = $json | ConvertFrom-Json }
             if (-not $arr -or $arr.Count -eq 0) { break }
@@ -94,9 +102,6 @@ steps:
           return $results
         }
 
-        # Function: Get-ProjectSiblings
-        # - Retrieves sibling projects under the same parent container
-        # - Falls back to name-only search if no siblings are found
         function Get-ProjectSiblings([string]$name, [string]$parentName) {
           $candidates = Get-ProjectsByName -name $name | Where-Object { $_.parent -and $_.parent.name -eq $parentName }
           if (-not $candidates -or $candidates.Count -eq 0) {
@@ -106,13 +111,10 @@ steps:
           return $candidates
         }
 
-        # Function: Deactivate-NonLatest
-        # - Deactivates all active, non-latest versions of a project
         function Deactivate-NonLatest([string]$appName) {
           $parentName = "$appName.ProjectContainer"
           $siblings = Get-ProjectSiblings -name $appName -parentName $parentName
 
-          # Filter for active, non-latest versions
           $targets = $siblings | Where-Object {
             $isActive = ($_.PSObject.Properties.Name -contains 'active') ? ($_.active -ne $false) : $true
             $isActive -and ($_.isLatest -ne $true)
@@ -125,7 +127,7 @@ steps:
           foreach ($s in $targets) {
             try {
               Write-Host "Deactivating: $($s.name) $($s.version) (uuid=$($s.uuid))"
-              [void](Invoke-DtApi PATCH "/v1/project/$($s.uuid)" @{ active = $false })
+              [void](Invoke-DtApi -method PATCH -path "/v1/project/$($s.uuid)" -body @{ active = $false } -baseUrl $base)
               $ok++
             } catch {
               $fail++
@@ -140,7 +142,6 @@ steps:
           return @{ ok = $ok; fail = $fail; total = $total }
         }
 
-        # Parse project names from the CSV
         $projectNames = $env:PROJECT_NAMES_CSV -split ',' | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
 
         $totalOk=0; $totalFail=0; $totalTargets=0
@@ -151,9 +152,7 @@ steps:
           $totalTargets += [int]$res.total
         }
 
-        # Log a summary of the deactivation process
         Write-Host "##[section]Deactivation summary → candidates=$totalTargets, deactivated=$totalOk, failed=$totalFail"
-        # Warn if any deactivations failed
         if ($totalFail -gt 0) {
           Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY Project/Portfolio Management and ensure tag-based PAC allows access."
         }
