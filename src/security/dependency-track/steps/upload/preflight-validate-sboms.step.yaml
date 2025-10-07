@@ -1,0 +1,42 @@
+# Step: Pre-flight validate SBOMs and build upload matrix (persisted file)
+steps:
+  - task: PowerShell@2
+    name: preflight
+    displayName: "Pre-flight validate SBOMs and build upload matrix"
+    env:
+      SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson)
+      RELEASE_NUMBER: $(RELEASE_NUMBER)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference='Stop'
+
+        try { $files = $env:SBOM_FILES_JSON | ConvertFrom-Json } catch { throw "SBOM_FILES_JSON invalid JSON" }
+        if (-not $files -or $files.Count -eq 0) { throw "No SBOM files found to preflight." }
+
+        $rows = @()
+        foreach ($f in $files) {
+          if (-not (Test-Path -LiteralPath $f)) { throw "Missing file: $f" }
+          if ((Get-Item -LiteralPath $f).Length -eq 0)   { throw "Empty file: $f" }
+          try { $json = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json } catch { throw "Invalid JSON: $f" }
+
+          $name = $json.metadata.component.name
+          if (-not $name) {
+            $name = (Split-Path (Split-Path -Parent $f) -Leaf)
+          }
+          if ([string]::IsNullOrWhiteSpace($name)) { throw "Cannot derive project name for: $f" }
+
+          $rows += [pscustomobject]@{
+            FilePath       = (Resolve-Path -LiteralPath $f).Path
+            ProjectName    = $name
+            ProjectVersion = "release/$($env:RELEASE_NUMBER)"
+          }
+        }
+
+        $out = $rows | ConvertTo-Json -Compress
+        $path = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
+        Set-Content -LiteralPath $path -Value $out -Encoding UTF8
+
+        Write-Host "Built upload matrix for $($rows.Count) item(s)."
+        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$path"

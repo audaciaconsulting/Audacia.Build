@@ -1,0 +1,24 @@
+# Step: Validate API inputs and ensure we have files to process
+steps:
+  - task: PowerShell@2
+    displayName: "Validate inputs and discover files"
+    env:
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      SBOM_FILES_JSON: $(discoverSboms.sbomFilesJson)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $raw = $env:SBOM_FILES_JSON
+        if (-not $raw -or $raw -eq '[]') { throw "No SBOM files to upload." }
+
+        try { $files = $raw | ConvertFrom-Json } catch { throw "SBOM_FILES_JSON invalid JSON." }
+        if (-not $files -or $files.Count -eq 0) { throw "No SBOM files resolved." }
+
+        Write-Host "Files to process: $($files.Count)"

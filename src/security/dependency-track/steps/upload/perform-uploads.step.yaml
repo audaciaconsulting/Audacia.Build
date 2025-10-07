@@ -1,0 +1,284 @@
+# Step: Atomic uploads to Dependency-Track with internal rollback and token wait
+parameters:
+  - name: failOnUploadError
+    type: boolean
+    default: true
+  - name: enableRollback
+    type: boolean
+    default: true
+  - name: validationOnly
+    type: boolean
+    default: false
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
+
+steps:
+  - task: PowerShell@2
+    name: uploadScript
+    displayName: "Upload SBOMs to Dependency-Track (Atomic + Rollback)"
+    env:
+      # API + context
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      CLIENT_NAME: $(CLIENT_NAME)
+      ENV_NAME: $(ENV_NAME)
+      RELEASE_NUMBER: $(RELEASE_NUMBER)
+      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+      # Inputs from earlier steps
+      PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv)
+      # Path produced by preflight step
+      UPLOAD_MATRIX_PATH: $(preflight.UploadMatrixPath)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        # Guard API
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+        Write-Host "Using Dependency-Track API base: $base"
+
+        # Read upload matrix
+        $matrixPath = $env:UPLOAD_MATRIX_PATH
+        if (-not $matrixPath -or -not (Test-Path -LiteralPath $matrixPath)) {
+          throw "Upload matrix file not found: $matrixPath"
+        }
+        try {
+          $matrix = Get-Content -Raw -LiteralPath $matrixPath | ConvertFrom-Json
+        } catch {
+          throw "Upload matrix JSON invalid at $matrixPath"
+        }
+        if (-not $matrix -or $matrix.Count -eq 0) {
+          throw "Upload matrix is empty; nothing to upload."
+        }
+
+        if ("${{ parameters.validationOnly }}" -eq "True") {
+          Write-Host "Validation-only mode enabled. Skipping upload."
+          # Still publish an empty rows array so later steps are happy
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true][]"
+          # Persist an empty rows file
+          $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+          Set-Content -LiteralPath $rowsPath -Value '[]' -Encoding UTF8
+          exit 0
+        }
+
+        Add-Type -AssemblyName System.Net.Http
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.Timeout = [TimeSpan]::FromMinutes(10)
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+
+        # Helpers
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
+          $attempt = 0
+          $lastErr = $null
+          do {
+            try {
+              $uri  = "$baseUrl$path"
+              $msg  = [System.Net.Http.HttpRequestMessage]::new($method, $uri)
+              if ($body -ne $null) {
+                $json = $body | ConvertTo-Json -Depth 8
+                $msg.Content = [System.Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json')
+              }
+              $msg.Headers.Add('X-Api-Key', $env:DT_API_KEY)
+              $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+              $content = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($resp.IsSuccessStatusCode) { return $content }
+              if ([int]$resp.StatusCode -ge 500) { throw "HTTP $($resp.StatusCode): $content" }
+              throw "API $method $path failed ($($resp.StatusCode)): $content"
+            } catch {
+              $lastErr = $_
+              $retryable = ($lastErr.Exception -is [System.Net.Http.HttpRequestException]) -or
+                           ($lastErr.Exception -is [System.TimeoutException]) -or
+                           ($lastErr.Exception -is [System.Net.WebException]) -or
+                           ($lastErr.Exception.Message -match '^HTTP 5\d{2}:')
+              if (-not $retryable -or $attempt -ge $retries) { throw $lastErr }
+              $delay = [int][math]::Pow(2, [double]$attempt)
+              Write-Warning "Transient error calling $path. Retry in ${delay}s (attempt $($attempt+1)/$retries): $($lastErr.Exception.Message)"
+              Start-Sleep -Seconds $delay
+              $attempt++
+            }
+          } while ($true)
+        }
+
+        function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
+          if (-not $token) { return $false }
+          $deadline = (Get-Date).AddSeconds($timeoutSec)
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $json = Invoke-DtApi -method GET -path "/v1/bom/token/$token" -baseUrl $base
+              if ($json) {
+                $st = $json | ConvertFrom-Json
+                if ($null -ne $st.processing) {
+                  Write-Host "BOM token $token status: " + ($(if($st.processing){'PROCESSING'}else{'DONE'}))
+                  if (-not $st.processing) { return $true }
+                  Start-Sleep -Seconds 2
+                  continue
+                }
+              }
+            } catch {
+              if ($_.Exception.Message -match '404') {
+                Write-Host "BOM token $token status: DONE (token not found)"
+                return $true
+              }
+            }
+            Start-Sleep -Seconds 2
+          }
+          return $false
+        }
+
+        function Get-ProjectByNameAndVersion([string]$projectName, [string]$projectVersion) {
+          try {
+            $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
+            $encodedVersion = [System.Web.HttpUtility]::UrlEncode($projectVersion)
+            $searchResult = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encodedName&version=$encodedVersion" -baseUrl $base
+            return $searchResult | ConvertFrom-Json
+          } catch { return $null }
+        }
+
+        function Invoke-RollbackUploads {
+          if (-not "${{ parameters.enableRollback }}" -eq "True") {
+            Write-Host "Rollback disabled, skipping cleanup"
+            return
+          }
+          $deletedOk = 0; $deactivatedOk = 0; $failed = 0
+          Write-Host "##[warning]Starting rollback for $($uploadedProjects.Count) uploaded project(s)..."
+          foreach ($project in $uploadedProjects) {
+            try {
+              $deleteUri = "/v1/project/$($project.Uuid)"
+              try {
+                [void](Invoke-DtApi -method DELETE -path $deleteUri -baseUrl $base)
+                $deletedOk++
+                Write-Host "✓ Rolled back via DELETE: $($project.Name) @ $($project.Version)"
+              } catch {
+                $delErr = $_.Exception.Message
+                Write-Warning "DELETE failed for $($project.Name) ($($project.Uuid)): $delErr. Attempting PATCH active=false fallback."
+                try {
+                  [void](Invoke-DtApi -method PATCH -path "/v1/project/$($project.Uuid)" -body @{ active = $false } -baseUrl $base)
+                  $deactivatedOk++
+                  Write-Host "✓ Rolled back via PATCH active=false: $($project.Name) @ $($project.Version)"
+                } catch {
+                  $patchErr = $_.Exception.Message
+                  Write-Warning "Fallback PATCH active=false failed for $($project.Name) ($($project.Uuid)): $patchErr"
+                  $failed++
+                }
+              }
+            } catch {
+              $failed++
+              Write-Warning "Unexpected rollback error for $($project.Name) ($($project.Uuid)): $($_.Exception.Message)"
+            }
+          }
+          Write-Host "##[section]Rollback summary → deleted=$deletedOk, deactivated=$deactivatedOk, failed=$failed"
+        }
+
+        # State
+        $uploadedProjects = @()
+        $rows = New-Object System.Collections.Generic.List[object]
+        $tagsCsv = $env:PROJECT_TAGS_CSV
+
+        try {
+          $uploaded = 0
+          foreach ($item in $matrix) {
+            $filePath       = $item.FilePath
+            $projectName    = $item.ProjectName
+            $projectVersion = $item.ProjectVersion
+            $parentName     = "$projectName.ProjectContainer"
+            $parentVersion  = ""
+
+            $f = Get-Item -LiteralPath $filePath
+
+            Write-Host "##[group]Uploading SBOM -> $projectName @ $projectVersion"
+            try {
+              $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
+
+              $mp = [System.Net.Http.MultipartFormDataContent]::new()
+              $mp.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
+              $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
+              $mp.Add([System.Net.Http.StringContent]::new($projectName), 'projectName')
+              $mp.Add([System.Net.Http.StringContent]::new($projectVersion), 'projectVersion')
+              $mp.Add([System.Net.Http.StringContent]::new($parentName), 'parentName')
+              $mp.Add([System.Net.Http.StringContent]::new($parentVersion), 'parentVersion')
+              if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
+                $mp.Add([System.Net.Http.StringContent]::new($tagsCsv), 'projectTags')
+              }
+
+              $fs = [System.IO.File]::OpenRead($f.FullName)
+              try {
+                $fileContent = [System.Net.Http.StreamContent]::new($fs)
+                $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
+                $mp.Add($fileContent, 'bom', $f.Name)
+                $resp = $http.PostAsync("$base/v1/bom", $mp).GetAwaiter().GetResult()
+              } finally { $fs.Dispose() }
+
+              if (-not $resp.IsSuccessStatusCode) {
+                $body = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                throw "HTTP $($resp.StatusCode) - $body"
+              }
+
+              $json = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+              $note = "token: $($json.token)"
+              Write-Host "Uploaded OK: $($f.FullName)  ($note)"
+
+              if (-not $existingProject) {
+                $newProject = Get-ProjectByNameAndVersion $projectName $projectVersion
+                if ($newProject) {
+                  $uploadedProjects += @{
+                    Name = $projectName
+                    Version = $projectVersion
+                    Uuid = $newProject.uuid
+                    WasNew = $true
+                  }
+                }
+              }
+
+              $uploaded++
+              [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+
+              $rows.Add([pscustomobject]@{
+                Project  = $projectName
+                Version  = $projectVersion
+              })
+            } catch {
+              $errorMsg = $_.Exception.Message
+              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg"
+
+              # Persist partial rows file and uploaded list before rollback
+              $pairList = @()
+              foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
+              $rowsJson = ($pairList | ConvertTo-Json -Compress); if (-not $rowsJson) { $rowsJson = '[]' }
+              $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+              Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
+
+              if ($uploadedProjects.Count -gt 0 -and "${{ parameters.enableRollback }}" -eq "True") {
+                Invoke-RollbackUploads
+              }
+
+              Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
+
+              if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { return }
+            } finally {
+              Write-Host "##[endgroup]"
+            }
+          }
+
+          # Success path: persist rows
+          $pairList = @()
+          foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
+          $rowsJson = ($pairList | ConvertTo-Json -Compress); if (-not $rowsJson) { $rowsJson = '[]' }
+          $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+          Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
+
+          # Also persist uploaded projects list for optional out-of-band rollback
+          $uploadedJson = ($uploadedProjects | ConvertTo-Json -Depth 4 -Compress); if (-not $uploadedJson) { $uploadedJson = '[]' }
+          $uploadedPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-projects.json'
+          Set-Content -LiteralPath $uploadedPath -Value $uploadedJson -Encoding UTF8
+
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
+          Write-Host "##[section]✅ All uploads completed successfully → ok=$uploaded"
+        } catch {
+          Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
+          if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 }
+        }

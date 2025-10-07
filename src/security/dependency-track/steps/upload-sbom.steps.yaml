@@ -1,4 +1,4 @@
-# Template: download SBOM artifact and upload via Dependency-Track API.
+# Template: download → tag build → discover → validate → preflight → atomic upload → post-summary → verify
 parameters:
   # Name of the artifact to download (produced by generate-sbom template).
   - name: artifactName
@@ -10,38 +10,59 @@ parameters:
   - name: failOnUploadError
     type: boolean
     default: true
+
+  # Require an env:* tag and at least one tag overall
   - name: requireProjectTags
     type: boolean
     default: true
+
+  # Perform automatic rollback inside the atomic upload step on failure
   - name: enableRollback
     type: boolean
     default: true
+
+  # Validation-only mode: run validation steps and skip the upload
   - name: validationOnly
     type: boolean
     default: false
-  # New: pass-through wait for BOM processing (seconds)
+
+  # How long to wait for BOM processing to complete (seconds)
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
 
 steps:
-  # Download SBOM artifact
+  # Download SBOM artifact into $(Agent.TempDirectory)/sbom
   - template: /src/security/dependency-track/steps/upload/download-sbom-artifact.step.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
 
-  # Build project tags from environment variables
+  # Build project tags (env:ENV_NAME + optional ADDITIONAL_TAGS)
   - template: /src/security/dependency-track/steps/upload/build-project-tags.step.yaml@templates
     parameters:
       requireProjectTags: ${{ parameters.requireProjectTags }}
 
-  # Discover SBOM files and create JSON array
+  # Discover SBOM JSON files and output as JSON array
   - template: /src/security/dependency-track/steps/upload/discover-sbom-files.step.yaml@templates
 
-  # Upload SBOMs to Dependency-Track
-  - template: /src/security/dependency-track/steps/upload/upload-sboms.step.yaml@templates
+  # Validate inputs and files presence
+  - template: /src/security/dependency-track/steps/upload/validate-inputs.step.yaml@templates
+
+  # Pre-flight validation to build upload matrix file
+  - template: /src/security/dependency-track/steps/upload/preflight-validate-sboms.step.yaml@templates
+
+  # Perform uploads atomically with internal rollback
+  - template: /src/security/dependency-track/steps/upload/perform-uploads.step.yaml@templates
     parameters:
       failOnUploadError: ${{ parameters.failOnUploadError }}
       enableRollback: ${{ parameters.enableRollback }}
       validationOnly: ${{ parameters.validationOnly }}
       bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
+
+  # Post summary from rows file (works whether step succeeded or failed)
+  - template: /src/security/dependency-track/steps/upload/post-summary.step.yaml@templates
+
+  # Post-upload verification (kept as a separate step)
+  - template: /src/security/dependency-track/steps/upload/verify-project-state.step.yaml@templates
+    parameters:
+      enforce: false
