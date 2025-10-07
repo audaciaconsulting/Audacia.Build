@@ -41,6 +41,13 @@ parameters:
     type: boolean
     default: true
 
+  # When true, validates that ALL expected SBOMs were generated (based on declared projects).
+  # If any expected SBOM is missing, the job fails and `sbomExists` is set to false.
+  # Recommendation: keep true in mainline pipelines to catch missing builds early.
+  - name: requireAllExpectedSboms
+    type: boolean
+    default: true
+
 steps:
   # 1) Checkout and setup caching
   - template: /src/security/dependency-track/steps/generate/checkout-and-cache.step.yaml@templates
@@ -51,6 +58,7 @@ steps:
       Write-Host "Agent.OS: $env:AGENT_OS"
       Write-Host "Output format: JSON (forced)"
       Write-Host "Include license texts: ${{ parameters.includeLicenseTexts }}"
+      Write-Host "Require all expected SBOMs: ${{ parameters.requireAllExpectedSboms }}"
       Write-Host "SBOM output dir: $(Agent.TempDirectory)/sbom"
       Write-Host "Sources: $(System.DefaultWorkingDirectory)"
       Write-Host "##[endgroup]"
@@ -90,7 +98,13 @@ steps:
   # 10) Detect SBOM folder and set sbomExists variable
   - template: /src/security/dependency-track/steps/generate/detect-sbom-folder.step.yaml@templates
 
-  # 11) Publish SBOM artifact (conditional and fallback)
+  # 11) Validate that all expected SBOMs were generated (fail fast if not)
+  - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates
+    parameters:
+      strict: ${{ parameters.requireAllExpectedSboms }}
+    # This step will set sbomExists=false if any expected SBOMs are missing
+
+  # 12) Publish SBOM artifact (conditional and fallback)
   - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
     parameters:
       publishArtifact: ${{ parameters.publishArtifact }}
