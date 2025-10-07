@@ -32,7 +32,7 @@ steps:
         # Read the JSON string containing npm project roots
         $NpmRootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/npm'
-        $IncludeLicenseTexts = $${{ parameters.includeLicenseTexts }}
+        $IncludeLicenseTexts = ${{ parameters.includeLicenseTexts }}
 
         # Restore Node tooling from environment variables
         if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
