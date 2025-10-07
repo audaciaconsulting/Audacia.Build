@@ -1,22 +1,27 @@
 # Template: validate we generated all expected SBOMs (fail fast if not)
 # Reads:
-#   - DOTNET_PROJECTS_MULTILINE (env): the raw multiline parameter string
-#   - NPM_ROOTS_MULTILINE (env): the raw multiline parameter string
-#   - resolveNpmRoots.npmRootsJson: discovered npm roots (JSON array)
-#   - resolveDotnetProjects.dotnetProjectsJson: resolved .NET projects (JSON array)
-# Checks how many SBOM *.json files exist under $(Agent.TempDirectory)/sbom
-# and compares against expected count derived from inputs/discovery.
+#   - DOTNET_PROJECTS_MULTILINE (env): raw multiline .NET projects
+#   - NPM_ROOTS_MULTILINE (env): raw multiline npm roots
+#   - resolveNpmRoots.npmRootsJson / resolveDotnetProjects.dotnetProjectsJson
+# Compares expected count vs actual *.json under $(Agent.TempDirectory)/sbom
+
 parameters:
   - name: strict
     type: boolean
     default: true  # if true, fail the job when counts don't match
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+  - name: npmRootsMultiline
+    type: string
+    default: ''
 
 steps:
   - task: PowerShell@2
     displayName: "Validate expected SBOMs were generated"
     env:
-      DOTNET_PROJECTS_MULTILINE: ${{ parameters.dotnetProjectsMultiline }} # (injected by parent)
-      NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}             # (injected by parent)
+      DOTNET_PROJECTS_MULTILINE: ${{ parameters.dotnetProjectsMultiline }}
+      NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}
       RESOLVED_DOTNET_JSON: $(resolveDotnetProjects.dotnetProjectsJson)
       RESOLVED_NPM_JSON: $(resolveNpmRoots.npmRootsJson)
     inputs:
@@ -34,7 +39,7 @@ steps:
         $expectedDotnet = Get-ExpectedCountFromMultiline $env:DOTNET_PROJECTS_MULTILINE
         $expectedNpm    = Get-ExpectedCountFromMultiline $env:NPM_ROOTS_MULTILINE
 
-        # If callers didn't explicitly pass lists, fall back to resolved JSON
+        # Fallback to resolved JSON if explicit lists were not provided
         if ($expectedDotnet -eq 0 -and $env:RESOLVED_DOTNET_JSON) {
           try { $expectedDotnet = (@($env:RESOLVED_DOTNET_JSON | ConvertFrom-Json)).Count } catch { $expectedDotnet = 0 }
         }
@@ -55,18 +60,14 @@ steps:
         Write-Host "Expected  : total=$expectedTotal (dotnet=$expectedDotnet, npm=$expectedNpm)"
         Write-Host "Discovered: total=$found   under $root"
 
-        # Export counters for later diagnostics/conditions
+        # Export counters for diagnostics/conditions
         Write-Host "##vso[task.setvariable variable=sbomExpected]$expectedTotal"
         Write-Host "##vso[task.setvariable variable=sbomFound]$found"
 
         if ($expectedTotal -gt 0 -and $found -lt $expectedTotal) {
           Write-Host "##vso[task.setvariable variable=sbomExists]false"
           $msg = "Only found $found of $expectedTotal expected SBOM(s)."
-          if ("${{ parameters.strict }}" -eq "True") {
-            Write-Error "❌ $msg"
-          } else {
-            Write-Warning $msg
-          }
+          if ("${{ parameters.strict }}" -eq "True") { Write-Error "❌ $msg" } else { Write-Warning $msg }
         } elseif ($found -eq 0) {
           Write-Host "##vso[task.setvariable variable=sbomExists]false"
           $msg = "No SBOMs found."

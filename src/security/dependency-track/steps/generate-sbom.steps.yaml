@@ -102,7 +102,9 @@ steps:
   - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates
     parameters:
       strict: ${{ parameters.requireAllExpectedSboms }}
-    # This step will set sbomExists=false if any expected SBOMs are missing
+      dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
+      npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
+
 
   # 12) Publish SBOM artifact (conditional and fallback)
   - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
