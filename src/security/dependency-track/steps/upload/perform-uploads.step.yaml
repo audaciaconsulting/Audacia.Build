@@ -191,6 +191,18 @@ steps:
             $f = Get-Item -LiteralPath $filePath
 
             Write-Host "##[group]Uploading SBOM -> $projectName @ $projectVersion"
+            
+            Write-Host "  autoCreate: true"
+            Write-Host "  isLatest: true"
+            Write-Host "  projectName: $projectName"
+            Write-Host "  projectVersion: $projectVersion"
+            Write-Host "  parentName: $parentName"
+            Write-Host "  parentVersion: $parentVersion"
+            Write-Host "  bom file: $($f.FullName)"
+            if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
+                Write-Host "  projectTags: $tagsCsv"
+            }
+            
             try {
               $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
 
