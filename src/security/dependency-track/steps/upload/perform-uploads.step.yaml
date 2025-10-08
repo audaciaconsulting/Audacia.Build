@@ -243,7 +243,7 @@ steps:
               })
             } catch {
               $errorMsg = $_.Exception.Message
-              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg"
+              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg. Parent component specified was '$parentName'."
 
               # Persist partial rows file and uploaded list before rollback
               $pairList = @()
