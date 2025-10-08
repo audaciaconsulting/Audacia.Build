@@ -7,7 +7,7 @@ parameters:
 steps:
   # Step: Build project tags
   # - Uses PowerShell to construct a list of project tags based on environment variables
-  # - Includes a mandatory tag for the environment (`env:$env:ENV_NAME`)
+  # - Optionally includes a tag for the environment (`env:$env:ENV_NAME`) when ENV_NAME is set
   # - Optionally includes additional tags from the `ADDITIONAL_TAGS` environment variable
   # - Deduplicates tags and converts them into a CSV format
   # - Sets the resulting CSV as an output variable `projectTagsCsv` for use in subsequent steps
@@ -21,15 +21,11 @@ steps:
         $ErrorActionPreference = 'Stop'
         $tags = New-Object System.Collections.Generic.List[string]
 
-        # Mandatory env tag
-        if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
-          if ("${{ parameters.requireProjectTags }}" -eq "True") {
-            throw "ENV_NAME not set; cannot build mandatory env:<ENV_NAME> tag."
-          } else {
-            Write-Warning "ENV_NAME not set; env tag will be omitted."
-          }
-        } else {
+        # Optional env tag
+        if ($env:ENV_NAME -and -not [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
           $tags.Add("env:$env:ENV_NAME")
+        } else {
+          Write-Host "ENV_NAME not set; env:<ENV_NAME> tag will be omitted."
         }
 
         # Optional extras
@@ -45,10 +41,10 @@ steps:
           $tagsCsv = $deduped -join ','
         }
 
+        # If requireProjectTags=true, fail only when there are no tags at all
         if ("${{ parameters.requireProjectTags }}" -eq "True") {
-          if ([string]::IsNullOrWhiteSpace($tagsCsv)) { throw "No project tags produced." }
-          if (-not ($tagsCsv -split ',' | Where-Object { $_ -like 'env:*' })) {
-            throw "Mandatory env:* tag missing."
+          if ([string]::IsNullOrWhiteSpace($tagsCsv)) {
+            throw "No project tags produced."
           }
         } elseif ([string]::IsNullOrWhiteSpace($tagsCsv)) {
           Write-Warning "No project tags produced (requireProjectTags=false)."
