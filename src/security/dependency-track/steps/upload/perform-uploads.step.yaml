@@ -280,4 +280,67 @@ steps:
               $uploaded++
               [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
 
-              $rows.Add([pscustomobject]
+              $rows.Add([pscustomobject]@{
+                File     = $f.Name
+                SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
+                Project  = $projectName
+                Version  = $projectVersion
+                Result   = 'OK'
+                Note     = $note
+              })
+            } catch {
+              # Mark that we need to rollback and capture error details
+              $rollbackRequired = $true
+              $err = $_.Exception.Message
+              Write-Error "❌ Upload failed for $($f.FullName): $err"
+
+              $rows.Add([pscustomobject]@{
+                File     = $f.Name
+                SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
+                Project  = $projectName
+                Version  = $projectVersion
+                Result   = 'FAILED'
+                Note     = $err
+              })
+
+              throw
+            } finally {
+              Write-Host "##[endgroup]"
+            }
+          } # end foreach item in matrix
+
+          # ---- Persist compact (Project, Version) rows for later steps ----
+          $pairList = @()
+          foreach ($r in $rows) {
+            $pairList += @{ Project = $r.Project; Version = $r.Version }
+          }
+          $rowsJson = ($pairList | ConvertTo-Json -Compress)
+          if (-not $rowsJson) { $rowsJson = '[]' }
+
+          # 1) Output variable (used by verify-project-state)
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
+
+          # 2) Persist rows to file (used by post-summary step)
+          $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+          Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
+
+          Write-Host "##[section]✅ All uploads completed successfully"
+        } catch {
+          Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
+
+          if ($rollbackRequired -and $uploadedProjects.Count -gt 0) {
+            Invoke-RollbackUploads
+          }
+
+          # Persist whatever we collected so summaries/verifiers still run
+          $pairList = @()
+          foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
+          $rowsJson = ($pairList | ConvertTo-Json -Compress)
+          if (-not $rowsJson) { $rowsJson = '[]' }
+
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
+          $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+          Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
+
+          if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { exit 0 }
+        }
