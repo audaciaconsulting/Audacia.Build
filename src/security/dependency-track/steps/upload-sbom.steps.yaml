@@ -31,6 +31,16 @@ parameters:
     type: number
     default: 300
 
+  # Optional parent project name to associate with each uploaded project in Dependency-Track
+  - name: parentProjectName
+    type: string
+    default: ' '
+
+    # Optional parent project version to associate with each uploaded project in Dependency-Track
+  - name: parentProjectVersion
+    type: string
+    default: ' '
+
 steps:
   # Download SBOM artifact into $(Agent.TempDirectory)/sbom
   - template: /src/security/dependency-track/steps/upload/download-sbom-artifact.step.yaml@templates
@@ -52,6 +62,8 @@ steps:
       enableRollback: ${{ parameters.enableRollback }}
       validationOnly: ${{ parameters.validationOnly }}
       bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
+      parentProjectName: ${{ parameters.parentProjectName }}
+      parentProjectVersion: ${{ parameters.parentProjectVersion }}
 
   # Post summary from rows file (works whether step succeeded or failed)
   - template: /src/security/dependency-track/steps/upload/post-summary.step.yaml@templates

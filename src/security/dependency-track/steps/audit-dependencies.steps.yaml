@@ -52,6 +52,15 @@ parameters:
     type: boolean
     default: true
 
+  # Optional parent project details; if left empty no parent is set on upload
+  - name: parentProjectName
+    type: string
+    default: ' '
+
+  - name: parentProjectVersion
+    type: string
+    default: ' '
+
 steps:
   # 1) Generate
   - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
@@ -70,6 +79,8 @@ steps:
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
+      parentProjectName: ${{ parameters.parentProjectName }}
+      parentProjectVersion: ${{ parameters.parentProjectVersion }}
 
   # 3) Deactivate (toggle + run only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:

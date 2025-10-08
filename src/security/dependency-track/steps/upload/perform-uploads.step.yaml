@@ -12,6 +12,13 @@ parameters:
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
+  # Optional parent project parameters (leave blank for no parent linkage)
+  - name: parentProjectName
+    type: string
+    default: ' '
+  - name: parentProjectVersion
+    type: string
+    default: ' '
 
 steps:
   - task: PowerShell@2
@@ -54,6 +61,15 @@ steps:
         }
         if (-not $matrix -or $matrix.Count -eq 0) {
           throw "Upload matrix is empty; nothing to upload."
+        }
+
+        # Resolve optional parent params from template parameters
+        $ParentName    = '${{ parameters.parentProjectName }}'
+        $ParentVersion = '${{ parameters.parentProjectVersion }}'
+        if ($ParentName) {
+          Write-Host "Parent project specified → Name='$ParentName' Version='$ParentVersion'"
+        } else {
+          Write-Host "No parent project specified; uploads will not set parentName/parentVersion."
         }
 
         if ("${{ parameters.validationOnly }}" -eq "True") {
@@ -185,24 +201,25 @@ steps:
             $filePath       = $item.FilePath
             $projectName    = $item.ProjectName
             $projectVersion = $item.ProjectVersion
-            $parentName     = "$projectName.ProjectContainer"
-            $parentVersion  = ""
 
             $f = Get-Item -LiteralPath $filePath
 
             Write-Host "##[group]Uploading SBOM -> $projectName @ $projectVersion"
-            
             Write-Host "  autoCreate: true"
             Write-Host "  isLatest: true"
             Write-Host "  projectName: $projectName"
             Write-Host "  projectVersion: $projectVersion"
-            Write-Host "  parentName: $parentName"
-            Write-Host "  parentVersion: $parentVersion"
+            if ($ParentName) {
+              Write-Host "  parentName: $ParentName"
+              Write-Host "  parentVersion: $ParentVersion"
+            } else {
+              Write-Host "  parentName/parentVersion: <omitted>"
+            }
             Write-Host "  bom file: $($f.FullName)"
             if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
-                Write-Host "  projectTags: $tagsCsv"
+              Write-Host "  projectTags: $tagsCsv"
             }
-            
+
             try {
               $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
 
@@ -211,8 +228,14 @@ steps:
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
               $mp.Add([System.Net.Http.StringContent]::new($projectName), 'projectName')
               $mp.Add([System.Net.Http.StringContent]::new($projectVersion), 'projectVersion')
-              $mp.Add([System.Net.Http.StringContent]::new($parentName), 'parentName')
-              $mp.Add([System.Net.Http.StringContent]::new($parentVersion), 'parentVersion')
+
+              # Only send parent fields when a parent name is supplied
+              if ($ParentName) {
+                $mp.Add([System.Net.Http.StringContent]::new($ParentName), 'parentName')
+                # Always send parentVersion field when name supplied (can be empty by design)
+                $mp.Add([System.Net.Http.StringContent]::new($ParentVersion), 'parentVersion')
+              }
+
               if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
                 $mp.Add([System.Net.Http.StringContent]::new($tagsCsv), 'projectTags')
               }
@@ -238,10 +261,10 @@ steps:
                 $newProject = Get-ProjectByNameAndVersion $projectName $projectVersion
                 if ($newProject) {
                   $uploadedProjects += @{
-                    Name = $projectName
+                    Name    = $projectName
                     Version = $projectVersion
-                    Uuid = $newProject.uuid
-                    WasNew = $true
+                    Uuid    = $newProject.uuid
+                    WasNew  = $true
                   }
                 }
               }
@@ -255,7 +278,8 @@ steps:
               })
             } catch {
               $errorMsg = $_.Exception.Message
-              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg. Parent component specified was '$parentName'. Please check the Parent component exists in Dependency-Track and the Name & Version match exactly."
+              $parentMsg = $(if($ParentName) { "Parent specified: '$ParentName' (version '$ParentVersion'). " } else { "" })
+              Write-Error ("❌ Upload failed for {0}: {1}. {2}If using a parent component in Dependency-Track, please ensure the Name & Version match exactly." -f $f.FullName, $errorMsg, $parentMsg)
 
               # Persist partial rows file and uploaded list before rollback
               $pairList = @()
