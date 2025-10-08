@@ -29,7 +29,7 @@ steps:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
       CLIENT_NAME: $(CLIENT_NAME)
-      ENV_NAME: $(ENV_NAME)
+      ENV_NAME: $(ENV_NAME)          # optional: warn if missing, never fail
       RELEASE_NUMBER: $(RELEASE_NUMBER)
       ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
       # Inputs from earlier steps
@@ -41,6 +41,11 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+
+        # Warn if ENV_NAME is missing (optional)
+        if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
+          Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag."
+        }
 
         # Guard API
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
@@ -193,7 +198,7 @@ steps:
         # State
         $uploadedProjects = @()
         $rows = New-Object System.Collections.Generic.List[object]
-        $tagsCsv = $env:PROJECT_TAGS_CSV
+        $tagsCsv = $env:PROJECT_TAGS_CSV  # may be empty; do not assume env tag exists
 
         try {
           $uploaded = 0
@@ -209,15 +214,17 @@ steps:
             Write-Host "  isLatest: true"
             Write-Host "  projectName: $projectName"
             Write-Host "  projectVersion: $projectVersion"
-            if ($ParentName) {
-              Write-Host "  parentName: $ParentName"
-              Write-Host "  parentVersion: $ParentVersion"
+            if ('${{ parameters.parentProjectName }}') {
+              Write-Host "  parentName: $('${{ parameters.parentProjectName }}')"
+              Write-Host "  parentVersion: $('${{ parameters.parentProjectVersion }}')"
             } else {
               Write-Host "  parentName/parentVersion: <omitted>"
             }
             Write-Host "  bom file: $($f.FullName)"
             if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
               Write-Host "  projectTags: $tagsCsv"
+            } else {
+              Write-Host "  projectTags: <none>"
             }
 
             try {
@@ -236,6 +243,7 @@ steps:
                 $mp.Add([System.Net.Http.StringContent]::new($ParentVersion), 'parentVersion')
               }
 
+              # Tags are optional and may be empty
               if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
                 $mp.Add([System.Net.Http.StringContent]::new($tagsCsv), 'projectTags')
               }
@@ -272,49 +280,4 @@ steps:
               $uploaded++
               [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
 
-              $rows.Add([pscustomobject]@{
-                Project  = $projectName
-                Version  = $projectVersion
-              })
-            } catch {
-              $errorMsg = $_.Exception.Message
-              $parentMsg = $(if($ParentName) { "Parent specified: '$ParentName' (version '$ParentVersion'). " } else { "" })
-              Write-Error ("❌ Upload failed for {0}: {1}. {2}If using a parent component in Dependency-Track, please ensure the Name & Version match exactly." -f $f.FullName, $errorMsg, $parentMsg)
-
-              # Persist partial rows file and uploaded list before rollback
-              $pairList = @()
-              foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
-              $rowsJson = ($pairList | ConvertTo-Json -Compress); if (-not $rowsJson) { $rowsJson = '[]' }
-              $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
-              Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
-
-              if ($uploadedProjects.Count -gt 0 -and "${{ parameters.enableRollback }}" -eq "True") {
-                Invoke-RollbackUploads
-              }
-
-              Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
-
-              if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { return }
-            } finally {
-              Write-Host "##[endgroup]"
-            }
-          }
-
-          # Success path: persist rows
-          $pairList = @()
-          foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
-          $rowsJson = ($pairList | ConvertTo-Json -Compress); if (-not $rowsJson) { $rowsJson = '[]' }
-          $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
-          Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
-
-          # Also persist uploaded projects list for optional out-of-band rollback
-          $uploadedJson = ($uploadedProjects | ConvertTo-Json -Depth 4 -Compress); if (-not $uploadedJson) { $uploadedJson = '[]' }
-          $uploadedPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-projects.json'
-          Set-Content -LiteralPath $uploadedPath -Value $uploadedJson -Encoding UTF8
-
-          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
-          Write-Host "##[section]✅ All uploads completed successfully → ok=$uploaded"
-        } catch {
-          Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
-          if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 }
-        }
+              $rows.Add([pscustomobject]

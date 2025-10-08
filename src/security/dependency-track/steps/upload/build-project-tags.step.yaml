@@ -21,11 +21,11 @@ steps:
         $ErrorActionPreference = 'Stop'
         $tags = New-Object System.Collections.Generic.List[string]
 
-        # Optional env tag
+        # Optional env tag (warn if missing, but do not fail)
         if ($env:ENV_NAME -and -not [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
           $tags.Add("env:$env:ENV_NAME")
         } else {
-          Write-Host "ENV_NAME not set; env:<ENV_NAME> tag will be omitted."
+          Write-Warning "ENV_NAME is empty or not set; 'env:<NAME>' tag will be omitted."
         }
 
         # Optional extras

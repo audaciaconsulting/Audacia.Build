@@ -1,16 +1,17 @@
-# Step: Discover SBOMs → Validate API & list → Build upload plan
-# Exports (as output variables on this step):
-#   - sbomFilesJson     : JSON array of absolute file paths
-#   - UploadPlanPath    : absolute path to dt-upload-plan.json
-#   - UploadMatrixPath  : same as UploadPlanPath (backwards-compat for existing templates)
+# Preflight: discover SBOMs → validate → build upload matrix
+# Outputs:
+#   - preflight.UploadMatrixPath  : Path to JSON file with [{ FilePath, ProjectName, ProjectVersion }]
+# Behavior:
+#   - ENV_NAME is optional. If missing, we log a warning but do not fail.
+#   - Does not assume an env tag exists; tags are handled upstream by build-project-tags.
 
 steps:
   - task: PowerShell@2
     name: preflight
-    displayName: "Prepare SBOM upload (discover → validate → plan)"
+    displayName: "Preflight: discover, validate, and plan uploads"
     env:
-      DT_API_URL: $(DT_API_URL)
-      DT_API_KEY: $(DT_API_KEY)
+      # Context vars (ENV_NAME is optional)
+      ENV_NAME: $(ENV_NAME)
       RELEASE_NUMBER: $(RELEASE_NUMBER)
     inputs:
       pwsh: true
@@ -18,79 +19,85 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # --- 1) Discover SBOM files -----------------------------------------------------------
+        # Warn if ENV_NAME is missing, but do not fail
+        if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
+          Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag."
+        }
+
+        # Locate SBOM folder produced by generation/artifact download
         $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
-        $files = @()
-        if (Test-Path -LiteralPath $sbomRoot) {
-          $files = Get-ChildItem -Path $sbomRoot -Recurse -Filter *.json -File -EA SilentlyContinue
+        if (-not (Test-Path -LiteralPath $sbomRoot)) {
+          throw "SBOM root not found at $sbomRoot. Ensure the 'Download SBOM artifact' step ran successfully."
         }
 
-        Write-Host "##[group]SBOM discovery"
-        Write-Host "Location: $sbomRoot"
+        # Discover candidate SBOM files (JSON CycloneDX)
+        $files = Get-ChildItem -Path $sbomRoot -Recurse -File -Filter *.json -ErrorAction SilentlyContinue
         if (-not $files -or $files.Count -eq 0) {
-          Write-Warning "No SBOM JSON files found."
-        } else {
-          "{0,-6} {1,-10} {2}" -f "Index","Size(KB)","Path" | Write-Host
-          "{0,-6} {1,-10} {2}" -f "-----","--------","----" | Write-Host
-          $i = 0
-          foreach ($f in $files) {
-            "{0,-6} {1,10} {2}" -f $i, ([int]([math]::Round($f.Length/1kb,0))), $f.FullName | Write-Host
-            $i++
-          }
-          Write-Host ("Total: {0} file(s)" -f $files.Count)
+          throw "No SBOM files (*.json) discovered under $sbomRoot."
         }
-        Write-Host "##[endgroup]"
 
-        # Export file list for downstream steps (compatible shape)
-        $filesJson = @($files | ForEach-Object { $_.FullName }) | ConvertTo-Json -Compress
-        if (-not $filesJson) { $filesJson = '[]' }
-        Write-Host "##vso[task.setvariable variable=sbomFilesJson;isOutput=true]$filesJson"
-
-        # --- 2) Validate API config & file list -----------------------------------------------
-        Write-Host "##[group]Preflight validation"
-        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
-          Write-Error "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        # Helpers
+        function Get-AppNameFromSbom([string]$path) {
+          try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
         }
-        if (-not $files -or $files.Count -eq 0) {
-          Write-Error "No SBOM files to upload."
+        function Get-FallbackName([string]$path) {
+          # Use enclosing directory name if metadata is not present
+          try {
+            $dir = Split-Path $path -Parent
+            $parent = Split-Path $dir -Leaf
+            if ([string]::IsNullOrWhiteSpace($parent)) { return (Split-Path $path -Leaf) }
+            return $parent
+          } catch { return (Split-Path $path -Leaf) }
         }
-        Write-Host "API base: $($env:DT_API_URL.TrimEnd('/'))"
-        Write-Host "Release number: $($env:RELEASE_NUMBER)"
-        Write-Host "Files to process: $($files.Count)"
-        Write-Host "##[endgroup]"
 
-        # --- 3) Build upload plan --------------------------------------------------------------
-        $rows = @()
-        Write-Host "##[group]Upload plan (Project, Version)"
+        $matrix = New-Object System.Collections.Generic.List[object]
+        $invalid = 0
+
         foreach ($f in $files) {
-          if ($f.Length -eq 0) { throw "Empty file: $($f.FullName)" }
-          try { $json = Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json } catch { throw "Invalid JSON: $($f.FullName)" }
+          $filePath = $f.FullName
+          # basic sanity checks
+          if ($f.Length -eq 0) { Write-Warning "Empty SBOM: $filePath"; $invalid++; continue }
 
-          $name = $null
-          if ($json -and $json.metadata -and $json.metadata.component -and $json.metadata.component.name) {
-            $name = [string]$json.metadata.component.name
+          try { $json = Get-Content -Raw -LiteralPath $filePath | ConvertFrom-Json -ea Stop }
+          catch {
+            Write-Warning "Invalid JSON SBOM: $filePath"
+            $invalid++; continue
           }
-          if (-not $name) { $name = (Split-Path (Split-Path -Parent $f.FullName) -Leaf) }
-          if ([string]::IsNullOrWhiteSpace($name)) { throw "Cannot determine project name for: $($f.FullName)" }
 
-          $ver = "release/$($env:RELEASE_NUMBER)"
-          "{0,-50} {1}" -f $name, $ver | Write-Host
+          # Resolve project name from SBOM metadata; fallback to parent folder name
+          $name = Get-AppNameFromSbom $filePath
+          if ([string]::IsNullOrWhiteSpace($name)) { $name = Get-FallbackName $filePath }
 
-          $rows += [pscustomobject]@{
-            FilePath       = (Resolve-Path -LiteralPath $f.FullName).Path
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            Write-Warning "Unable to determine project name for SBOM: $filePath"
+            $invalid++; continue
+          }
+
+          # Version plan: use raw RELEASE_NUMBER (no enforced prefix), as per current convention
+          $version = $env:RELEASE_NUMBER
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            # If RELEASE_NUMBER is not set, fall back to a stable placeholder to avoid hard-fail
+            $version = "unknown"
+            Write-Warning "RELEASE_NUMBER is empty; using version placeholder 'unknown' for: $name"
+          }
+
+          $matrix.Add([pscustomobject]@{
+            FilePath       = $filePath
             ProjectName    = $name
-            ProjectVersion = $ver
-          }
+            ProjectVersion = $version
+          })
         }
-        Write-Host "##[endgroup]"
 
-        $planJson = $rows | ConvertTo-Json -Compress
-        $planPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-plan.json'
-        Set-Content -LiteralPath $planPath -Value $planJson -Encoding UTF8
+        if ($matrix.Count -eq 0) {
+          throw "No valid SBOMs after preflight validation; cannot build upload matrix."
+        }
 
-        # Export with new and legacy variable names to keep other templates unchanged
-        Write-Host "##vso[task.setvariable variable=UploadPlanPath;isOutput=true]$planPath"
-        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$planPath"
+        # Persist the matrix to a temp file and expose as an output variable
+        $outPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
+        ($matrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $outPath -Encoding UTF8
 
-        Write-Host "##[section]Preflight summary"
-        Write-Host ("Files: {0}  |  Upload plan: {1}" -f $rows.Count, $planPath)
+        Write-Host "##[section]Preflight summary → valid=$($matrix.Count), invalid=$invalid"
+        Write-Host "Matrix path: $outPath"
+
+        # Output variable for downstream 'perform-uploads' step
+        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$outPath"
