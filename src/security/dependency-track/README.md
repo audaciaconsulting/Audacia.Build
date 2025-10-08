@@ -1,8 +1,3 @@
-Great — here’s the updated **`src/security/dependency-track/README.md`** with a Mermaid diagram added right after **“Two Ways to Run.”**
-You can paste this whole file in as-is.
-
----
-
 # 🧩 Dependency-Track Pipeline Templates
 
 These Azure DevOps templates automate **SBOM generation**, **upload to OWASP Dependency-Track**, and optional **deactivation of non-latest project versions**.
@@ -38,11 +33,14 @@ Create an Azure DevOps variable group (per repo/team) that holds the Dependency-
 | `DT_API_URL` | Dependency-Track API base URL                                                            | `https://dependency-track.audacia.tech/api` |
 | `DT_API_KEY` | API key issued to a Dependency-Track **Team** with permissions to upload/manage projects | `***secret***`                              |
 
-Recommended team permissions: `ACCESS_MANAGEMENT`, `BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
+Recommended team permissions:
+`ACCESS_MANAGEMENT`, `BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
 
-### 2) Pipeline parameters you’ll set at run time
+### 2) Variables you’ll configure in the pipeline
 
-| Parameter                | Purpose                                                                 | Example                    |
+These are defined as **pipeline variables** (not parameters) within each YAML file or via the “Variables” tab in Azure DevOps.
+
+| Variable                 | Purpose                                                                 | Example                    |
 | ------------------------ | ----------------------------------------------------------------------- | -------------------------- |
 | `ENV_NAME`               | Which environment this SBOM represents                                  | `dev`, `qa`, `uat`, `prod` |
 | `RELEASE_NUMBER`         | Your release/build number (used as project version: `release/<number>`) | `2025.10.08.1`             |
@@ -52,8 +50,7 @@ Recommended team permissions: `ACCESS_MANAGEMENT`, `BOM_UPLOAD`, `PORTFOLIO_MANA
 | `PARENT_PROJECT_VERSION` | Version of the parent                                                   | `2025.10`                  |
 
 > ⚠️ **Parent projects must match on *both* Name and Version exactly** in Dependency-Track or the link won’t be set.
-> In Olympus we standardise parent names as:
-> **`"<Client> - <System>"`**
+> In Olympus we standardise parent names as: **`"<Client> - <System>"`**
 > Examples: `Accugrit - IGLU`, `Solus - Evolve`, `Audacia - Olympus`.
 
 ---
@@ -83,10 +80,6 @@ The templates will:
 Before running the pipeline, **verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive**.
 
 Dependency-Track uses these names directly from the SBOMs to create or update projects.
-For example:
-
-* In a `.csproj`, the `<AssemblyName>` or `<ProjectName>` becomes the project name.
-* In an `Angular` project, the `"name"` property in `package.json` becomes the project name.
 
 If these values are:
 
@@ -109,7 +102,10 @@ Ensure these names reflect the deployable artefact or service that will appear i
 
 **File in your repo:** `dependency-track.pipeline.yaml`
 
-This is the pattern used by **Park Blue** (Angular UI + .NET backends). Example (abridged):
+This is the pattern used by **Park Blue** (Angular UI + .NET backends).
+Now uses **variables** instead of parameters — values are defined directly in the YAML or in the Azure DevOps Variables tab.
+
+Example (abridged):
 
 ```yaml
 variables:
@@ -117,30 +113,24 @@ variables:
   - name: CLIENT_NAME
     value: ParkBlue
   - name: ENV_NAME
-    value: ${{ parameters.ENV_NAME }}
+    value: dev
   - name: RELEASE_NUMBER
-    value: ${{ parameters.RELEASE_NUMBER }}
+    value: '1'
   - name: ADDITIONAL_TAGS
-    value: ${{ parameters.ADDITIONAL_TAGS }}
+    value: ' '
 
 stages:
   - stage: generate
     jobs:
       - job: generate_sbom
-        variables:
-          ApiProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
-          IdentityProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
-          SeedingProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Seeding/ParkBlue.SaferRecruitment.Seeding.csproj
-          UiNpmRoot: $(System.DefaultWorkingDirectory)/src/apps/park-blue
         steps:
           - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
             parameters:
               dotnetProjectsMultiline: |
-                $(ApiProjectPath)
-                $(IdentityProjectPath)
-                $(SeedingProjectPath)
+                $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
+                $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
               npmRootsMultiline: |
-                $(UiNpmRoot)
+                $(System.DefaultWorkingDirectory)/src/apps/park-blue
               publishArtifact: true
               artifactName: 'sbom-files'
               nodeVersion: '20.x'
@@ -163,12 +153,12 @@ stages:
           - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
             parameters:
               failOnUploadError: true
-              parentProjectName: ${{ parameters.PARENT_PROJECT_NAME }}
-              parentProjectVersion: ${{ parameters.PARENT_PROJECT_VERSION }}
+              parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
+              parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
 
   - stage: deactivate
     dependsOn: upload
-    condition: and(succeeded('upload'), eq('${{ parameters.DEACTIVATE_OLD }}', 'true'))
+    condition: and(succeeded('upload'), eq(variables['DEACTIVATE_OLD'], 'true'))
     jobs:
       - job: deactivate_old_versions
         steps:
@@ -185,7 +175,7 @@ stages:
 
 **File in your repo:** `dependency-track-e2e.pipeline.yaml`
 
-Runs **Generate → Upload → Deactivate** in one job:
+Runs **Generate → Upload → Deactivate** in one job, using variables instead of parameters.
 
 ```yaml
 - template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
@@ -201,9 +191,9 @@ Runs **Generate → Upload → Deactivate** in one job:
     nodeVersion: '20.x'
     includeLicenseTexts: true
     failOnUploadError: true
-    parentProjectName: ${{ parameters.PARENT_PROJECT_NAME }}
-    parentProjectVersion: ${{ parameters.PARENT_PROJECT_VERSION }}
-    deactivateOld: ${{ parameters.DEACTIVATE_OLD }}
+    parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
+    parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
+    deactivateOld: ${{ variables.DEACTIVATE_OLD }}
     tryDownloadArtifact: true
 ```
 
@@ -227,8 +217,9 @@ If you provide both:
 * `PARENT_PROJECT_NAME` (e.g. `Audacia - Olympus`)
 * `PARENT_PROJECT_VERSION` (e.g. `2025.10`)
 
-…the upload sets these as `parentName` / `parentVersion` for each SBOM. Dependency-Track resolves the **parent by exact name and version**.
-If there’s no exact match, the children still upload, but will not be linked.
+…the upload sets these as `parentName` / `parentVersion` for each SBOM.
+Dependency-Track resolves the **parent by exact name and version**.
+If there’s no exact match, the children still upload but will not be linked.
 
 > 🔑 Use the convention **`"<Client> - <System>"`** for all parent project names to keep the portfolio consistent.
 
@@ -236,7 +227,8 @@ If there’s no exact match, the children still upload, but will not be linked.
 
 ## 🧹 Deactivate Non-Latest: what it actually does
 
-After a successful upload, older versions of each project (where `isLatest=false`) are set to **inactive**. This keeps the UI focused on the active release, while preserving history for audit.
+After a successful upload, older versions of each project (where `isLatest=false`) are set to **inactive**.
+This keeps the UI focused on the active release, while preserving history for audit.
 
 ---
 
@@ -264,9 +256,9 @@ After a successful upload, older versions of each project (where `isLatest=false
 * [ ] Variable group with `DT_API_URL` + `DT_API_KEY`
 * [ ] Correct `.csproj` and `package.json` names (see **⚠️ Naming Note**)
 * [ ] Accurate project paths in pipeline
-* [ ] Parent project created in Dependency-Track 
-* [ ] Parent project pipeline values set (`"<Client> - <System>"`)
-* [ ] Run modular or E2E pipeline with parameters:
+* [ ] Parent project created in Dependency-Track
+* [ ] Parent project variables set (`"<Client> - <System>"`)
+* [ ] Pipeline variables defined:
   `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
 
 ---
