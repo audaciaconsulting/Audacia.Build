@@ -40,18 +40,16 @@ Recommended team permissions:
 
 These are defined as **pipeline variables** (not parameters) within each YAML file or via the “Variables” tab in Azure DevOps.
 
-| Variable                 | Purpose                                                                 | Example                    |
-| ------------------------ | ----------------------------------------------------------------------- | -------------------------- |
-| `ENV_NAME`               | Which environment this SBOM represents                                  | `dev`, `qa`, `uat`, `prod` |
-| `RELEASE_NUMBER`         | Your release/build number (used as project version: `release/<number>`) | `2025.10.08.1`             |
-| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project            | `owner:team-x,service:abc` |
-| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload                | `true`                     |
-| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track                         | `Audacia - Olympus`        |
-| `PARENT_PROJECT_VERSION` | Version of the parent                                                   | `2025.10`                  |
+| Variable                 | Purpose                                                      | Example                    |
+| ------------------------ | ------------------------------------------------------------ | -------------------------- |
+| `ENV_NAME`               | Which environment this SBOM represents                       | `dev`, `qa`, `uat`, `prod` |
+| `RELEASE_NUMBER`         | Project version value used on upload                         | `main`                     |
+| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project | `owner:team-x,service:abc` |
+| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload     | `true`                     |
+| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track              | `Audacia - Olympus`        |
+| `PARENT_PROJECT_VERSION` | Version of the parent (may be left empty)                    | `2025.10` or empty         |
 
-> ⚠️ **Parent projects must match on *both* Name and Version exactly** in Dependency-Track or the link won’t be set.
-> In Olympus we standardise parent names as: **`"<Client> - <System>"`**
-> Examples: `Accugrit - IGLU`, `Solus - Evolve`, `Audacia - Olympus`.
+> ⚠️ **Parent projects must match on *both* Name and Version exactly** in Dependency-Track for the link to be set. If the version is left empty (or no exact match exists), uploads still succeed but no parent link is established.
 
 ---
 
@@ -103,64 +101,114 @@ Ensure these names reflect the deployable artefact or service that will appear i
 **File in your repo:** `dependency-track.pipeline.yaml`
 
 This is the pattern used by **Park Blue** (Angular UI + .NET backends).
-Now uses **variables** instead of parameters — values are defined directly in the YAML or in the Azure DevOps Variables tab.
 
 Example (abridged):
 
 ```yaml
+name: $(Date:yyyyMMdd)
+trigger: none
+pr: none
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      endpoint: shared-github
+      name: audaciaconsulting/Audacia.Build
+      ref: refs/heads/feature/201961-refactor-dependency-track-pipeline-into-github-templates
+
+pool:
+  vmImage: windows-latest
+
+# Central variables (API URL/KEY should live in the  variable group as secrets)
 variables:
   - group: ParkBlue.SaferRecruitment.Dependency-Track
   - name: CLIENT_NAME
-    value: ParkBlue
+    value: Olympus
   - name: ENV_NAME
     value: dev
   - name: RELEASE_NUMBER
-    value: '1'
+    value: $(Build.SourceBranchName)
   - name: ADDITIONAL_TAGS
-    value: ' '
+    value: ''   # e.g. "owner:team-olympus, service:tickets, priority:high"
+  - name: DEACTIVATE_OLD
+    value: true
+  - name: PARENT_PROJECT_NAME
+    value: 'Park Blue - Safer Recruitment'
+  - name: PARENT_PROJECT_VERSION
+    value: ''
+  - name: includeLicenseTexts
+    value: false
 
 stages:
+  # =========================
+  # 1) GENERATE STAGE
+  # =========================
   - stage: generate
+    displayName: "Generate SBOMs (npm + .NET via CycloneDX)"
     jobs:
       - job: generate_sbom
+        displayName: "Generate SBOMs & publish artifact"
+        variables:
+          ApiProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
+          IdentityProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
+          SeedingProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Seeding/ParkBlue.SaferRecruitment.Seeding.csproj
+          UiNpmRoot: $(System.DefaultWorkingDirectory)/src/apps/park-blue
         steps:
           - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
             parameters:
               dotnetProjectsMultiline: |
-                $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
-                $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
+                $(ApiProjectPath)
+                $(IdentityProjectPath)
+                $(SeedingProjectPath)
               npmRootsMultiline: |
-                $(System.DefaultWorkingDirectory)/src/apps/park-blue
+                $(UiNpmRoot)
               publishArtifact: true
               artifactName: 'sbom-files'
               nodeVersion: '20.x'
-              includeLicenseTexts: true
+              includeLicenseTexts: ${{ variables.includeLicenseTexts }}
+
+          # Convert the in-job sbomExists variable into an **output** variable usable by later stages
           - pwsh: |
+              Write-Host "sbomExists=$(sbomExists)"
               if ('$(sbomExists)' -eq 'true') {
                 Write-Host "##vso[task.setvariable variable=sbomReady;isOutput=true]true"
               } else {
                 Write-Host "##vso[task.setvariable variable=sbomReady;isOutput=true]false"
               }
             name: exportSbomReady
+            displayName: "Export SBOM readiness as stage output"
 
+  # =========================
+  # 2) UPLOAD STAGE
+  # =========================
   - stage: upload
+    displayName: "Upload SBOMs to Dependency-Track"
     dependsOn: generate
+    # Only run if generate succeeded AND we actually have SBOMs
     condition: and(succeeded('generate'), eq(dependencies.generate.outputs['generate_sbom.exportSbomReady.sbomReady'], 'true'))
     jobs:
       - job: upload_sbom
+        displayName: "Upload SBOM & Log Summary"
         steps:
           - checkout: none
           - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
             parameters:
               failOnUploadError: true
-              parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
-              parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
+              parentProjectName: $(PARENT_PROJECT_NAME)
+              parentProjectVersion: $(PARENT_PROJECT_VERSION)
 
+  # =========================
+  # 3) DEACTIVATE STAGE (run standalone or after upload)
+  # =========================
   - stage: deactivate
+    displayName: "Deactivate old Dependency-Track project versions"
     dependsOn: upload
-    condition: and(succeeded('upload'), eq(variables['DEACTIVATE_OLD'], 'true'))
+    # Only run if upload succeeded AND the toggle is true
+    condition: and(succeeded('upload'), eq(variables.DEACTIVATE_OLD, true))
     jobs:
       - job: deactivate_old_versions
+        displayName: "Set non-latest versions to inactive"
         steps:
           - checkout: none
           - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
@@ -175,17 +223,17 @@ stages:
 
 **File in your repo:** `dependency-track-e2e.pipeline.yaml`
 
-Runs **Generate → Upload → Deactivate** in one job, using variables instead of parameters.
+Runs **Generate → Upload → Deactivate** in one job, using variables.
 
 ```yaml
 - template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
   parameters:
     dotnetProjectsMultiline: |
-      src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
-      src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
-      src/apis/src/ParkBlue.SaferRecruitment.Seeding/ParkBlue.SaferRecruitment.Seeding.csproj
+      $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Api/Audacia.Olympus.Api.csproj
+      $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Ui/Audacia.Olympus.Ui.csproj
+      $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Functions/Audacia.Olympus.Functions.csproj
     npmRootsMultiline: |
-      src/apps/park-blue
+      $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Ui/NpmJS
     publishArtifact: true
     artifactName: sbom-files
     nodeVersion: '20.x'
@@ -203,7 +251,7 @@ Runs **Generate → Upload → Deactivate** in one job, using variables instead 
 
 The upload step builds tags like:
 
-* Always: `env:<ENV_NAME>`
+* `env:<ENV_NAME>` when `ENV_NAME` is set
 * Optional: any comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-olympus,service:tickets`)
 
 Tags appear in Dependency-Track under each project and help with filtering, dashboards, and Portfolio Access Control.
@@ -212,12 +260,7 @@ Tags appear in Dependency-Track under each project and help with filtering, dash
 
 ## 🧲 Parent Project Linking
 
-If you provide both:
-
-* `PARENT_PROJECT_NAME` (e.g. `Audacia - Olympus`)
-* `PARENT_PROJECT_VERSION` (e.g. `2025.10`)
-
-…the upload sets these as `parentName` / `parentVersion` for each SBOM.
+If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName`/`parentVersion` for each SBOM.
 Dependency-Track resolves the **parent by exact name and version**.
 If there’s no exact match, the children still upload but will not be linked.
 
@@ -261,4 +304,3 @@ This keeps the UI focused on the active release, while preserving history for au
 * [ ] Pipeline variables defined:
   `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
 
----
