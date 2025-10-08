@@ -1,192 +1,150 @@
-# Dependency-Track SBOM Pipelines (Azure DevOps)
-
-This folder contains reusable Azure DevOps templates for generating CycloneDX SBOMs for all deployables in a repository, uploading them to **OWASP Dependency-Track**, and (optionally) deactivating older project versions after a successful upload.
-
-There are two ways to run the workflow:
-
-* **E2E (single job):** one template that does Generate → Upload → Deactivate in one go.
-* **Staged (more control):** split into stages so you can run/skip parts independently and gate later stages on earlier results.
-
-> **Who is this for?**
-> A software engineer who wants to add automated SBOM generation + upload to Dependency-Track with minimal infrastructure setup.
+Great — here’s the updated **`src/security/dependency-track/README.md`** with a Mermaid diagram added right after **“Two Ways to Run.”**
+You can paste this whole file in as-is.
 
 ---
 
-## What is Dependency-Track (in 30 seconds)?
+# 🧩 Dependency-Track Pipeline Templates
 
-[OWASP Dependency-Track](https://dependencytrack.org/) ingests SBOMs, analyzes your dependencies (vulnerabilities, licenses, policy violations), and tracks risk over time. You upload a CycloneDX SBOM per deployable (e.g., API, UI, Functions). Dependency-Track creates or updates a “Project” for each deployable and a “Version” per release you upload.
-Official docs: [https://docs.dependencytrack.org/](https://docs.dependencytrack.org/) (projects, SBOM upload endpoint, API auth, etc.).
+These Azure DevOps templates automate **SBOM generation**, **upload to OWASP Dependency-Track**, and optional **deactivation of non-latest project versions**.
 
----
-
-## Prerequisites
-
-1. **Azure DevOps Variable Group:** `Dependency-Track`
-
-    * `DT_API_URL` (secret): your Dependency-Track base URL, e.g. `https://dependency-track.audacia.tech/api`
-    * `DT_API_KEY` (secret): API key for a Dependency-Track team with upload rights (e.g., permissions like `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD`; grant only what’s needed).
-2. **Repository layout:** know your deployables’ paths:
-
-    * Examples:
-
-        * `.NET` deployables:
-
-            * `src/YourProduct.Api/YourProduct.Api.csproj`
-            * `src/YourProduct.Ui/YourProduct.Ui.csproj` (e.g., Blazor)
-            * `src/YourProduct.Functions/YourProduct.Functions.csproj`
-        * `npm` roots:
-
-            * `src/YourProduct.Ui/NpmJS`
-            * `src/YourProduct.AdminUi/`
-3. **Pipeline permissions:** allow your pipeline to read the `Dependency-Track` variable group and the GitHub templates repo (`audaciaconsulting/Audacia.Build`) via a service connection.
+They support the repo layout we use most often: **Angular (npm) UI + .NET backend(s)** (APIs, Worker/Functions, etc.).
 
 ---
 
-## Inputs (what you must provide)
+## 📖 What is Dependency-Track?
 
-* **`DT_API_URL` and `DT_API_KEY`** in the `Dependency-Track` variable group (secrets).
-* **Release number** (`RELEASE_NUMBER`) that becomes the Dependency-Track project version as `release/<RELEASE_NUMBER>`.
-* **Environment name** (`ENV_NAME`) used to tag Dependency-Track projects (e.g. `env:dev`, `env:qa`, `env:prod`).
-* **Optional extra tags** (`ADDITIONAL_TAGS`) like `owner:team-x,service:orders`.
-* **List of deployables** (paths for .NET csproj and npm roots) so the generator knows what to build SBOMs for.
-
-> **About “parent projects” in Dependency-Track:**
-> The upload step sets a `parentName` convention of `<ProjectName>.ProjectContainer`. You don’t need to pre-create it; uploads auto-create parents and projects when `autoCreate=true`. You’ll see a tidy hierarchy in the UI.
+[OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses **CycloneDX SBOMs** for your apps to surface **vulnerabilities**, **license issues**, and **policy violations** across your portfolio.
+Each upload creates or updates a **Project** and **Version** in Dependency-Track, which the platform monitors continuously.
 
 ---
 
-## Option A — E2E Pipeline (fastest start)
+## 🧱 Two Ways to Run
 
-Create a pipeline file (e.g., `dependency-track-e2e.pipeline.yaml`) like this:
+| Approach             | File                                 | When to use                                                                                       |
+| -------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| **Modular / Staged** | `dependency-track.pipeline.yaml`     | You want **Generate**, **Upload**, **Deactivate** as separate stages for control/visibility.      |
+| **End-to-End**       | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
-```yaml
-name: $(Date:yyyyMMdd)
-trigger: none
-pr: none
+---
 
-resources:
-  repositories:
-    - repository: templates
-      type: github
-      endpoint: shared-github
-      name: audaciaconsulting/Audacia.Build
-      ref: refs/heads/feature/201961-refactor-dependency-track-pipeline-into-github-templates
+## 🧰 Prerequisites
 
-pool:
-  vmImage: windows-latest
+### 1) Variable group with secrets
 
-variables:
-  - group: Dependency-Track
-  - name: CLIENT_NAME
-    value: Olympus
-  - name: ENV_NAME
-    value: dev
-  - name: RELEASE_NUMBER
-    value: '1'
-  - name: ADDITIONAL_TAGS
-    value: 'owner:team-olympus,service:tickets'
+Create an Azure DevOps variable group (per repo/team) that holds the Dependency-Track connection:
 
-stages:
-  - stage: audit
-    displayName: "Audit Dependencies (E2E)"
-    variables:
-      ApiProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Api/YourProduct.Api.csproj
-      UiProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Ui/YourProduct.Ui.csproj
-      FunctionsProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Functions/YourProduct.Functions.csproj
-      UiNpmRoot: $(System.DefaultWorkingDirectory)/src/YourProduct.Ui/NpmJS
-    jobs:
-      - job: audit_dependencies
-        displayName: "Generate → Upload → Deactivate"
-        steps:
-          # Either minimal "single-step" template:
-          - template: /src/security/dependency-track/steps/audit-dependencies.step.yaml@templates
+| Variable     | Purpose                                                                                  | Example                                     |
+| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `DT_API_URL` | Dependency-Track API base URL                                                            | `https://dependency-track.audacia.tech/api` |
+| `DT_API_KEY` | API key issued to a Dependency-Track **Team** with permissions to upload/manage projects | `***secret***`                              |
 
-          # …or the richer E2E steps template that lets you pass options:
-          - template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
-            parameters:
-              dotnetProjectsMultiline: |
-                $(ApiProjectPath)
-                $(UiProjectPath)
-                $(FunctionsProjectPath)
-              npmRootsMultiline: |
-                $(UiNpmRoot)
-              publishArtifact: true
-              artifactName: 'sbom-files'
-              nodeVersion: '20.x'
-              includeLicenseTexts: true
-              failOnUploadError: true
-              deactivateOld: true
-              tryDownloadArtifact: true
+Recommended team permissions: `ACCESS_MANAGEMENT`, `BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
+
+### 2) Pipeline parameters you’ll set at run time
+
+| Parameter                | Purpose                                                                 | Example                    |
+| ------------------------ | ----------------------------------------------------------------------- | -------------------------- |
+| `ENV_NAME`               | Which environment this SBOM represents                                  | `dev`, `qa`, `uat`, `prod` |
+| `RELEASE_NUMBER`         | Your release/build number (used as project version: `release/<number>`) | `2025.10.08.1`             |
+| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project            | `owner:team-x,service:abc` |
+| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload                | `true`                     |
+| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track                         | `Audacia - Olympus`        |
+| `PARENT_PROJECT_VERSION` | Version of the parent                                                   | `2025.10`                  |
+
+> ⚠️ **Parent projects must match on *both* Name and Version exactly** in Dependency-Track or the link won’t be set.
+> In Olympus we standardise parent names as:
+> **`"<Client> - <System>"`**
+> Examples: `Accugrit - IGLU`, `Solus - Evolve`, `Audacia - Olympus`.
+
+---
+
+## 🗂️ Typical repo layout (Angular + .NET)
+
+Most of our repos look like:
+
+```
+src/
+ ├─ apis/src/YourProduct.Api/YourProduct.Api.csproj
+ ├─ apis/src/YourProduct.Identity/YourProduct.Identity.csproj
+ ├─ apis/src/YourProduct.Seeding/YourProduct.Seeding.csproj
+ └─ apps/your-angular-app/              ← Angular project root (package.json / package-lock.json)
 ```
 
-**What this does:**
+The templates will:
 
-* Generates npm + .NET SBOMs (CycloneDX JSON), publishes them as a pipeline artifact.
-* Uploads SBOMs to Dependency-Track:
-
-    * auto-creates project if missing, sets version to `release/<RELEASE_NUMBER>`, marks it as latest, applies tags `env:<ENV_NAME>` + optional `ADDITIONAL_TAGS`.
-    * waits for BOM processing tokens to finish.
-* Deactivates older active versions so only the latest remains active in the portfolio.
+* Generate **.NET SBOMs** via `dotnet CycloneDX` for each listed `.csproj`.
+* Generate an **npm SBOM** via `@cyclonedx/cyclonedx-npm` for each listed Angular root folder (where `package.json` lives).
+  If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
 
 ---
 
-## Option B — Staged Pipeline (more control)
+## ⚠️ Naming Note — check your project names
 
-Use `dependency-track.pipeline.yaml` (3 stages):
+Before running the pipeline, **verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive**.
+
+Dependency-Track uses these names directly from the SBOMs to create or update projects.
+For example:
+
+* In a `.csproj`, the `<AssemblyName>` or `<ProjectName>` becomes the project name.
+* In an `Angular` project, the `"name"` property in `package.json` becomes the project name.
+
+If these values are:
+
+* too generic (`"App"` or `"WebApplication1"`),
+* duplicated across repos, or
+* inconsistent with your team’s naming scheme,
+
+then **Dependency-Track will show confusing or duplicate project entries**.
+
+> ✅ Recommended convention:
+>
+> * **Backends:** `Company.Product.Component` (e.g. `Audacia.Olympus.Api`)
+> * **Frontends:** `company-product-ui` (e.g. `audacia-olympus-ui`)
+
+Ensure these names reflect the deployable artefact or service that will appear in reports.
+
+---
+
+## 🧩 Option 1: Modular / Staged pipeline (recommended)
+
+**File in your repo:** `dependency-track.pipeline.yaml`
+
+This is the pattern used by **Park Blue** (Angular UI + .NET backends). Example (abridged):
 
 ```yaml
-name: $(Date:yyyyMMdd)
-trigger: none
-pr: none
-
-resources:
-  repositories:
-    - repository: templates
-      type: github
-      endpoint: shared-github
-      name: audaciaconsulting/Audacia.Build
-      ref: refs/heads/feature/201961-refactor-dependency-track-pipeline-into-github-templates
-
-pool:
-  vmImage: windows-latest
-
 variables:
-  - group: Dependency-Track
+  - group: ParkBlue.SaferRecruitment.Dependency-Track
   - name: CLIENT_NAME
-    value: Olympus
+    value: ParkBlue
   - name: ENV_NAME
-    value: dev
+    value: ${{ parameters.ENV_NAME }}
   - name: RELEASE_NUMBER
-    value: '1'
+    value: ${{ parameters.RELEASE_NUMBER }}
   - name: ADDITIONAL_TAGS
-    value: 'owner:team-olympus,service:tickets'
+    value: ${{ parameters.ADDITIONAL_TAGS }}
 
 stages:
-  # 1) Generate SBOMs
   - stage: generate
-    displayName: "Generate SBOMs (npm + .NET via CycloneDX)"
     jobs:
       - job: generate_sbom
         variables:
-          ApiProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Api/YourProduct.Api.csproj
-          UiProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Ui/YourProduct.Ui.csproj
-          FunctionsProjectPath: $(System.DefaultWorkingDirectory)/src/YourProduct.Functions/YourProduct.Functions.csproj
-          UiNpmRoot: $(System.DefaultWorkingDirectory)/src/YourProduct.Ui/NpmJS
+          ApiProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
+          IdentityProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
+          SeedingProjectPath: $(System.DefaultWorkingDirectory)/src/apis/src/ParkBlue.SaferRecruitment.Seeding/ParkBlue.SaferRecruitment.Seeding.csproj
+          UiNpmRoot: $(System.DefaultWorkingDirectory)/src/apps/park-blue
         steps:
           - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
             parameters:
               dotnetProjectsMultiline: |
                 $(ApiProjectPath)
-                $(UiProjectPath)
-                $(FunctionsProjectPath)
+                $(IdentityProjectPath)
+                $(SeedingProjectPath)
               npmRootsMultiline: |
                 $(UiNpmRoot)
               publishArtifact: true
               artifactName: 'sbom-files'
               nodeVersion: '20.x'
               includeLicenseTexts: true
-
-          # expose "sbomReady" for the next stage
           - pwsh: |
               if ('$(sbomExists)' -eq 'true') {
                 Write-Host "##vso[task.setvariable variable=sbomReady;isOutput=true]true"
@@ -194,118 +152,121 @@ stages:
                 Write-Host "##vso[task.setvariable variable=sbomReady;isOutput=true]false"
               }
             name: exportSbomReady
-            displayName: "Export SBOM readiness as stage output"
 
-  # 2) Upload to Dependency-Track (gated on generate success + SBOM existence)
   - stage: upload
-    displayName: "Upload SBOMs to Dependency-Track"
     dependsOn: generate
     condition: and(succeeded('generate'), eq(dependencies.generate.outputs['generate_sbom.exportSbomReady.sbomReady'], 'true'))
     jobs:
       - job: upload_sbom
         steps:
+          - checkout: none
           - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
             parameters:
               failOnUploadError: true
+              parentProjectName: ${{ parameters.PARENT_PROJECT_NAME }}
+              parentProjectVersion: ${{ parameters.PARENT_PROJECT_VERSION }}
 
-  # 3) Deactivate non-latest versions (toggle by stage inclusion)
   - stage: deactivate
-    displayName: "Deactivate old Dependency-Track project versions"
     dependsOn: upload
-    condition: succeeded('upload')
+    condition: and(succeeded('upload'), eq('${{ parameters.DEACTIVATE_OLD }}', 'true'))
     jobs:
       - job: deactivate_old_versions
         steps:
+          - checkout: none
           - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
             parameters:
               artifactName: 'sbom-files'
               tryDownloadArtifact: true
 ```
 
-**Why this is useful:**
+---
 
-* You can run **Generate** on PRs (fast feedback), but only **Upload + Deactivate** on protected branches.
-* You can re-run just the **Upload** stage if Dependency-Track was temporarily unavailable.
+## ⚙️ Option 2: End-to-End (single job)
+
+**File in your repo:** `dependency-track-e2e.pipeline.yaml`
+
+Runs **Generate → Upload → Deactivate** in one job:
+
+```yaml
+- template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
+  parameters:
+    dotnetProjectsMultiline: |
+      src/apis/src/ParkBlue.SaferRecruitment.Api/ParkBlue.SaferRecruitment.Api.csproj
+      src/apis/src/ParkBlue.SaferRecruitment.Identity/ParkBlue.SaferRecruitment.Identity.csproj
+      src/apis/src/ParkBlue.SaferRecruitment.Seeding/ParkBlue.SaferRecruitment.Seeding.csproj
+    npmRootsMultiline: |
+      src/apps/park-blue
+    publishArtifact: true
+    artifactName: sbom-files
+    nodeVersion: '20.x'
+    includeLicenseTexts: true
+    failOnUploadError: true
+    parentProjectName: ${{ parameters.PARENT_PROJECT_NAME }}
+    parentProjectVersion: ${{ parameters.PARENT_PROJECT_VERSION }}
+    deactivateOld: ${{ parameters.DEACTIVATE_OLD }}
+    tryDownloadArtifact: true
+```
 
 ---
 
-## What does “Deactivate non-latest” actually do?
+## 🏷️ Project Tags in Dependency-Track
 
-After a successful upload, the deactivation step queries the SBOMs to derive the affected project names and sets all **active, non-latest** versions of these projects to inactive.
-Result: your Dependency-Track portfolio shows the latest version as active; older versions remain in the database for history but no longer clutter dashboards or trigger current policy checks.
+The upload step builds tags like:
 
-> You can skip this step for PRs or experimental branches by removing the stage or toggling the `deactivateOld` parameter (in E2E).
+* Always: `env:<ENV_NAME>`
+* Optional: any comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-olympus,service:tickets`)
 
----
-
-## Tags & Metadata
-
-* Every upload applies `env:<ENV_NAME>` so you can filter projects by environment in Dependency-Track.
-* Add business metadata via `ADDITIONAL_TAGS`, e.g.:
-
-    * `owner:team-olympus`
-    * `service:tickets`
-    * `priority:high`
-* The project version is standardized as `release/<RELEASE_NUMBER>`.
+Tags appear in Dependency-Track under each project and help with filtering, dashboards, and Portfolio Access Control.
 
 ---
 
-## Security Notes
+## 🧲 Parent Project Linking
 
-* Store `DT_API_KEY` and `DT_API_URL` as **secrets** in the `Dependency-Track` variable group.
-* Use least privilege for the API key (e.g., a dedicated **Automation** team in Dependency-Track with just the permissions needed to upload and create projects).
-* These templates read secrets from **task environment variables** (not inline string injection) to avoid PowerShell escaping issues.
+If you provide both:
 
-Relevant official docs for later reference:
+* `PARENT_PROJECT_NAME` (e.g. `Audacia - Olympus`)
+* `PARENT_PROJECT_VERSION` (e.g. `2025.10`)
 
-* Projects & versions: *Docs → User Guide → Projects*
-* API & BOM upload: *Docs → Integrations → API → BOM*
-* Auth: *Docs → Administration → Access Management*
-  (See [https://docs.dependencytrack.org/](https://docs.dependencytrack.org/) for the latest paths.)
+…the upload sets these as `parentName` / `parentVersion` for each SBOM. Dependency-Track resolves the **parent by exact name and version**.
+If there’s no exact match, the children still upload, but will not be linked.
 
----
-
-## Troubleshooting
-
-* **“No SBOM files to upload”**
-  Make sure the Generate stage ran and published the `sbom-files` artifact. Check the generator’s “Validate expected SBOMs” output.
-* **“.NET SBOMs failed” or “npm SBOMs failed”**
-  Ensure the listed project paths / npm roots exist and build. For npm, commit a `package-lock.json` or let the generator create one.
-* **API auth errors**
-  Verify `DT_API_URL` and `DT_API_KEY` values and that the key has upload permissions.
-* **Project naming**
-  The upload step prefers the SBOM’s `metadata.component.name`. If missing, it falls back to the folder name. You can influence names by ensuring SBOM generators include `metadata.component` correctly.
+> 🔑 Use the convention **`"<Client> - <System>"`** for all parent project names to keep the portfolio consistent.
 
 ---
 
-## Quick Checklist (new repo)
+## 🧹 Deactivate Non-Latest: what it actually does
 
-* [ ] Create `Dependency-Track` variable group with `DT_API_URL` and `DT_API_KEY`.
-* [ ] Add the pipeline file (E2E or staged) with your deployable paths and npm roots.
-* [ ] Set `ENV_NAME`, `RELEASE_NUMBER`, and `ADDITIONAL_TAGS` variables.
-* [ ] Run **Generate**; confirm `sbom-files` artifact exists.
-* [ ] Run **Upload**; confirm projects/versions appear in Dependency-Track UI.
-* [ ] Optionally run **Deactivate**; confirm only latest versions remain active.
+After a successful upload, older versions of each project (where `isLatest=false`) are set to **inactive**. This keeps the UI focused on the active release, while preserving history for audit.
 
 ---
 
-## Example: Typical Monolith + UI + Functions
+## 📊 Azure DevOps output
 
-* `.NET`:
-
-    * `src/Olympus.Api/Olympus.Api.csproj`
-    * `src/Olympus.Functions/Olympus.Functions.csproj`
-* `npm`:
-
-    * `src/Olympus.Ui/NpmJS` (Angular/Vue/Blazor JS Functionality)
-
-Use those paths in `dotnetProjectsMultiline` and `npmRootsMultiline`. The pipeline will produce one SBOM per deployable, upload all of them, and standardize the version to your `RELEASE_NUMBER`.
+* **Generate** → SBOM file list & counts
+* **Upload** → Markdown summary of projects and versions
+* **Deactivate** → Confirmation of inactive versions set
 
 ---
 
-If you hit anything odd, open the pipeline logs and expand:
+## 🛠️ Troubleshooting
 
-* **Generate → Validate expected SBOMs**
-* **Upload → Prepare SBOM upload (preflight)**
-* **Upload → Upload SBOMs (Atomic/Rollback)**
-  They print exactly what was found, planned, and uploaded so you can correct inputs quickly.
+| Symptom                      | Likely cause                     | Fix                                                                       |
+| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
+| `401 Unauthorized` on upload | API key invalid/expired          | Regenerate in Dependency-Track; update variable group                     |
+| SBOM not linked to parent    | Name/version mismatch            | Ensure exact parent match exists in Dependency-Track                      |
+| “No SBOM files to upload”    | Wrong paths or missing lockfiles | Check `.csproj` and Angular root paths; ensure `package-lock.json` exists |
+| Deactivate skipped           | SBOM artifact missing            | Keep `tryDownloadArtifact: true`                                          |
+
+---
+
+## ✅ Quick start checklist
+
+* [ ] Variable group with `DT_API_URL` + `DT_API_KEY`
+* [ ] Correct `.csproj` and `package.json` names (see **⚠️ Naming Note**)
+* [ ] Accurate project paths in pipeline
+* [ ] Parent project created in Dependency-Track 
+* [ ] Parent project pipeline values set (`"<Client> - <System>"`)
+* [ ] Run modular or E2E pipeline with parameters:
+  `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
+
+---
