@@ -255,7 +255,7 @@ steps:
               })
             } catch {
               $errorMsg = $_.Exception.Message
-              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg. Parent component specified was '$parentName'."
+              Write-Error "❌ Upload failed for $($f.FullName): $errorMsg. Parent component specified was '$parentName'. Please check the Parent component exists in Dependency-Track and the Name & Version match exactly."
 
               # Persist partial rows file and uploaded list before rollback
               $pairList = @()
