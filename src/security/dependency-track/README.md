@@ -30,7 +30,7 @@ Create an Azure DevOps variable group (per repo/team) that holds the Dependency-
 
 | Variable     | Purpose                                                                                  | Example                                     |
 | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `DT_API_URL` | Dependency-Track API base URL                                                            | `https://dependency-track.audacia.tech/api` |
+| `DT_API_URL` | Dependency-Track API base URL                                                            | `https://api.dependency-track.audacia.tech` |
 | `DT_API_KEY` | API key issued to a Dependency-Track **Team** with permissions to upload/manage projects | `***secret***`                              |
 
 Recommended team permissions:
