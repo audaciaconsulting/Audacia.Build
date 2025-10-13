@@ -1,4 +1,4 @@
-# 🧩 Dependency-Track Pipeline Templates
+# Dependency-Track Pipeline Templates
 
 These Azure DevOps templates automate **SBOM generation**, **upload to OWASP Dependency-Track**, and optional **deactivation of non-latest project versions**.
 
@@ -6,14 +6,14 @@ They support the repo layout we use most often: **Angular (npm) UI + .NET backen
 
 ---
 
-## 📖 What is Dependency-Track?
+## What is Dependency-Track?
 
 [OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses **CycloneDX SBOMs** for your apps to surface **vulnerabilities**, **license issues**, and **policy violations** across your portfolio.
 Each upload creates or updates a **Project** and **Version** in Dependency-Track, which the platform monitors continuously.
 
 ---
 
-## 🧱 Two Ways to Run
+## Two Ways to Run
 
 | Approach             | File                                 | When to use                                                                                       |
 | -------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
@@ -22,7 +22,7 @@ Each upload creates or updates a **Project** and **Version** in Dependency-Track
 
 ---
 
-## 🧰 Prerequisites
+## Prerequisites
 
 ### 1) Variable group with secrets
 
@@ -53,7 +53,7 @@ These are defined as **pipeline variables** (not parameters) within each YAML fi
 
 ---
 
-## 🗂️ Typical repo layout (Angular + .NET)
+## Typical repo layout (Angular + .NET)
 
 Most of our repos look like:
 
@@ -96,7 +96,7 @@ Ensure these names reflect the deployable artefact or service that will appear i
 
 ---
 
-## 🧩 Option 1: Modular / Staged pipeline (recommended)
+## Option 1: Modular / Staged pipeline (recommended)
 
 **File in your repo:** `dependency-track.pipeline.yaml`
 
@@ -219,7 +219,7 @@ stages:
 
 ---
 
-## ⚙️ Option 2: End-to-End (single job)
+## Option 2: End-to-End (single job)
 
 **File in your repo:** `dependency-track-e2e.pipeline.yaml`
 
@@ -247,7 +247,7 @@ Runs **Generate → Upload → Deactivate** in one job, using variables.
 
 ---
 
-## 🏷️ Project Tags in Dependency-Track
+## Project Tags in Dependency-Track
 
 The upload step builds tags like:
 
@@ -258,24 +258,24 @@ Tags appear in Dependency-Track under each project and help with filtering, dash
 
 ---
 
-## 🧲 Parent Project Linking
+## Parent Project Linking
 
 If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName`/`parentVersion` for each SBOM.
 Dependency-Track resolves the **parent by exact name and version**.
 If there’s no exact match, the children still upload but will not be linked.
 
-> 🔑 Use the convention **`"<Client> - <System>"`** for all parent project names to keep the portfolio consistent.
+> Use the convention **`"<Client> - <System>"`** for all parent project names to keep the portfolio consistent.
 
 ---
 
-## 🧹 Deactivate Non-Latest: what it actually does
+## Deactivate Non-Latest: what it actually does
 
 After a successful upload, older versions of each project (where `isLatest=false`) are set to **inactive**.
 This keeps the UI focused on the active release, while preserving history for audit.
 
 ---
 
-## 📊 Azure DevOps output
+## Azure DevOps output
 
 * **Generate** → SBOM file list & counts
 * **Upload** → Markdown summary of projects and versions
@@ -283,7 +283,7 @@ This keeps the UI focused on the active release, while preserving history for au
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 | Symptom                      | Likely cause                     | Fix                                                                       |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
