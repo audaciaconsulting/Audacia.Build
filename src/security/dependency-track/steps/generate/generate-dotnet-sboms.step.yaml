@@ -5,9 +5,9 @@ parameters:
     default: ''
 
 steps:
-  # Restore .NET projects (pre-warm for CycloneDX)
+  # Restore .NET projects
   - task: DotNetCoreCLI@2
-    displayName: "Restore .NET projects (pre-warm for CycloneDX)"
+    displayName: "Restore .NET projects"
     condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
     inputs:
       command: restore
