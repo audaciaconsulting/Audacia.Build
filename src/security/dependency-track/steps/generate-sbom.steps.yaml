@@ -34,6 +34,8 @@ steps:
   - template: /src/security/dependency-track/steps/generate/log-env-and-discover-npm.step.yaml@templates
     parameters:
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+      requireAllExpectedSboms: ${{ parameters.requireAllExpectedSboms }}
 
   # Setup Node.js tooling
   - template: /src/security/dependency-track/steps/generate/setup-node.step.yaml@templates
