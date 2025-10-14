@@ -5,11 +5,6 @@ parameters:
     default: ''
 
 steps:
-  # Prepare .NET SBOM output folders
-  - powershell: |
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
-    displayName: "Prepare .NET SBOM output folders"
-
   # Restore .NET projects (pre-warm for CycloneDX)
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects (pre-warm for CycloneDX)"
@@ -26,6 +21,8 @@ steps:
     inputs:
       targetType: inline
       script: |
+        New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
+                
         $ErrorActionPreference = 'Stop'
 
         $DotnetProjectsJson = '$(resolveDotnetProjects.dotnetProjectsJson)'

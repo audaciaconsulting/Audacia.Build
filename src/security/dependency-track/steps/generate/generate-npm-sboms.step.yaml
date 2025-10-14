@@ -5,18 +5,15 @@ parameters:
     default: true
 
 steps:
-  # Prepare npm SBOM output folders
-  - powershell: |
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
-      New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
-    displayName: "Prepare npm SBOM output folders"
-
   # Generate npm SBOMs (CycloneDX, JSON)
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
     inputs:
       targetType: inline
       script: |
+        New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
+        
         $ErrorActionPreference = 'Stop'
 
         # Use cached tool paths if present
