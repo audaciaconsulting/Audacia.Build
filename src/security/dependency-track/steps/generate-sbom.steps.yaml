@@ -65,9 +65,6 @@ steps:
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  # Detect SBOM folder and set sbomExists variable
-  - template: /src/security/dependency-track/steps/generate/detect-sbom-folder.step.yaml@templates
-
   # Validate that all expected SBOMs were generated (fail fast if not)
   - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates
     parameters:

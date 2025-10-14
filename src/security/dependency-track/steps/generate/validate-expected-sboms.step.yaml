@@ -64,14 +64,22 @@ steps:
         Write-Host "##vso[task.setvariable variable=sbomExpected]$expectedTotal"
         Write-Host "##vso[task.setvariable variable=sbomFound]$found"
 
+        $strict = "${{ parameters.strict }}" -eq "True"
+
+        if ($found -eq 0) {
+          Write-Host "##vso[task.setvariable variable=sbomExists]false"
+          $msg = "No SBOMs found."
+          if ($strict) { Write-Error "❌ $msg" } else { Write-Warning $msg }
+          exit 0
+        }
+
         if ($expectedTotal -gt 0 -and $found -lt $expectedTotal) {
           Write-Host "##vso[task.setvariable variable=sbomExists]false"
           $msg = "Only found $found of $expectedTotal expected SBOM(s)."
-          if ("${{ parameters.strict }}" -eq "True") { Write-Error "❌ $msg" } else { Write-Warning $msg }
-        } elseif ($found -eq 0) {
-          Write-Host "##vso[task.setvariable variable=sbomExists]false"
-          $msg = "No SBOMs found."
-          if ("${{ parameters.strict }}" -eq "True") { Write-Error "❌ $msg" } else { Write-Warning $msg }
-        } else {
-          Write-Host "All expected SBOM(s) present."
+          if ($strict) { Write-Error "❌ $msg" } else { Write-Warning $msg }
+          exit 0
         }
+
+        # Success path
+        Write-Host "All expected SBOM(s) present or validation criteria met."
+        Write-Host "##vso[task.setvariable variable=sbomExists]true"
