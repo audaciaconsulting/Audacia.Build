@@ -1,0 +1,53 @@
+# Template: log environment/parameters and discover npm manifests in one step
+parameters:
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+  - name: requireAllExpectedSboms
+    type: boolean
+    default: true
+
+steps:
+  - pwsh: |
+      $ErrorActionPreference = 'Stop'
+
+      Write-Host "##[group]Environment & Parameters"
+      Write-Host "Agent.OS: $env:AGENT_OS"
+      Write-Host "Output format: JSON (forced)"
+      Write-Host "Include license texts: $env:INCLUDE_LICENSE_TEXTS"
+      Write-Host "Require all expected SBOMs: $env:REQUIRE_ALL_EXPECTED_SBOMS"
+      Write-Host "SBOM output dir: $(Agent.TempDirectory)/sbom"
+      Write-Host "Sources: $(System.DefaultWorkingDirectory)"
+      Write-Host "##[endgroup]"
+
+      $rootsText = ($env:NPM_ROOTS_MULTILINE ?? '').Trim()
+
+      Write-Host "##[group]Debug: list npm manifests"
+      if ($rootsText) {
+        Write-Host "Scanning npm roots from parameter:"
+        $roots = $rootsText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+        foreach ($r in $roots) {
+          Write-Host "Root: $r"
+          "---- $r\package-lock.json ----"
+          Get-ChildItem -Path $r -Recurse -Filter package-lock.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+          "---- $r\package.json ----"
+          Get-ChildItem -Path $r -Recurse -Filter package.json -File -EA SilentlyContinue | Select-Object -Expand FullName
+        }
+      } else {
+        Write-Host "Scanning entire workspace (no npmRootsMultiline provided)"
+        "---- package-lock.json files ----"
+        Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package-lock.json -File -EA SilentlyContinue |
+          Select-Object -Expand FullName
+        "---- package.json files ----"
+        Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package.json -File -EA SilentlyContinue |
+          Select-Object -Expand FullName
+      }
+      Write-Host "##[endgroup]"
+    displayName: "Log env & discover npm manifests"
+    env:
+      NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}
+      INCLUDE_LICENSE_TEXTS: ${{ parameters.includeLicenseTexts }}
+      REQUIRE_ALL_EXPECTED_SBOMS: ${{ parameters.requireAllExpectedSboms }}
