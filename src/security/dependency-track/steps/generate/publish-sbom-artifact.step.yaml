@@ -16,16 +16,3 @@ steps:
           targetPath: "$(Agent.TempDirectory)/sbom"
           publishLocation: pipeline
           artifact: ${{ parameters.artifactName }}
-
-  # Fallback publish only when publishArtifact=false but SBOMs exist
-  - task: PublishPipelineArtifact@1
-    displayName: "Publish SBOM artifact (fallback)"
-    condition: and(
-      succeeded(),
-      eq(variables['sbomExists'], 'true'),
-      eq('${{ parameters.publishArtifact }}','false')
-      )
-    inputs:
-      targetPath: $(Agent.TempDirectory)/sbom
-      publishLocation: pipeline
-      artifact: ${{ parameters.artifactName }}
