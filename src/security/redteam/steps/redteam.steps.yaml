@@ -129,7 +129,7 @@ steps:
       RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
       JUNIT_ABS="$RESULTS_DIR/results.junit.xml"
       node --version
-      node $(Agent.BuildDirectory)/src/security/redteam/scripts/promptfoo-to-junit.js \
+      node "$(System.DefaultWorkingDirectory)/templates/src/security/redteam/scripts/promptfoo-to-junit.js" \
         "$RESULTS_DIR/results.json" "$JUNIT_ABS"
       echo "Verifying:"
       ls -la "$RESULTS_DIR" || true
