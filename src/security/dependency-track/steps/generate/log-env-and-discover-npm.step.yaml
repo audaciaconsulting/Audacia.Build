@@ -21,9 +21,6 @@ parameters:
     default: true
 
 steps:
-  # Step: Log environment variables and discover npm manifests
-  # Description: This step logs key environment variables and parameters, then scans for npm manifests
-  # (package.json and package-lock.json files) either in specified directories or the entire workspace.
   - pwsh: |
       # Set the error action preference to stop on errors
       $ErrorActionPreference = 'Stop'

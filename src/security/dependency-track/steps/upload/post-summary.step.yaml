@@ -6,17 +6,22 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Set strict error handling so the script fails on any error
         $ErrorActionPreference='Stop'
 
+        # Path to the file containing the uploaded project rows (produced by previous step)
         $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
         $rows = @()
+        # Attempt to read and parse the uploaded rows JSON file
         if (Test-Path -LiteralPath $rowsPath) {
           try { $rows = Get-Content -Raw -LiteralPath $rowsPath | ConvertFrom-Json } catch { $rows=@() }
         }
+        # Ensure $rows is always an array for consistent processing
         if ($rows -isnot [System.Collections.IEnumerable]) { $rows = @($rows) }
         if (-not $rows) { $rows = @() }
 
         # ---- Console output (grouped) ----
+        # Output a summary group to the Azure DevOps log
         Write-Host "##[group]Dependency-Track Upload Summary (console)"
         Write-Host ("Total Projects: {0}" -f $rows.Count)
         if ($rows.Count -gt 0) {

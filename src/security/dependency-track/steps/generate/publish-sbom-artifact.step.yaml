@@ -5,12 +5,12 @@ parameters:
   # Parameter to control whether the artifact should be published.
   - name: publishArtifact
     type: boolean
-    default: true  # Default is true, meaning the artifact will be published unless explicitly disabled.
+    default: true
 
   # Parameter to specify the name of the artifact to be published.
   - name: artifactName
     type: string
-    default: 'sbom-files'  # Default artifact name is 'sbom-files'.
+    default: 'sbom-files'
 
 steps:
   # Conditional step to publish the SBOM artifact if `publishArtifact` is true.

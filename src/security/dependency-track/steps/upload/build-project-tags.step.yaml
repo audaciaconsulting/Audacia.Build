@@ -18,30 +18,36 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Set error action preference to stop on errors
         $ErrorActionPreference = 'Stop'
+        # Initialize an empty list to store tags
         $tags = New-Object System.Collections.Generic.List[string]
 
-        # Optional env tag (warn if missing, but do not fail)
+        # Check if ENV_NAME is set and not empty/whitespace
+        # If set, add it as a tag in the format `env:<ENV_NAME>`
+        # If not set, log a warning but do not fail
         if ($env:ENV_NAME -and -not [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
           $tags.Add("env:$env:ENV_NAME")
         } else {
           Write-Warning "ENV_NAME is empty or not set; 'env:<NAME>' tag will be omitted."
         }
 
-        # Optional extras
+        # Check if ADDITIONAL_TAGS is set and not empty
+        # If set, split it by commas, trim whitespace, and add each tag to the list
         if ($env:ADDITIONAL_TAGS -and $env:ADDITIONAL_TAGS.Trim().Length -gt 0) {
           $extraTags = $env:ADDITIONAL_TAGS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
           foreach ($t in $extraTags) { $tags.Add($t) }
         }
 
-        # Dedup & CSV
+        # Deduplicate the tags and join them into a CSV string
         $tagsCsv = ''
         if ($tags.Count -gt 0) {
           $seen=@{}; $deduped = $tags | Where-Object { if ($seen.ContainsKey($_)) {$false} else {$seen[$_]=$true; $true} }
           $tagsCsv = $deduped -join ','
         }
 
-        # If requireProjectTags=true, fail only when there are no tags at all
+        # If requireProjectTags is true, fail the step if no tags are produced
+        # Otherwise, log a warning if no tags are produced
         if ("${{ parameters.requireProjectTags }}" -eq "True") {
           if ([string]::IsNullOrWhiteSpace($tagsCsv)) {
             throw "No project tags produced."
@@ -50,5 +56,7 @@ steps:
           Write-Warning "No project tags produced (requireProjectTags=false)."
         }
 
+        # Log the final CSV of project tags
         Write-Host "Final projectTags CSV: '$tagsCsv'"
+        # Set the CSV as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=projectTagsCsv;isOutput=true]$tagsCsv"

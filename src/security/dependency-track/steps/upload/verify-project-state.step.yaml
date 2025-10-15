@@ -1,4 +1,20 @@
 # Template: verify Dependency-Track reflects expected (Project, Version) as latest after upload
+
+# This step verifies that each uploaded (Project, Version) pair exists in Dependency-Track and is marked as the latest version.
+#
+# Parameters:
+#   - enforce: If true, the step fails if any project is missing or not marked as latest.
+#   - echoDetails: If true, outputs row-by-row verification results to the console.
+
+# Environment Variables:
+#   - DT_API_URL: Dependency-Track API base URL.
+#   - DT_API_KEY: API key for authentication.
+#   - UPLOADED_ROWS_JSON: JSON array of uploaded (Project, Version) pairs.
+
+# Behavior:
+#   - For each (Project, Version), queries Dependency-Track for existence and latest status.
+#   - Outputs a summary and optionally detailed results.
+#   - If enforce=true, fails the step if any project is missing or not latest.
 parameters:
   - name: enforce
     type: boolean
@@ -18,25 +34,30 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Set strict error handling so the script fails on any error
         $ErrorActionPreference = 'Stop'
 
+        # Validate required Dependency-Track API environment variables
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Verifying against: $base"
 
+        # Parse uploaded (Project, Version) pairs from environment variable
         $raw = $env:UPLOADED_ROWS_JSON
         if (-not $raw -or [string]::IsNullOrWhiteSpace($raw)) { $raw = '[]' }
         try { $pairs = $raw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
         if ($pairs -isnot [System.Collections.IEnumerable]) { $pairs = @($pairs) }
         if (-not $pairs) { $pairs = @() }
 
+        # Create and configure HttpClient for Dependency-Track API
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
         $http.Timeout = [TimeSpan]::FromMinutes(5)
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
+        # Helper: Invoke-DtApi - calls Dependency-Track API with retry logic for transient errors
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
           $attempt = 0; $lastErr = $null
           do {
@@ -66,8 +87,10 @@ steps:
           } while ($true)
         }
 
+        # Prepare results array for verification output
         $rows = New-Object System.Collections.Generic.List[object]
 
+        # For each (Project, Version), check existence and latest status in Dependency-Track
         foreach ($p in $pairs) {
           $name = $p.Project; $version = $p.Version
           if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($version)) {
@@ -95,6 +118,7 @@ steps:
         }
 
         # ---- Console details (NEW) ----
+        # Output a summary and optionally detailed results to the console
         Write-Host "##[group]Dependency-Track verification details (console)"
         Write-Host ("Checked items: {0}" -f $rows.Count)
         $missing = ($rows | Where-Object { $_.Exists -ne 'YES' }).Count
@@ -110,7 +134,7 @@ steps:
         }
         Write-Host "##[endgroup]"
 
-        # Enforce (unchanged)
+        # Enforce: fail the step if any project is missing or not latest (if enforce=true)
         $shouldFail = $false
         if ("${{ parameters.enforce }}" -eq "True") {
           foreach ($r in $rows) {

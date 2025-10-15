@@ -1,9 +1,14 @@
-# Preflight: discover SBOMs → validate → build upload matrix
+# Step: Preflight SBOM discovery, validation, and upload matrix preparation
+
+# This step discovers all candidate SBOM files, validates them, and builds an upload matrix for downstream steps.
+#
 # Outputs:
-#   - preflight.UploadMatrixPath  : Path to JSON file with [{ FilePath, ProjectName, ProjectVersion }]
+#   - preflight.UploadMatrixPath: Path to a JSON file containing an array of objects with FilePath, ProjectName, and ProjectVersion.
+
 # Behavior:
-#   - ENV_NAME is optional. If missing, we log a warning but do not fail.
-#   - Does not assume an env tag exists; tags are handled upstream by build-project-tags.
+#   - ENV_NAME is optional. If missing, a warning is logged but the step does not fail.
+#   - Does not assume an environment tag exists; tags are handled upstream by build-project-tags.
+#   - If no valid SBOMs are found, the step fails.
 
 steps:
   - task: PowerShell@2
@@ -17,6 +22,7 @@ steps:
       pwsh: true
       targetType: inline
       script: |
+        # Set strict error handling so the script fails on any error
         $ErrorActionPreference = 'Stop'
 
         # Warn if ENV_NAME is missing, but do not fail
@@ -30,18 +36,18 @@ steps:
           throw "SBOM root not found at $sbomRoot. Ensure the 'Download SBOM artifact' step ran successfully."
         }
 
-        # Discover candidate SBOM files (JSON CycloneDX)
+        # Discover candidate SBOM files (JSON CycloneDX format)
         $files = Get-ChildItem -Path $sbomRoot -Recurse -File -Filter *.json -ErrorAction SilentlyContinue
         if (-not $files -or $files.Count -eq 0) {
           throw "No SBOM files (*.json) discovered under $sbomRoot."
         }
 
-        # Helpers
+        # Helper: Extracts the application name from SBOM metadata
         function Get-AppNameFromSbom([string]$path) {
           try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
         }
+        # Helper: Fallback to parent directory name if SBOM metadata is missing
         function Get-FallbackName([string]$path) {
-          # Use enclosing directory name if metadata is not present
           try {
             $dir = Split-Path $path -Parent
             $parent = Split-Path $dir -Leaf
@@ -50,12 +56,14 @@ steps:
           } catch { return (Split-Path $path -Leaf) }
         }
 
+        # Initialize the upload matrix and invalid counter
         $matrix = New-Object System.Collections.Generic.List[object]
         $invalid = 0
 
+        # Iterate through discovered SBOM files and validate each
         foreach ($f in $files) {
           $filePath = $f.FullName
-          # basic sanity checks
+          # Basic sanity check: skip empty files
           if ($f.Length -eq 0) { Write-Warning "Empty SBOM: $filePath"; $invalid++; continue }
 
           try { $json = Get-Content -Raw -LiteralPath $filePath | ConvertFrom-Json -ea Stop }
@@ -81,6 +89,7 @@ steps:
             Write-Warning "RELEASE_NUMBER is empty; using version placeholder 'unknown' for: $name"
           }
 
+          # Add valid SBOM entry to the upload matrix
           $matrix.Add([pscustomobject]@{
             FilePath       = $filePath
             ProjectName    = $name
@@ -88,14 +97,16 @@ steps:
           })
         }
 
+        # Fail if no valid SBOMs were found after validation
         if ($matrix.Count -eq 0) {
           throw "No valid SBOMs after preflight validation; cannot build upload matrix."
         }
 
-        # Persist the matrix to a temp file and expose as an output variable
+        # Persist the upload matrix to a temp file and expose as an output variable
         $outPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
         ($matrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $outPath -Encoding UTF8
 
+        # Output a summary of the preflight results
         Write-Host "##[section]Preflight summary → valid=$($matrix.Count), invalid=$invalid"
         Write-Host "Matrix path: $outPath"
 
