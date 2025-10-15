@@ -94,7 +94,7 @@ resources:
     - repository: templates
       type: github
       endpoint: shared-github
-      name: yourorg/Audacia.Build
+      name: 
 
 pool:
   vmImage: windows-latest
@@ -196,7 +196,7 @@ resources:
     - repository: templates
       type: github
       endpoint: shared-github
-      name: yourorg/Audacia.Build
+      name: 
 
 pool:
   vmImage: windows-latest
@@ -208,9 +208,9 @@ pool:
 # ---------------------------------------------------------------------------------
 
 variables:
-  - group: Audacia.Olympus.Dependency-Track
+  - group: Organisation.Project.Dependency-Track
   - name: CLIENT_NAME
-    value: Olympus
+    value: Project
 
   # Runtime config (edit defaults per repo/branch as needed)
   - name: ENV_NAME
@@ -235,13 +235,13 @@ variables:
 
   # Project paths and settings
   - name: ApiProjectPath
-    value: $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Api/Audacia.Olympus.Api.csproj
+    value: $(System.DefaultWorkingDirectory)/src/Organisation.Project.Api/Organisation.Project.Api.csproj
   - name: UiProjectPath
-    value: $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Ui/Audacia.Olympus.Ui.csproj
+    value: $(System.DefaultWorkingDirectory)/src/Organisation.Project.Ui/Organisation.Project.Ui.csproj
   - name: FunctionsProjectPath
-    value: $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Functions/Audacia.Olympus.Functions.csproj
+    value: $(System.DefaultWorkingDirectory)/src/Organisation.Project.Functions/Organisation.Project.Functions.csproj
   - name: UiNpmRoot
-    value: $(System.DefaultWorkingDirectory)/src/Audacia.Olympus.Ui/NpmJS
+    value: $(System.DefaultWorkingDirectory)/src/Organisation.Project.Ui/NpmJS
   - name: NodeVersion
     value: '20.x'
   - name: ArtifactName
