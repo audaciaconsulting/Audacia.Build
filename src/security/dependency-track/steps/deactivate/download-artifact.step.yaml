@@ -1,4 +1,4 @@
-# Template: optionally download SBOM artifact for project name derivation
+# Template: Download SBOM artifact for project name derivation
 parameters:
   # Parameter: artifactName
   # - Specifies the name of the artifact to download
@@ -21,7 +21,7 @@ steps:
   # - Always runs this step regardless of pipeline conditions
   - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
       - task: DownloadPipelineArtifact@2
-        displayName: "Try to download SBOM artifact (optional)"
+        displayName: "Try to download SBOM artifact"
         inputs:
           artifact: ${{ parameters.artifactName }}
           path: $(Agent.TempDirectory)/sbom

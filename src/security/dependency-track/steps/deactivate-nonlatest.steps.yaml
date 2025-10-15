@@ -19,7 +19,7 @@ parameters:
 
 steps:
   # Step 1: Optionally download SBOM artifact
-  - template: /src/security/dependency-track/steps/deactivate/optional-download-artifact.step.yaml@templates
+  - template: /src/security/dependency-track/steps/deactivate/download-artifact.step.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
