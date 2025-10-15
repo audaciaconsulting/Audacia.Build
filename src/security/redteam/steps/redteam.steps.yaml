@@ -95,13 +95,27 @@ steps:
       set -euo pipefail
       RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
       mkdir -p "$RESULTS_DIR"
-      echo "Running Promptfoo red team with config: ${{ parameters.configPath }}"
+
+      CONFIG_PATH="${{ parameters.configPath }}"
+      CONFIG_DIR="$(dirname "$CONFIG_PATH")"
+      CONFIG_FILE="$(basename "$CONFIG_PATH")"
+
+      echo "Running Promptfoo red team:"
+      echo "  Config dir:  $CONFIG_DIR"
+      echo "  Config file: $CONFIG_FILE"
+      echo "  Results dir: $RESULTS_DIR"
+
+      pushd "$CONFIG_DIR" >/dev/null
+
       npx promptfoo redteam eval \
-        --config "${{ parameters.configPath }}" \
+        --config "$CONFIG_FILE" \
         --output "$RESULTS_DIR/results.json" \
         --output "$RESULTS_DIR/report.html"
+
+      popd >/dev/null
     displayName: 'Run Promptfoo Red Team'
     env:
+      PYTHONPATH: $(System.DefaultWorkingDirectory)
       API_URL: ${{ parameters.apiUrl }}
       AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
       AUTH_CLIENT_ID: ${{ parameters.authClientId }}
