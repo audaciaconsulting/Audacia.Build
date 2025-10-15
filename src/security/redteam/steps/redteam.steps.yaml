@@ -64,25 +64,50 @@ steps:
       versionSpec: '20.x'
 
   # npm install
-  - ${{ if ne(parameters.npmWorkingDirectory, '') }}:
-      - script: |
-          set -euo pipefail
-          ABS_NPM_DIR="$(System.DefaultWorkingDirectory)/${{ parameters.npmWorkingDirectory }}"
-          echo "Repo root: $(System.DefaultWorkingDirectory)"
-          echo "Resolved npm working directory: $ABS_NPM_DIR"
-          cd "$ABS_NPM_DIR"
-          npm ci
-          npm install -g promptfoo
-          promptfoo --version
-        displayName: 'Install dependencies and Promptfoo'
-  - ${{ if eq(parameters.npmWorkingDirectory, '') }}:
-      - script: |
-          set -euo pipefail
-          echo "Repo root: $(System.DefaultWorkingDirectory)"
-          npm ci || true
-          npm install -g promptfoo
-          promptfoo --version
-        displayName: 'Install dependencies and Promptfoo'
+  - script: |
+      set -euo pipefail
+
+      ROOT="$(System.DefaultWorkingDirectory)"
+      echo "Repo root: ${ROOT}"
+
+      # Resolve ABS_NPM_DIR:
+      # 1) If npmWorkingDirectory provided and absolute, use it
+      # 2) If npmWorkingDirectory provided and relative, resolve under ROOT
+      # 3) Else fallback to the directory that contains configPath
+      RAW_DIR='${{ parameters.npmWorkingDirectory }}'
+      if [ -n "$RAW_DIR" ]; then
+        if [[ "$RAW_DIR" = /* ]]; then
+          ABS_NPM_DIR="$RAW_DIR"
+        else
+          ABS_NPM_DIR="${ROOT}/$RAW_DIR"
+        fi
+      else
+        ABS_NPM_DIR="${ROOT}/$(dirname '${{ parameters.configPath }}')"
+      fi
+
+      echo "Resolved npm working directory: ${ABS_NPM_DIR}"
+
+      # Try npm ci only if the folder exists AND contains a package manifest
+      if [ -d "${ABS_NPM_DIR}" ]; then
+        if [ -f "${ABS_NPM_DIR}/package-lock.json" ] || [ -f "${ABS_NPM_DIR}/package.json" ]; then
+          echo "Running npm ci in ${ABS_NPM_DIR}"
+          cd "${ABS_NPM_DIR}"
+          npm ci || npm install
+        else
+          echo "WARNING: No package.json or package-lock.json in ${ABS_NPM_DIR} — skipping npm ci"
+        fi
+      else
+        echo "WARNING: npm working directory not found: ${ABS_NPM_DIR} — skipping npm ci"
+        echo "Top-level tree under ${ROOT}:"
+        ls -la "${ROOT}" || true
+        echo "Repo tree (first 2 levels) to aid debugging:"
+        find "${ROOT}" -maxdepth 2 -type d -print | sort
+      fi
+
+      # Always install promptfoo globally so the red team run can proceed
+      npm install -g promptfoo
+      promptfoo --version
+    displayName: 'Install dependencies and Promptfoo'
 
   # Python for target script resolution
   - task: UsePythonVersion@0
