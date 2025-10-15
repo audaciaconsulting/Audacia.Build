@@ -22,7 +22,7 @@ steps:
 
         $NpmRootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/npm'
-        $IncludeLicenseTexts = $${{ parameters.includeLicenseTexts }}
+        $IncludeLicenseTexts = ${{ parameters.includeLicenseTexts }}
 
         $projects = @()
         try { $projects = $NpmRootsJson | ConvertFrom-Json } catch {
