@@ -27,7 +27,7 @@ steps:
         # If set, add it as a tag in the format `env:<ENV_NAME>`
         # If not set, log a warning but do not fail
         if ($env:ENV_NAME -and -not [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
-          $tags.Add("env:$env:ENV_NAME")
+          $tags.Add("env:$($env:ENV_NAME)")
         } else {
           Write-Warning "ENV_NAME is empty or not set; 'env:<NAME>' tag will be omitted."
         }
