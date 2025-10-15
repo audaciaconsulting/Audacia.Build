@@ -67,18 +67,14 @@ steps:
   - ${{ if ne(parameters.npmWorkingDirectory, '') }}:
       - script: |
           set -euo pipefail
-          ABS_NPM_DIR="$(System.DefaultWorkingDirectory)/${{ parameters.npmWorkingDirectory }}"
-          echo "Repo root: $(System.DefaultWorkingDirectory)"
-          echo "Resolved npm working directory: $ABS_NPM_DIR"
-          cd "$ABS_NPM_DIR"
           npm ci
           npm install -g promptfoo
           promptfoo --version
+        workingDirectory: ${{ parameters.npmWorkingDirectory }}
         displayName: 'Install dependencies and Promptfoo'
   - ${{ if eq(parameters.npmWorkingDirectory, '') }}:
       - script: |
           set -euo pipefail
-          echo "Repo root: $(System.DefaultWorkingDirectory)"
           npm ci || true
           npm install -g promptfoo
           promptfoo --version
@@ -104,7 +100,7 @@ steps:
       RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
       mkdir -p "$RESULTS_DIR"
 
-      CONFIG_PATH="$(System.DefaultWorkingDirectory)/${{ parameters.configPath }}"
+      CONFIG_PATH="${{ parameters.configPath }}"
       CONFIG_DIR="$(dirname "$CONFIG_PATH")"
       CONFIG_FILE="$(basename "$CONFIG_PATH")"
 
@@ -136,9 +132,9 @@ steps:
       set -euo pipefail
       RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
       JUNIT_ABS="$RESULTS_DIR/results.junit.xml"
-      CONVERTER="$(System.DefaultWorkingDirectory)/templates/src/security/redteam/scripts/promptfoo-to-junit.js"
       node --version
-      node "$CONVERTER" "$RESULTS_DIR/results.json" "$JUNIT_ABS"
+      node "$(System.DefaultWorkingDirectory)/templates/src/security/redteam/scripts/promptfoo-to-junit.js" \
+        "$RESULTS_DIR/results.json" "$JUNIT_ABS"
 
       echo "Verifying:"
       ls -la "$RESULTS_DIR" || true
@@ -151,7 +147,7 @@ steps:
     displayName: 'Publish Test Results (JUnit)'
     inputs:
       testResultsFormat: 'JUnit'
-      testResultsFiles: 'results/results.junit.xml'
+      testResultsFiles: '**/results.junit.xml'
       searchFolder: '$(System.DefaultWorkingDirectory)'
       mergeTestResults: true
       testRunTitle: 'Promptfoo Red Team'
@@ -162,7 +158,7 @@ steps:
   - ${{ if eq(parameters.publishJson, true) }}:
       - task: PublishBuildArtifacts@1
         inputs:
-          pathtoPublish: '$(System.DefaultWorkingDirectory)/results/results.json'
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/results.json'
           artifactName: 'promptfoo-redteam-results'
         condition: succeededOrFailed()
         displayName: 'Publish Red Team Results (JSON)'
@@ -170,7 +166,7 @@ steps:
   - ${{ if eq(parameters.publishHtml, true) }}:
       - task: PublishBuildArtifacts@1
         inputs:
-          pathtoPublish: '$(System.DefaultWorkingDirectory)/results/report.html'
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/report.html'
           artifactName: 'promptfoo-redteam-results'
         condition: succeededOrFailed()
         displayName: 'Publish Red Team Results (HTML)'
