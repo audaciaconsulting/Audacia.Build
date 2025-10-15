@@ -1,95 +1,57 @@
 # Step: Atomic uploads to Dependency-Track with internal rollback and token wait
 parameters:
-  # Parameter: failOnUploadError
-  # - If true, the step will fail if any upload errors occur.
   - name: failOnUploadError
     type: boolean
     default: true
-
-  # Parameter: enableRollback
-  # - If true, enables rollback of uploaded projects in case of failure.
   - name: enableRollback
     type: boolean
     default: true
-
-  # Parameter: validationOnly
-  # - If true, performs validation without uploading SBOMs.
   - name: validationOnly
     type: boolean
     default: false
-
-  # Parameter: bomProcessingTimeoutSec
-  # - Timeout in seconds for BOM processing.
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
-
-  # Parameter: parentProjectName
-  # - Optional name of the parent project for linkage.
+  # Optional parent project parameters (leave blank for no parent linkage)
   - name: parentProjectName
     type: string
     default: ' '
-
-  # Parameter: parentProjectVersion
-  # - Optional version of the parent project for linkage.
   - name: parentProjectVersion
     type: string
     default: ' '
 
 steps:
-  # Step: Upload SBOMs to Dependency-Track
-  # - Uploads SBOMs to Dependency-Track with atomic operations and rollback support.
-  # - Validates required environment variables and reads the upload matrix.
-  # - Supports optional parent project linkage and project tags.
   - task: PowerShell@2
     name: uploadScript
     displayName: "Upload SBOMs to Dependency-Track (Atomic + Rollback)"
     env:
-      # Environment Variables:
-      # - DT_API_URL: Dependency-Track API base URL.
-      # - DT_API_KEY: API key for authentication.
-      # - CLIENT_NAME: Name of the client.
-      # - ENV_NAME: Optional environment name (warns if missing).
-      # - RELEASE_NUMBER: Release number for the upload.
-      # - ADDITIONAL_TAGS: Additional tags for the project.
-      # - PROJECT_TAGS_CSV: CSV of project tags from a previous step.
-      # - UPLOAD_MATRIX_PATH: Path to the upload matrix file.
+      # API + context
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
       CLIENT_NAME: $(CLIENT_NAME)
-      ENV_NAME: $(ENV_NAME)
+      ENV_NAME: $(ENV_NAME)          # optional: warn if missing, never fail
       RELEASE_NUMBER: $(RELEASE_NUMBER)
       ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+      # Inputs from earlier steps
       PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv)
+      # Path produced by preflight step
       UPLOAD_MATRIX_PATH: $(preflight.UploadMatrixPath)
     inputs:
-      # Input: pwsh
-      # - Indicates that the script is written in PowerShell.
       pwsh: true
-
-      # Input: targetType
-      # - Specifies that the script is inline.
       targetType: inline
-
-      # Input: script
-      # - The PowerShell script to execute the upload process.
       script: |
-        # Set strict error handling
         $ErrorActionPreference = 'Stop'
 
-        # Warn if ENV_NAME is missing (optional)
         if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
           Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag."
         }
 
-        # Validate required Dependency-Track API environment variables
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
 
-        # Read upload matrix JSON file
         $matrixPath = $env:UPLOAD_MATRIX_PATH
         if (-not $matrixPath -or -not (Test-Path -LiteralPath $matrixPath)) {
           throw "Upload matrix file not found: $matrixPath"
@@ -103,7 +65,6 @@ steps:
           throw "Upload matrix is empty; nothing to upload."
         }
 
-        # Resolve optional parent project parameters from template parameters
         $ParentName    = '${{ parameters.parentProjectName }}'
         $ParentVersion = '${{ parameters.parentProjectVersion }}'
         if ($ParentName) {
@@ -112,26 +73,19 @@ steps:
           Write-Host "No parent project specified; uploads will not set parentName/parentVersion."
         }
 
-        # Handle validation-only mode (no uploads, just output empty results)
         if ("${{ parameters.validationOnly }}" -eq "True") {
           Write-Host "Validation-only mode enabled. Skipping upload."
-          # Still publish an empty rows array so later steps are happy
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true][]"
-          # Persist an empty rows file
           $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
           Set-Content -LiteralPath $rowsPath -Value '[]' -Encoding UTF8
           exit 0
         }
 
-        # Create and configure HttpClient for Dependency-Track API
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
         $http.Timeout = [TimeSpan]::FromMinutes(10)
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
-        # --- Helper Functions ---
-
-        # Invoke-DtApi: Helper to call Dependency-Track API with retry logic for transient errors
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
           $attempt = 0
           $lastErr = $null
@@ -164,7 +118,6 @@ steps:
           } while ($true)
         }
 
-        # Wait-BomProcessed: Polls for BOM processing completion using the provided token
         function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
           if (-not $token) { return $false }
           $deadline = (Get-Date).AddSeconds($timeoutSec)
@@ -188,10 +141,10 @@ steps:
             }
             Start-Sleep -Seconds 2
           }
+          Write-Warning "BOM token $token did not reach DONE within timeout."
           return $false
         }
 
-        # Get-ProjectByNameAndVersion: Looks up a project by name and version, returns project object or null
         function Get-ProjectByNameAndVersion([string]$projectName, [string]$projectVersion) {
           try {
             $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
@@ -201,9 +154,8 @@ steps:
           } catch { return $null }
         }
 
-        # Invoke-RollbackUploads: Attempts to delete or deactivate uploaded projects if rollback is enabled
         function Invoke-RollbackUploads {
-          if (-not "${{ parameters.enableRollback }}" -eq "True") {
+          if ("${{ parameters.enableRollback }}" -ne "True") {
             Write-Host "Rollback disabled, skipping cleanup"
             return
           }
@@ -237,12 +189,9 @@ steps:
           Write-Host "##[section]Rollback summary → deleted=$deletedOk, deactivated=$deactivatedOk, failed=$failed"
         }
 
-        # --- Main Upload Logic ---
-
-        # State tracking for uploaded projects and result rows
         $uploadedProjects = @()
         $rows = New-Object System.Collections.Generic.List[object]
-        $tagsCsv = $env:PROJECT_TAGS_CSV  # may be empty; do not assume env tag exists
+        $tagsCsv = $env:PROJECT_TAGS_CSV
 
         try {
           $uploaded = 0
@@ -272,29 +221,23 @@ steps:
             }
 
             try {
-              # Check if project already exists in Dependency-Track
               $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
 
-              # Prepare multipart form data for upload
               $mp = [System.Net.Http.MultipartFormDataContent]::new()
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
               $mp.Add([System.Net.Http.StringContent]::new($projectName), 'projectName')
               $mp.Add([System.Net.Http.StringContent]::new($projectVersion), 'projectVersion')
 
-              # Only send parent fields when a parent name is supplied
               if ($ParentName) {
                 $mp.Add([System.Net.Http.StringContent]::new($ParentName), 'parentName')
-                # Always send parentVersion field when name supplied (can be empty by design)
                 $mp.Add([System.Net.Http.StringContent]::new($ParentVersion), 'parentVersion')
               }
 
-              # Tags are optional and may be empty
               if ($tagsCsv -and $tagsCsv.Trim().Length -gt 0) {
                 $mp.Add([System.Net.Http.StringContent]::new($tagsCsv), 'projectTags')
               }
 
-              # Open SBOM file for upload
               $fs = [System.IO.File]::OpenRead($f.FullName)
               try {
                 $fileContent = [System.Net.Http.StreamContent]::new($fs)
@@ -308,12 +251,10 @@ steps:
                 throw "HTTP $($resp.StatusCode) - $body"
               }
 
-              # Parse response and extract BOM processing token
               $json = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
               $note = "token: $($json.token)"
               Write-Host "Uploaded OK: $($f.FullName)  ($note)"
 
-              # Track new projects for potential rollback
               if (-not $existingProject) {
                 $newProject = Get-ProjectByNameAndVersion $projectName $projectVersion
                 if ($newProject) {
@@ -327,10 +268,8 @@ steps:
               }
 
               $uploaded++
-              # Wait for BOM processing to complete (with timeout)
               [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
 
-              # Add result row for summary
               $rows.Add([pscustomobject]@{
                 File     = $f.Name
                 SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
@@ -340,12 +279,10 @@ steps:
                 Note     = $note
               })
             } catch {
-              # Mark that we need to rollback and capture error details
               $rollbackRequired = $true
               $err = $_.Exception.Message
               Write-Error "❌ Upload failed for $($f.FullName): $err"
 
-              # Add failed result row for summary
               $rows.Add([pscustomobject]@{
                 File     = $f.Name
                 SizeKB   = [int]((Get-Item $f.FullName).Length/1kb)
@@ -359,9 +296,8 @@ steps:
             } finally {
               Write-Host "##[endgroup]"
             }
-          } # end foreach item in matrix
+          }
 
-          # ---- Persist compact (Project, Version) rows for later steps ----
           $pairList = @()
           foreach ($r in $rows) {
             $pairList += @{ Project = $r.Project; Version = $r.Version }
@@ -369,10 +305,7 @@ steps:
           $rowsJson = ($pairList | ConvertTo-Json -Compress)
           if (-not $rowsJson) { $rowsJson = '[]' }
 
-          # Output variable (used by verify-project-state)
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$rowsJson"
-
-          # Persist rows to file (used by post-summary step)
           $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
           Set-Content -LiteralPath $rowsPath -Value $rowsJson -Encoding UTF8
 
@@ -380,12 +313,10 @@ steps:
         } catch {
           Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
 
-          # Rollback uploaded projects if needed
           if ($rollbackRequired -and $uploadedProjects.Count -gt 0) {
             Invoke-RollbackUploads
           }
 
-          # Persist whatever we collected so summaries/verifiers still run
           $pairList = @()
           foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
           $rowsJson = ($pairList | ConvertTo-Json -Compress)

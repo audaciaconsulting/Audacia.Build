@@ -6,69 +6,38 @@
 # Compares expected count vs actual *.json under $(Agent.TempDirectory)/sbom
 
 parameters:
-  # Parameter: strict
-  # - Determines whether the job should fail if counts don't match
   - name: strict
     type: boolean
-    default: true
-
-  # Parameter: dotnetProjectsMultiline
-  # - A multiline string containing paths to .NET projects
+    default: true  # if true, fail the job when counts don't match
   - name: dotnetProjectsMultiline
     type: string
     default: ''
-
-  # Parameter: npmRootsMultiline
-  # - A multiline string containing paths to npm project roots
   - name: npmRootsMultiline
     type: string
     default: ''
 
 steps:
-  # Step: Validate expected SBOMs were generated
-  # - Reads environment variables for .NET and npm project roots
-  # - Resolves expected SBOM counts from provided or resolved JSON
-  # - Compares expected SBOM counts with discovered SBOM files
-  # - Logs results and sets pipeline variables for diagnostics
-  # - Fails the job if strict mode is enabled and validation fails
   - task: PowerShell@2
     displayName: "Validate expected SBOMs were generated"
     env:
-      # Environment variable: DOTNET_PROJECTS_MULTILINE
-      # - Contains raw multiline .NET project paths
       DOTNET_PROJECTS_MULTILINE: ${{ parameters.dotnetProjectsMultiline }}
-
-      # Environment variable: NPM_ROOTS_MULTILINE
-      # - Contains raw multiline npm project paths
       NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}
-
-      # Environment variable: RESOLVED_DOTNET_JSON
-      # - Contains resolved .NET project roots in JSON format
       RESOLVED_DOTNET_JSON: $(resolveDotnetProjects.dotnetProjectsJson)
-
-      # Environment variable: RESOLVED_NPM_JSON
-      # - Contains resolved npm project roots in JSON format
       RESOLVED_NPM_JSON: $(resolveNpmRoots.npmRootsJson)
     inputs:
       pwsh: true
       targetType: inline
       script: |
-        # Stop execution on errors
         $ErrorActionPreference = 'Stop'
 
-        # Function: Get-ExpectedCountFromMultiline
-        # - Parses a multiline string to count valid, non-comment lines
         function Get-ExpectedCountFromMultiline([string]$text) {
           if (-not $text) { return 0 }
           ($text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }).Count
         }
 
-        # 1) Expected counts
-        # - Calculate expected SBOM counts for .NET and npm projects
         $expectedDotnet = Get-ExpectedCountFromMultiline $env:DOTNET_PROJECTS_MULTILINE
         $expectedNpm    = Get-ExpectedCountFromMultiline $env:NPM_ROOTS_MULTILINE
 
-        # Fallback to resolved JSON if explicit lists were not provided
         if ($expectedDotnet -eq 0 -and $env:RESOLVED_DOTNET_JSON) {
           try { $expectedDotnet = (@($env:RESOLVED_DOTNET_JSON | ConvertFrom-Json)).Count } catch { $expectedDotnet = 0 }
         }
@@ -76,43 +45,34 @@ steps:
           try { $expectedNpm = (@($env:RESOLVED_NPM_JSON | ConvertFrom-Json)).Count } catch { $expectedNpm = 0 }
         }
 
-        # Total expected SBOM count
         $expectedTotal = [int]$expectedDotnet + [int]$expectedNpm
 
-        # 2) Discovered SBOM files
-        # - Count SBOM files discovered in the temporary directory
         $root = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
         $found = 0
         if (Test-Path $root) {
           $found = (Get-ChildItem -Path $root -Recurse -Filter *.json -File -EA SilentlyContinue | Measure-Object).Count
         }
 
-        # Log validation results
         Write-Host "##[section]SBOM validation"
         Write-Host "Expected  : total=$expectedTotal (dotnet=$expectedDotnet, npm=$expectedNpm)"
         Write-Host "Discovered: total=$found   under $root"
 
-        # Export counters for diagnostics/conditions
         Write-Host "##vso[task.setvariable variable=sbomExpected]$expectedTotal"
         Write-Host "##vso[task.setvariable variable=sbomFound]$found"
 
-        # Strict mode: Fail the job if validation fails
         $strict = "${{ parameters.strict }}" -eq "True"
 
         if ($found -eq 0) {
           Write-Host "##vso[task.setvariable variable=sbomExists]false"
           $msg = "No SBOMs found."
-          if ($strict) { Write-Error "❌ $msg" } else { Write-Warning $msg }
-          exit 0
+          if ($strict) { Write-Error "❌ $msg"; exit 1 } else { Write-Warning $msg; exit 0 }
         }
 
         if ($expectedTotal -gt 0 -and $found -lt $expectedTotal) {
           Write-Host "##vso[task.setvariable variable=sbomExists]false"
           $msg = "Only found $found of $expectedTotal expected SBOM(s)."
-          if ($strict) { Write-Error "❌ $msg" } else { Write-Warning $msg }
-          exit 0
+          if ($strict) { Write-Error "❌ $msg"; exit 1 } else { Write-Warning $msg; exit 0 }
         }
 
-        # Success path
         Write-Host "All expected SBOM(s) present or validation criteria met."
         Write-Host "##vso[task.setvariable variable=sbomExists]true"

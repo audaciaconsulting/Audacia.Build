@@ -1,42 +1,29 @@
 # Template: deactivate non-latest project versions in Dependency-Track
 parameters:
-  # Parameter: projectNamesCsv
-  # - Specifies a comma-separated list of project names to process
   - name: projectNamesCsv
     type: string
     default: ''
+  # Optional parent container (project) name; when provided, deactivation is limited to siblings under this parent
+  - name: parentProjectName
+    type: string
+    default: ' '
 
 steps:
-  # Step: Deactivate non-latest versions in Dependency-Track
-  # - Uses PowerShell to deactivate non-latest project versions in Dependency-Track
-  # - Requires Dependency-Track API URL and API key to be set as environment variables
-  # - Processes a list of project names provided as a CSV
-  # - Deactivates all active, non-latest versions of the specified projects
   - task: PowerShell@2
     displayName: "Deactivate non-latest versions in Dependency-Track"
     env:
-      # Environment variable: PROJECT_NAMES_CSV
-      # - Contains the comma-separated list of project names to process
       PROJECT_NAMES_CSV: ${{ parameters.projectNamesCsv }}
-      # Environment variable: DT_API_URL
-      # - Dependency-Track API base URL
       DT_API_URL: $(DT_API_URL)
-      # Environment variable: DT_API_KEY
-      # - Dependency-Track API key
       DT_API_KEY: $(DT_API_KEY)
-      # Environment variable: ENV_NAME
-      # - Environment name for tagging
       ENV_NAME: $(ENV_NAME)
-      # Environment variable: ADDITIONAL_TAGS
-      # - Additional tags for projects
       ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
+      PARENT_PROJECT_NAME: ${{ parameters.parentProjectName }}
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # ---- Guard: ensure API URL/KEY are set ----
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
@@ -53,7 +40,6 @@ steps:
         $http.Timeout = [TimeSpan]::FromMinutes(10)
         $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
-        # Resilient API invoker with exponential backoff on 5xx or transient errors
         function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
           $attempt = 0
           $lastErr = $null
@@ -102,16 +88,14 @@ steps:
         }
 
         function Get-ProjectSiblings([string]$name, [string]$parentName) {
-          $candidates = Get-ProjectsByName -name $name | Where-Object { $_.parent -and $_.parent.name -eq $parentName }
-          if (-not $candidates -or $candidates.Count -eq 0) {
-            Write-Host "No siblings found under parent '$parentName'. Falling back to name-only search."
-            $candidates = Get-ProjectsByName -name $name
+          if ($parentName -and $parentName.Trim()) {
+            $candidates = Get-ProjectsByName -name $name | Where-Object { $_.parent -and $_.parent.name -eq $parentName }
+            if ($candidates -and $candidates.Count -gt 0) { return $candidates }
           }
-          return $candidates
+          return Get-ProjectsByName -name $name
         }
 
-        function Deactivate-NonLatest([string]$appName) {
-          $parentName = "$appName.ProjectContainer"
+        function Deactivate-NonLatest([string]$appName, [string]$parentName) {
           $siblings = Get-ProjectSiblings -name $appName -parentName $parentName
 
           $targets = $siblings | Where-Object {
@@ -120,7 +104,7 @@ steps:
           }
 
           $total = ($targets | Measure-Object).Count
-          Write-Host "Found $total non-latest active version(s) for project name '$appName'."
+          Write-Host "Found $total non-latest active version(s) for project name '$appName'." 
 
           $ok=0; $fail=0
           foreach ($s in $targets) {
@@ -132,7 +116,7 @@ steps:
               $fail++
               $msg = $_.Exception.Message
               if ($msg -match '(?i)forbidden|403') {
-                Write-Warning "Deactivate failed (Forbidden). Ensure DT_API_KEY has Project/Portfolio Management permissions and access to this project/tags. UUID=$($s.uuid)"
+                Write-Warning "Deactivate failed (Forbidden). Ensure DT_API_KEY has permission and PAC allows access. UUID=$($s.uuid)"
               } else {
                 Write-Warning "Deactivate failed for UUID=$($s.uuid): $msg"
               }
@@ -142,10 +126,17 @@ steps:
         }
 
         $projectNames = $env:PROJECT_NAMES_CSV -split ',' | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+        $parentName = $env:PARENT_PROJECT_NAME
+
+        if ($parentName -and $parentName.Trim()) {
+          Write-Host "Scoping deactivation to parent project: '$parentName'"
+        } else {
+          Write-Host "No parent project scope provided; deactivation will consider all siblings by name."
+        }
 
         $totalOk=0; $totalFail=0; $totalTargets=0
         foreach ($name in $projectNames) {
-          $res = Deactivate-NonLatest -appName $name
+          $res = Deactivate-NonLatest -appName $name -parentName $parentName
           $totalOk += [int]$res.ok
           $totalFail += [int]$res.fail
           $totalTargets += [int]$res.total
@@ -153,5 +144,5 @@ steps:
 
         Write-Host "##[section]Deactivation summary → candidates=$totalTargets, deactivated=$totalOk, failed=$totalFail"
         if ($totalFail -gt 0) {
-          Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY Project/Portfolio Management and ensure tag-based PAC allows access."
+          Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY appropriate permissions and ensure PAC/tag access."
         }
