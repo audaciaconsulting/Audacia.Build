@@ -1,15 +1,13 @@
 # Dependency-Track Pipeline Templates
 
-These Azure DevOps templates automate **SBOM generation**, **upload to OWASP Dependency-Track**, and optional **deactivation of non-latest project versions**.
-
-They support the repo layout we use most often: **Angular (npm) UI + .NET backend(s)** (APIs, Worker/Functions, etc.).
+These Azure DevOps templates automate SBOM generation, upload to OWASP Dependency-Track, and optional deactivation of non-latest project versions.
 
 ---
 
 ## What is Dependency-Track?
 
-[OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses **CycloneDX SBOMs** for your apps to surface **vulnerabilities**, **license issues**, and **policy violations** across your portfolio.
-Each upload creates or updates a **Project** and **Version** in Dependency-Track, which the platform monitors continuously.
+[OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses CycloneDX SBOMs for your applications to surface vulnerabilities, license issues, and policy violations across your portfolio.  
+Each upload creates or updates a project and version in Dependency-Track, which the platform monitors continuously.
 
 ---
 
@@ -17,8 +15,8 @@ Each upload creates or updates a **Project** and **Version** in Dependency-Track
 
 | Approach             | File                                 | When to use                                                                                       |
 | -------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| **Modular / Staged** | `dependency-track.pipeline.yaml`     | You want **Generate**, **Upload**, **Deactivate** as separate stages for control/visibility.      |
-| **End-to-End**       | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
+| Modular / Staged     | `dependency-track.pipeline.yaml`     | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
+| End-to-End           | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
 ---
 
@@ -26,19 +24,19 @@ Each upload creates or updates a **Project** and **Version** in Dependency-Track
 
 ### 1) Variable group with secrets
 
-Create an Azure DevOps variable group (per repo/team) that holds the Dependency-Track connection:
+Create an Azure DevOps variable group (per repo or team) that holds the Dependency-Track connection:
 
 | Variable     | Purpose                                                                                  | Example                                     |
 | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `DT_API_URL` | Dependency-Track API base URL                                                            | `https://api.dependency-track.audacia.tech` |
-| `DT_API_KEY` | API key issued to a Dependency-Track **Team** with permissions to upload/manage projects | `***secret***`                              |
+| `DT_API_KEY` | API key issued to a Dependency-Track team with permissions to upload and manage projects | `***secret***`                              |
 
-Recommended team permissions:
+Recommended team permissions:  
 `BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
 
-### 2) Variables you’ll configure in the pipeline
+### 2) Variables configured in the pipeline
 
-These are defined as **pipeline variables** within each YAML file or via the “Variables” tab in Azure DevOps.
+These are defined as pipeline variables within each YAML file or via the “Variables” tab in Azure DevOps.
 
 | Variable                 | Purpose                                                      | Example                    |
 | ------------------------ | ------------------------------------------------------------ | -------------------------- |
@@ -49,49 +47,47 @@ These are defined as **pipeline variables** within each YAML file or via the “
 | `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track              | `Audacia - Olympus`        |
 | `PARENT_PROJECT_VERSION` | Version of the parent (may be left empty)                    | `2025.10` or empty         |
 
-> ⚠️ **Parent projects must match on *both* Name and Version exactly** in Dependency-Track for the link to be set. If the version is left empty (or no exact match exists), uploads still succeed but no parent link is established.
+> ⚠️ Parent projects must match on both name and version exactly in Dependency-Track for the link to be set. If the version is left empty (or no exact match exists), uploads still succeed but no parent link is established.
 
 ---
 
 ## Typical repo layout (Angular + .NET)
 
-Most of our repos look like:
+Most repositories follow this structure:
 
 ```
+
 src/
- ├─ apis/src/YourProduct.Api/YourProduct.Api.csproj
- ├─ apis/src/YourProduct.Functions/YourProduct.Functions.csproj
- ├─ apis/src/YourProduct.Identity/YourProduct.Identity.csproj
- ├─ apis/src/YourProduct.Seeding/YourProduct.Seeding.csproj
- └─ apps/your-angular-app/              ← Angular project root (package.json / package-lock.json)
-```
+├─ apis/src/YourProduct.Api/YourProduct.Api.csproj
+├─ apis/src/YourProduct.Functions/YourProduct.Functions.csproj
+├─ apis/src/YourProduct.Identity/YourProduct.Identity.csproj
+├─ apis/src/YourProduct.Seeding/YourProduct.Seeding.csproj
+└─ apps/your-angular-app/              ← Angular project root (package.json / package-lock.json)
+
+````
 
 The templates will:
-
-* Generate **.NET SBOMs** via `dotnet CycloneDX` for each listed `.csproj`.
-* Generate an **npm SBOM** via `@cyclonedx/cyclonedx-npm` for each listed Angular root folder (where `package.json` lives).
+- Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
+- Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed Angular root folder (where `package.json` lives).  
   If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
 
 ---
 
-## ⚠️ Naming Note — check your project names
+## Naming note
 
-Before running the pipeline, **verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive**.
-
+Before running the pipeline, verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive.  
 Dependency-Track uses these names directly from the SBOMs to create or update projects.
 
 If these values are:
+- too generic (`"App"` or `"WebApplication1"`)
+- duplicated across repos
+- inconsistent with your team’s naming scheme
 
-* too generic (`"App"` or `"WebApplication1"`),
-* duplicated across repos, or
-* inconsistent with your team’s naming scheme,
+then Dependency-Track will show confusing or duplicate project entries.
 
-then **Dependency-Track will show confusing or duplicate project entries**.
-
-> ✅ Recommended convention:
->
-> * **Backends:** `Company.Product.Component` (e.g. `Audacia.Olympus.Api`)
-> * **Frontends:** `company-product-ui` (e.g. `audacia-olympus-ui`)
+Recommended naming conventions:
+- Backends: `Company.Product.Component` (e.g. `Audacia.Olympus.Api`)
+- Frontends: `company-product-ui` (e.g. `audacia-olympus-ui`)
 
 Ensure these names reflect the deployable artefact or service that will appear in reports.
 
@@ -99,13 +95,11 @@ Ensure these names reflect the deployable artefact or service that will appear i
 
 ## Option 1: Modular / Staged pipeline (recommended)
 
-**File in your repo:** `dependency-track.pipeline.yaml`
-
-This pattern is used by **Park Blue** and **Olympus** (Angular UI + .NET backends).
-
-Example (abridged):
+File in your repo: `dependency-track.pipeline.yaml`  
+This pattern is used by Park Blue and Olympus (Angular UI + .NET backends).
 
 ```yaml
+# Example (abridged)
 name: $(Date:yyyyMMdd)
 trigger: none
 pr: none
@@ -130,7 +124,7 @@ variables:
   - name: RELEASE_NUMBER
     value: $(Build.SourceBranchName)
   - name: ADDITIONAL_TAGS
-    value: ''   # e.g. "owner:team-olympus, service:tickets, priority:high"
+    value: ''
   - name: DEACTIVATE_OLD
     value: true
   - name: PARENT_PROJECT_NAME
@@ -144,9 +138,6 @@ variables:
     value: 'https://api.dependency-track.audacia.tech/api'
 
 stages:
-  # =========================
-  # 1) GENERATE STAGE
-  # =========================
   - stage: generate
     displayName: "Generate SBOMs (npm + .NET via CycloneDX)"
     jobs:
@@ -170,7 +161,6 @@ stages:
               artifactName: 'sbom-files'
               nodeVersion: '20.x'
 
-          # Export SBOM readiness to later stages
           - pwsh: |
               Write-Host "sbomExists=$(sbomExists)"
               if ('$(sbomExists)' -eq 'true') {
@@ -181,9 +171,6 @@ stages:
             name: exportSbomReady
             displayName: "Mark SBOM Generation Complete"
 
-  # =========================
-  # 2) UPLOAD STAGE
-  # =========================
   - stage: upload
     displayName: "Upload SBOMs to Dependency-Track"
     dependsOn: generate
@@ -199,9 +186,6 @@ stages:
               parentProjectName: $(PARENT_PROJECT_NAME)
               parentProjectVersion: $(PARENT_PROJECT_VERSION)
 
-  # =========================
-  # 3) DEACTIVATE STAGE (run standalone or after upload)
-  # =========================
   - stage: deactivate
     displayName: "Deactivate old Dependency-Track project versions"
     dependsOn: upload
@@ -215,15 +199,14 @@ stages:
             parameters:
               artifactName: 'sbom-files'
               tryDownloadArtifact: true
-```
+````
 
 ---
 
 ## Option 2: End-to-End (single job)
 
-**File in your repo:** `dependency-track-e2e.pipeline.yaml`
-
-Runs **Generate → Upload → Deactivate** in one job using variables.
+File in your repo: `dependency-track-e2e.pipeline.yaml`
+Runs Generate → Upload → Deactivate in one job using variables.
 
 ```yaml
 - template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
@@ -246,39 +229,39 @@ Runs **Generate → Upload → Deactivate** in one job using variables.
 
 ---
 
-## Project Tags in Dependency-Track
+## Project tags in Dependency-Track
 
 The upload step builds tags like:
 
 * `env:<ENV_NAME>` when `ENV_NAME` is set
-* Optional: any comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-olympus,service:tickets`)
+* Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-olympus,service:tickets`)
 
-Tags appear in Dependency-Track under each project and help with filtering, dashboards, and Portfolio Access Control.
+Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
 
 ---
 
-## Parent Project Linking
+## Parent project linking
 
-If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName`/`parentVersion` for each SBOM.
-Dependency-Track resolves the **parent by exact name and version**.
+If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.
+Dependency-Track resolves the parent by exact name and version.
 If there’s no exact match, the children still upload but will not be linked.
 
-> Use the convention **`"<Client> - <System>"`** for all parent project names to keep the portfolio consistent.
+Use the convention `"<Client> - <System>"` for all parent project names to keep the portfolio consistent.
 
 ---
 
-## Deactivate Non-Latest: what it actually does
+## Deactivate non-latest versions
 
-After a successful upload, older versions of each project (where `isLatest=false`) are set to **inactive**.
-This keeps the UI focused on the active release, while preserving history for audit.
+After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.
+This keeps the UI focused on the active release while preserving history for audit.
 
 ---
 
 ## Azure DevOps output
 
-* **Generate** → SBOM file list & counts
-* **Upload** → Markdown summary of projects and versions
-* **Deactivate** → Confirmation of inactive versions set
+* Generate → SBOM file list and counts
+* Upload → Markdown summary of projects and versions
+* Deactivate → Confirmation of inactive versions set
 
 ---
 
@@ -286,20 +269,18 @@ This keeps the UI focused on the active release, while preserving history for au
 
 | Symptom                      | Likely cause                     | Fix                                                                       |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
-| `401 Unauthorized` on upload | API key invalid/expired          | Regenerate in Dependency-Track; update variable group                     |
-| SBOM not linked to parent    | Name/version mismatch            | Ensure exact parent match exists in Dependency-Track                      |
+| `401 Unauthorized` on upload | API key invalid or expired       | Regenerate in Dependency-Track and update variable group                  |
+| SBOM not linked to parent    | Name or version mismatch         | Ensure exact parent match exists in Dependency-Track                      |
 | “No SBOM files to upload”    | Wrong paths or missing lockfiles | Check `.csproj` and Angular root paths; ensure `package-lock.json` exists |
 | Deactivate skipped           | SBOM artifact missing            | Keep `tryDownloadArtifact: true`                                          |
 
 ---
 
-## ✅ Quick start checklist
+## Quick start checklist
 
-* [ ] Variable group with `DT_API_URL` + `DT_API_KEY`
-* [ ] Correct `.csproj` and `package.json` names (see **⚠️ Naming Note**)
+* [ ] Variable group with `DT_API_URL` and `DT_API_KEY`
+* [ ] Correct `.csproj` and `package.json` names
 * [ ] Accurate project paths in pipeline
 * [ ] Parent project created in Dependency-Track
 * [ ] Parent project variables set (`"<Client> - <System>"`)
-* [ ] Pipeline variables defined:
-  `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
-
+* [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
