@@ -2,14 +2,12 @@
 parameters:
   # Parameter: artifactName
   # - Specifies the name of the artifact to download
-  # - Default value is 'sbom-files'
   - name: artifactName
     type: string
     default: 'sbom-files'
 
   # Parameter: tryDownloadArtifact
   # - Specifies whether to attempt downloading the SBOM artifact
-  # - Default value is true
   - name: tryDownloadArtifact
     type: boolean
     default: true

@@ -1,21 +1,31 @@
 # Template: setup Node.js and expose tooling paths
 parameters:
+  # Parameter: nodeVersion
+  # - Specifies the version of Node.js to use
   - name: nodeVersion
     type: string
     default: '20.x'
 
 steps:
-  # Use Node.js
+  # Step: Use Node.js
+  # - Configures the specified version of Node.js for the pipeline
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
 
-  # Setup Node.js tooling and expose paths
+  # Step: Setup Node.js tooling and expose paths
+  # - Resolves the paths for Node.js, npm, and npx executables
+  # - Adds the resolved paths to the system PATH
+  # - Exposes the resolved paths as pipeline variables for subsequent steps
   - powershell: |
+      # Stop execution on errors
       $ErrorActionPreference = 'Stop'
 
+      # Function: Get-NodeToolPaths
+      # - Resolves the paths for Node.js tooling based on the major version
+      # - Throws an error if the required tools are not found
       function Get-NodeToolPaths {
         param([string]$major = '20')
         $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
@@ -32,8 +42,10 @@ steps:
         [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
       }
 
+      # Resolve Node.js tooling paths for the specified major version
       $tool = Get-NodeToolPaths -major '20'
 
+      # Log the resolved Node.js tooling information
       Write-Host "##[group]Node tooling (resolved)"
       & $tool.Node --version
       & $tool.Npm  --version
@@ -41,9 +53,11 @@ steps:
       Write-Host "Resolved bin: $($tool.Bin)"
       Write-Host "##[endgroup]"
 
+      # Add the resolved bin directory to the system PATH
       Write-Host "##vso[task.prependpath]$($tool.Bin)"
       $env:PATH = "$($tool.Bin);$env:PATH"
 
+      # Expose the resolved paths as pipeline variables
       Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($tool.Bin)"
       Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($tool.Node)"
       Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($tool.Npm)"

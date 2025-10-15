@@ -2,7 +2,6 @@
 parameters:
   # Parameter: projectNamesCsv
   # - Specifies a comma-separated list of project names to process
-  # - Default value is an empty string
   - name: projectNamesCsv
     type: string
     default: ''

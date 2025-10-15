@@ -1,19 +1,34 @@
-# Template: log environment/parameters and discover npm manifests in one step
+# This YAML file defines a step template for logging environment variables and parameters,
+# as well as discovering npm manifests (package.json and package-lock.json files) in a workspace.
+
 parameters:
+  # Parameter: npmRootsMultiline
+  # Description: A multiline string containing paths to specific npm root directories to scan.
   - name: npmRootsMultiline
     type: string
     default: ''
+
+  # Parameter: includeLicenseTexts
+  # Description: A boolean flag indicating whether to include license texts in the output.
   - name: includeLicenseTexts
     type: boolean
     default: true
+
+  # Parameter: requireAllExpectedSboms
+  # Description: A boolean flag indicating whether all expected SBOMs (Software Bill of Materials) are required.
   - name: requireAllExpectedSboms
     type: boolean
     default: true
 
 steps:
+  # Step: Log environment variables and discover npm manifests
+  # Description: This step logs key environment variables and parameters, then scans for npm manifests
+  # (package.json and package-lock.json files) either in specified directories or the entire workspace.
   - pwsh: |
+      # Set the error action preference to stop on errors
       $ErrorActionPreference = 'Stop'
 
+      # Log environment variables and parameters
       Write-Host "##[group]Environment & Parameters"
       Write-Host "Agent.OS: $env:AGENT_OS"
       Write-Host "Output format: JSON (forced)"
@@ -23,10 +38,13 @@ steps:
       Write-Host "Sources: $(System.DefaultWorkingDirectory)"
       Write-Host "##[endgroup]"
 
+      # Read and process the npmRootsMultiline parameter
       $rootsText = ($env:NPM_ROOTS_MULTILINE ?? '').Trim()
 
+      # Log and discover npm manifests
       Write-Host "##[group]Debug: list npm manifests"
       if ($rootsText) {
+        # If specific npm roots are provided, scan those directories
         Write-Host "Scanning npm roots from parameter:"
         $roots = $rootsText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
         foreach ($r in $roots) {
@@ -37,6 +55,7 @@ steps:
           Get-ChildItem -Path $r -Recurse -Filter package.json -File -EA SilentlyContinue | Select-Object -Expand FullName
         }
       } else {
+        # If no npm roots are provided, scan the entire workspace
         Write-Host "Scanning entire workspace (no npmRootsMultiline provided)"
         "---- package-lock.json files ----"
         Get-ChildItem -Path '$(System.DefaultWorkingDirectory)' -Recurse -Filter package-lock.json -File -EA SilentlyContinue |
@@ -48,6 +67,7 @@ steps:
       Write-Host "##[endgroup]"
     displayName: "Log env & discover npm manifests"
     env:
+      # Map the parameters to environment variables for use in the script
       NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}
       INCLUDE_LICENSE_TEXTS: ${{ parameters.includeLicenseTexts }}
       REQUIRE_ALL_EXPECTED_SBOMS: ${{ parameters.requireAllExpectedSboms }}

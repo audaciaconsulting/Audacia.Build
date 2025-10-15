@@ -1,48 +1,68 @@
 # Template: generate npm SBOMs using CycloneDX
+# This YAML file defines a pipeline step for generating Software Bill of Materials (SBOMs)
+# for npm projects using CycloneDX. It includes parameters and steps for creating SBOMs
+# in JSON format, with optional inclusion of license texts.
+
 parameters:
+  # Parameter: includeLicenseTexts
+  # A boolean parameter to determine whether license texts should be included in the SBOMs.
   - name: includeLicenseTexts
     type: boolean
     default: true
 
 steps:
-  # Generate npm SBOMs (CycloneDX, JSON)
+  # Step: Generate npm SBOMs (CycloneDX, JSON)
+  # This step generates SBOMs for npm projects in JSON format using CycloneDX.
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
     inputs:
       targetType: inline
       script: |
+        # Create directories for storing SBOMs
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
-        
+
+        # Set error handling to stop on errors
         $ErrorActionPreference = 'Stop'
 
         # Use cached tool paths if present
         if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
 
-        # Route npm's download cache to the cached folder (works on hosted agents)
+        # Configure npm to use a cached folder for downloads
         npm config set cache "$(Pipeline.Workspace)/.npm" --global | Out-Null
 
+        # Retrieve the JSON string of npm project roots
         $NpmRootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/npm'
         $IncludeLicenseTexts = $${{ parameters.includeLicenseTexts }}
 
+        # Initialize an array to store project paths
         $projects = @()
-        try { $projects = $NpmRootsJson | ConvertFrom-Json } catch {
+        try {
+          # Convert the JSON string to an array of project paths
+          $projects = $NpmRootsJson | ConvertFrom-Json
+        } catch {
+          # Log a warning if the JSON is invalid
           Write-Host "##vso[task.logissue type=warning]Invalid npmRootsJson: $NpmRootsJson"
           $projects = @()
         }
 
+        # Check if any projects are found
         $count = ($projects | Measure-Object).Count
         if ($count -eq 0) {
+          # Log a summary and exit if no projects are discovered
           Write-Host "##[section]npm summary → ok=0, failed=0"
           Write-Host "##vso[task.logissue type=warning]No npm projects discovered. Set npmRootsMultiline or commit lockfiles."
           exit 0
         }
 
+        # Initialize counters for successful and failed SBOM generations
         $npmOk = 0; $npmFail = 0
         $format = 'json'; $fileExt = 'json'
 
+        # Loop through each project path to generate SBOMs
         foreach ($proj in $projects) {
+          # Derive a safe directory name from the project path
           $name = Split-Path $proj -Leaf
           if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
           $safe = ($name -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
@@ -53,38 +73,43 @@ steps:
           Write-Host "##[group]JS SBOM → $proj"
           Push-Location $proj
           try {
+            # Check for the presence of a package-lock.json file
             $lockPath = Join-Path $proj 'package-lock.json'
             $hasLock = Test-Path -LiteralPath $lockPath
 
-            # If no lockfile, create one and install once (fast flags)
+            # If no lockfile exists, create one and perform a minimal install
             if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
               npm install --package-lock-only --ignore-scripts --no-audit --no-fund
               $hasLock = Test-Path -LiteralPath $lockPath
               if (-not $hasLock) { throw "Failed to create package-lock.json" }
 
-              # Minimal install to ensure resolution for projects without lock fidelity
+              # Perform a minimal install to ensure resolution
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
 
-            # Build cyclonedx-npm args
+            # Build arguments for the CycloneDX npm tool
             $args = @('--output-format', $format, '--output-file', $outFile)
             if ($IncludeLicenseTexts) { $args += @('--gather-license-texts') }
             if ($hasLock) { $args += @('--package-lock-only') }
 
-            # Generate from lockfile when present (skips node_modules traversal)
+            # Generate the SBOM using CycloneDX
             npx --yes -p @cyclonedx/cyclonedx-npm@latest cyclonedx-npm @args
 
+            # Check if the output file was created successfully
             if (Test-Path $outFile) { $npmOk++ } else { $npmFail++ }
           } catch {
+            # Log a warning if SBOM generation fails
             Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"
             $npmFail++
           } finally {
+            # Restore the previous working directory
             Pop-Location | Out-Null
             Write-Host "Output: $outFile"
             Write-Host "##[endgroup]"
           }
         }
 
+        # Log a summary of the SBOM generation results
         Write-Host "##[section]npm summary → ok=$npmOk, failed=$npmFail"
         if ($npmFail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed" }
         if ($npmFail -gt 0) { exit 1 }

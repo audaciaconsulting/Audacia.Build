@@ -12,23 +12,36 @@ steps:
         # Stop execution on errors
         $ErrorActionPreference = 'Stop'
 
+        # Group log messages for better readability in the pipeline output
         Write-Host "##[group]Install CycloneDX .NET tool"
 
-        # Attempt to update the CycloneDX .NET tool; install it if the update fails
+        # Attempt to update the CycloneDX .NET global tool
+        # If the update fails, install the tool instead
         dotnet tool update --global CycloneDX
         if ($LASTEXITCODE -ne 0) {
+          # Install the CycloneDX .NET global tool
           dotnet tool install --global CycloneDX
-          if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
+          if ($LASTEXITCODE -ne 0) { 
+            # Throw an error if the installation fails
+            throw "Failed to install CycloneDX .NET tool" 
+          }
         }
 
         # Add the .NET tools directory to the PATH environment variable
+        # This ensures the CycloneDX CLI is accessible from the command line
         $dotnetTools = "$env:USERPROFILE\.dotnet\tools"
         $env:PATH = "$dotnetTools;$env:PATH"
+        # Prepend the tools directory to the PATH for the current task
         Write-Host "##vso[task.prependpath]$dotnetTools"
 
         # Verify the installation by checking the CycloneDX CLI version
+        # This ensures the tool is correctly installed and functional
         dotnet CycloneDX --version
-        if ($LASTEXITCODE -ne 0) { throw "CycloneDX CLI not found after install." }
+        if ($LASTEXITCODE -ne 0) { 
+          # Throw an error if the CLI is not found
+          throw "CycloneDX CLI not found after install." 
+        }
 
+        # Log the installation directory and end the grouped log messages
         Write-Host "Installed tools in: $dotnetTools"
         Write-Host "##[endgroup]"

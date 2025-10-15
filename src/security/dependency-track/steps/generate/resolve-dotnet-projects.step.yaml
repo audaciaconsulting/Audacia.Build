@@ -1,20 +1,18 @@
 # Template: resolve .NET projects from multiline parameter
+# This YAML file defines a step to process a multiline string parameter containing paths to .NET projects.
+# It splits the string into individual paths, filters out invalid lines, and outputs the result as a JSON array.
+
 parameters:
   # Parameter: dotnetProjectsMultiline
-  # - A multiline string containing paths to .NET projects
-  # - Default value is an empty string
+  # - A multiline string containing paths to .NET projects.
+  # - Each line represents a project path.
+  # - Lines starting with '#' or empty lines are ignored.
+  # - Default value is an empty string.
   - name: dotnetProjectsMultiline
     type: string
     default: ''
 
 steps:
-  # Step: Resolve .NET project paths
-  # - Uses PowerShell to process the `dotnetProjectsMultiline` parameter
-  # - Splits the multiline string into individual project paths
-  # - Filters out empty lines and comments (lines starting with '#')
-  # - Logs each resolved project path for debugging purposes
-  # - Converts the list of project paths into a JSON array
-  # - Sets the JSON array as an output variable `dotnetProjectsJson` for use in subsequent steps
   - task: PowerShell@2
     displayName: "Resolve .NET project paths"
     inputs:
@@ -26,11 +24,15 @@ steps:
         # Read the multiline parameter containing project paths
         $ProjectsMultiline = '${{ parameters.dotnetProjectsMultiline }}'
 
+        # Log the start of the .NET projects group
         Write-Host "##[group].NET projects"
 
-        # Split the multiline string into individual paths, trim whitespace, and filter out invalid lines
+        # Split the multiline string into individual paths
+        # - Trim whitespace from each line
+        # - Filter out empty lines and lines starting with '#'
         $projPaths = $ProjectsMultiline -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
 
+        # Log each valid project path
         $projPaths | ForEach-Object { Write-Host "Path: $_" }
 
         # End the .NET projects group log
@@ -43,6 +45,7 @@ steps:
         # Set the JSON array as an output variable for use in subsequent steps
         Write-Host "##vso[task.setvariable variable=dotnetProjectsJson;isOutput=true]$dotnetProjectsJson"
 
+        # Log the resolved JSON array
         Write-Host "Resolved .NET projects JSON: $dotnetProjectsJson"
       pwsh: true
     name: resolveDotnetProjects

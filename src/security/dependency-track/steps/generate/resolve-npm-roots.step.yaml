@@ -41,20 +41,25 @@ steps:
         # Process roots from the parameter
         if ($rootsParam.Count -gt 0) {
             foreach ($r in $rootsParam) {
+                # Check if the directory contains a package.json file
                 if (Test-Path (Join-Path $r 'package.json')) {
                     [void]$projects.Add($r)
                     Write-Host "Root (param): $r"
                 } else {
+                    # Warn if package.json is not found in the specified path
                     Write-Warning "package.json not found under: $r (skipped)"
                 }
             }
         } else {
             # Auto-discover roots if no parameter is provided
             if ($locks_npm.Count -gt 0) {
+                # Add directories containing package-lock.json files
                 foreach ($l in $locks_npm) { [void]$projects.Add($l.Directory.FullName) }
             } elseif ($pkgs.Count -gt 0) {
+                # Add directories containing package.json files
                 foreach ($p in $pkgs) { [void]$projects.Add($p.Directory.FullName) }
             }
+            # Remove duplicate entries and log the discovered roots
             $projects = $projects | Select-Object -Unique
             foreach ($p in $projects) { Write-Host "Root (auto): $p" }
         }
