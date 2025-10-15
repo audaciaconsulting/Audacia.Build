@@ -34,11 +34,11 @@ Create an Azure DevOps variable group (per repo/team) that holds the Dependency-
 | `DT_API_KEY` | API key issued to a Dependency-Track **Team** with permissions to upload/manage projects | `***secret***`                              |
 
 Recommended team permissions:
-`ACCESS_MANAGEMENT`, `BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
+`BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
 
 ### 2) Variables you’ll configure in the pipeline
 
-These are defined as **pipeline variables** (not parameters) within each YAML file or via the “Variables” tab in Azure DevOps.
+These are defined as **pipeline variables** within each YAML file or via the “Variables” tab in Azure DevOps.
 
 | Variable                 | Purpose                                                      | Example                    |
 | ------------------------ | ------------------------------------------------------------ | -------------------------- |
@@ -60,6 +60,7 @@ Most of our repos look like:
 ```
 src/
  ├─ apis/src/YourProduct.Api/YourProduct.Api.csproj
+ ├─ apis/src/YourProduct.Functions/YourProduct.Functions.csproj
  ├─ apis/src/YourProduct.Identity/YourProduct.Identity.csproj
  ├─ apis/src/YourProduct.Seeding/YourProduct.Seeding.csproj
  └─ apps/your-angular-app/              ← Angular project root (package.json / package-lock.json)
@@ -100,7 +101,7 @@ Ensure these names reflect the deployable artefact or service that will appear i
 
 **File in your repo:** `dependency-track.pipeline.yaml`
 
-This is the pattern used by **Park Blue** (Angular UI + .NET backends).
+This pattern is used by **Park Blue** and **Olympus** (Angular UI + .NET backends).
 
 Example (abridged):
 
@@ -115,12 +116,11 @@ resources:
       type: github
       endpoint: shared-github
       name: audaciaconsulting/Audacia.Build
-      ref: refs/heads/feature/201961-refactor-dependency-track-pipeline-into-github-templates
 
 pool:
   vmImage: windows-latest
 
-# Central variables (API URL/KEY should live in the  variable group as secrets)
+# Central variables (API URL/KEY should live in the variable group as secrets)
 variables:
   - group: ParkBlue.SaferRecruitment.Dependency-Track
   - name: CLIENT_NAME
@@ -137,8 +137,11 @@ variables:
     value: 'Park Blue - Safer Recruitment'
   - name: PARENT_PROJECT_VERSION
     value: ''
-  - name: includeLicenseTexts
-    value: false
+
+  - name: DT_API_KEY
+    value: $(DT-API-KEY)
+  - name: DT_API_URL
+    value: 'https://api.dependency-track.audacia.tech/api'
 
 stages:
   # =========================
@@ -166,9 +169,8 @@ stages:
               publishArtifact: true
               artifactName: 'sbom-files'
               nodeVersion: '20.x'
-              includeLicenseTexts: ${{ variables.includeLicenseTexts }}
 
-          # Convert the in-job sbomExists variable into an **output** variable usable by later stages
+          # Export SBOM readiness to later stages
           - pwsh: |
               Write-Host "sbomExists=$(sbomExists)"
               if ('$(sbomExists)' -eq 'true') {
@@ -177,7 +179,7 @@ stages:
                 Write-Host "##vso[task.setvariable variable=sbomReady;isOutput=true]false"
               }
             name: exportSbomReady
-            displayName: "Export SBOM readiness as stage output"
+            displayName: "Mark SBOM Generation Complete"
 
   # =========================
   # 2) UPLOAD STAGE
@@ -185,7 +187,6 @@ stages:
   - stage: upload
     displayName: "Upload SBOMs to Dependency-Track"
     dependsOn: generate
-    # Only run if generate succeeded AND we actually have SBOMs
     condition: and(succeeded('generate'), eq(dependencies.generate.outputs['generate_sbom.exportSbomReady.sbomReady'], 'true'))
     jobs:
       - job: upload_sbom
@@ -204,7 +205,6 @@ stages:
   - stage: deactivate
     displayName: "Deactivate old Dependency-Track project versions"
     dependsOn: upload
-    # Only run if upload succeeded AND the toggle is true
     condition: and(succeeded('upload'), eq(variables.DEACTIVATE_OLD, true))
     jobs:
       - job: deactivate_old_versions
@@ -223,7 +223,7 @@ stages:
 
 **File in your repo:** `dependency-track-e2e.pipeline.yaml`
 
-Runs **Generate → Upload → Deactivate** in one job, using variables.
+Runs **Generate → Upload → Deactivate** in one job using variables.
 
 ```yaml
 - template: /src/security/dependency-track/steps/audit-dependencies.steps.yaml@templates
@@ -237,7 +237,6 @@ Runs **Generate → Upload → Deactivate** in one job, using variables.
     publishArtifact: true
     artifactName: sbom-files
     nodeVersion: '20.x'
-    includeLicenseTexts: true
     failOnUploadError: true
     parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
     parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
