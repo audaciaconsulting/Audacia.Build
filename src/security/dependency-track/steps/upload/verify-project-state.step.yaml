@@ -21,7 +21,7 @@ parameters:
     default: false  # if true, fail if any project isn't latest / can't be found
   - name: echoDetails
     type: boolean
-    default: true   # NEW: echo row-by-row results to console
+    default: true
 
 steps:
   - task: PowerShell@2
