@@ -24,15 +24,11 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 ### 1) Variable group with secrets
 
-Create an Azure DevOps variable group (per DevOps project) that holds the Dependency-Track connection:
+The API key for your Dependency-Track instance must be stored in a variable group that is linked to the pipeline. You can store this key as a secret in a standard variable group or in a variable group connected to Azure Key Vault.
 
-| Variable     | Purpose                                                                                  | Example                                     |
-| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `DT_API_URL` | Dependency-Track API base URL                                                            | `https://api.dependency-track.audacia.tech` |
-| `DT_API_KEY` | API key issued to a Dependency-Track team with permissions to upload and manage projects | `***secret***`                              |
+If your project is hosted in the Audacia GitHub organization, create a variable group and link it to our Azure Key Vault.
 
-Recommended team permissions:  
-`BOM_UPLOAD`, `PORTFOLIO_MANAGEMENT`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO`.
+If your project is hosted in a different organization, you can store the key as a secret or use a variable group linked to a different Azure Key Vault.
 
 ### 2) Variables configured in the pipeline
 
