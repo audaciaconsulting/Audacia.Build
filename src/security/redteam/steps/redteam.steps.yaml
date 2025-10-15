@@ -126,36 +126,26 @@ steps:
   # Run Promptfoo Red Team
   - script: |
       set -euo pipefail
+      RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
+      mkdir -p "$RESULTS_DIR"
 
-      ROOT="$(System.DefaultWorkingDirectory)"
-      RESULTS_DIR="${ROOT}/results"
-      mkdir -p "${RESULTS_DIR}"
-
-      RAW_CONFIG='${{ parameters.configPath }}'
-      # If RAW_CONFIG is absolute, use it as-is; else resolve under ROOT
-      if [[ "${RAW_CONFIG}" = /* ]]; then
-        CONFIG_PATH="${RAW_CONFIG}"
-      else
-        CONFIG_PATH="${ROOT}/${RAW_CONFIG}"
-      fi
+      CONFIG_PATH="$(System.DefaultWorkingDirectory)/${{ parameters.configPath }}"
+      CONFIG_DIR="$(dirname "$CONFIG_PATH")"
+      CONFIG_FILE="$(basename "$CONFIG_PATH")"
 
       echo "Running Promptfoo red team:"
-      echo "  Root:        ${ROOT}"
-      echo "  Config path: ${CONFIG_PATH}"
-      echo "  Results dir: ${RESULTS_DIR}"
+      echo "  Config dir:  $CONFIG_DIR"
+      echo "  Config file: $CONFIG_FILE"
+      echo "  Results dir: $RESULTS_DIR"
 
-      if [ ! -f "${CONFIG_PATH}" ]; then
-        echo "ERROR: Config file not found at ${CONFIG_PATH}"
-        echo "Repo tree (first 3 levels) to aid debugging:"
-        find "${ROOT}" -maxdepth 3 -type f -name 'redteam.yaml' -print | sort || true
-        exit 2
-      fi
+      pushd "$CONFIG_DIR" >/dev/null
 
-      # No need to pushd; use absolute --config
       npx promptfoo redteam eval \
-        --config "${CONFIG_PATH}" \
-        --output "${RESULTS_DIR}/results.json" \
-        --output "${RESULTS_DIR}/report.html"
+        --config "$CONFIG_FILE" \
+        --output "$RESULTS_DIR/results.json" \
+        --output "$RESULTS_DIR/report.html"
+
+      popd >/dev/null
     displayName: 'Run Promptfoo Red Team'
     env:
       PYTHONPATH: $(System.DefaultWorkingDirectory)
