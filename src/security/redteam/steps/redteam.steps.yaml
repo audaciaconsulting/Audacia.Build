@@ -53,10 +53,6 @@ steps:
   - checkout: self
     clean: true
 
-  - checkout: templates
-    clean: true
-    path: s/templates
-
   # Node for Promptfoo
   - task: NodeTool@0
     displayName: 'Install Node.js 20'
@@ -135,7 +131,6 @@ steps:
       node --version
       node "$(System.DefaultWorkingDirectory)/templates/src/security/redteam/scripts/promptfoo-to-junit.js" \
         "$RESULTS_DIR/results.json" "$JUNIT_ABS"
-
       echo "Verifying:"
       ls -la "$RESULTS_DIR" || true
       head -n 2 "$JUNIT_ABS" || true
