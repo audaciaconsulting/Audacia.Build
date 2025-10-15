@@ -1,0 +1,153 @@
+parameters:
+  # Path to your redteam.yaml config file
+  - name: configPath
+    type: string
+    default: ''
+
+  # Optional path to your npm working directory
+  - name: npmWorkingDirectory
+    type: string
+    default: ''
+
+  # Should publish HTML result artifact?
+  - name: publishHtml
+    type: boolean
+    default: true
+
+  # Should publish Json result artifact?
+  - name: publishJson
+    type: boolean
+    default: true
+
+  # LLM Api Url
+  - name: apiUrl
+    type: string
+    default: ''
+
+  # Auth token URL
+  - name: authTokenUrl
+    type: string
+    default: ''
+
+  # Auth client id
+  - name: authClientId
+    type: string
+    default: ''
+
+  # Auth client secret
+  - name: authClientSecret
+    type: string
+    default: ''
+
+  # Auth client scope
+  - name: authClientScope
+    type: string
+    default: ''
+
+  # Chosen LLM Model
+  - name: chosenModel
+    type: string
+    default: '100'
+
+steps:
+  - checkout: self
+    clean: true
+
+  # Node for Promptfoo
+  - task: NodeTool@0
+    displayName: 'Install Node.js 20'
+    inputs:
+      versionSpec: '20.x'
+
+  # npm install
+  - ${{ if ne(parameters.npmWorkingDirectory, '') }}:
+      - script: |
+          set -euo pipefail
+          npm ci
+          npm install -g promptfoo
+          promptfoo --version
+        workingDirectory: ${{ parameters.npmWorkingDirectory }}
+        displayName: 'Install dependencies and Promptfoo'
+  - ${{ if eq(parameters.npmWorkingDirectory, '') }}:
+      - script: |
+          set -euo pipefail
+          npm ci || true
+          npm install -g promptfoo
+          promptfoo --version
+        displayName: 'Install dependencies and Promptfoo'
+
+  # Python for target script resolution
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.12'
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+
+  - script: |
+      set -euo pipefail
+      python --version
+      python -m pip install --upgrade pip
+      python -m pip install oauthlib pydantic python-dotenv requests requests-oauthlib
+    displayName: 'Install Python dependencies'
+
+  # Run Promptfoo Red Team
+  - script: |
+      set -euo pipefail
+      RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
+      mkdir -p "$RESULTS_DIR"
+      echo "Running Promptfoo red team with config: ${{ parameters.configPath }}"
+      npx promptfoo redteam eval \
+        --config "${{ parameters.configPath }}" \
+        --output "$RESULTS_DIR/results.json" \
+        --output "$RESULTS_DIR/report.html"
+    displayName: 'Run Promptfoo Red Team'
+    env:
+      API_URL: ${{ parameters.apiUrl }}
+      AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
+      AUTH_CLIENT_ID: ${{ parameters.authClientId }}
+      AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
+      AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
+      CHOSEN_MODEL: ${{ parameters.chosenModel }}
+
+  # Convert JSON to JUnit
+  - script: |
+      set -euo pipefail
+      RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
+      JUNIT_ABS="$RESULTS_DIR/results.junit.xml"
+      node --version
+      node $(Agent.BuildDirectory)/src/security/redteam/scripts/promptfoo-to-junit.js \
+        "$RESULTS_DIR/results.json" "$JUNIT_ABS"
+      echo "Verifying:"
+      ls -la "$RESULTS_DIR" || true
+      head -n 2 "$JUNIT_ABS" || true
+    displayName: 'Convert Promptfoo results to JUnit XML'
+    condition: succeededOrFailed()
+
+  # Publish JUnit to Tests tab
+  - task: PublishTestResults@2
+    displayName: 'Publish Test Results (JUnit)'
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/results.junit.xml'
+      searchFolder: '$(System.DefaultWorkingDirectory)'
+      mergeTestResults: true
+      testRunTitle: 'Promptfoo Red Team'
+      failTaskOnMissingResults: true
+    condition: succeededOrFailed()
+
+  # Optional: publish JSON/HTML artifacts
+  - ${{ if eq(parameters.publishJson, true) }}:
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/results.json'
+          artifactName: 'promptfoo-redteam-results'
+        condition: succeededOrFailed()
+        displayName: 'Publish Red Team Results (JSON)'
+
+  - ${{ if eq(parameters.publishHtml, true) }}:
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/report.html'
+          artifactName: 'promptfoo-redteam-results'
+        condition: succeededOrFailed()
+        displayName: 'Publish Red Team Results (HTML)'
