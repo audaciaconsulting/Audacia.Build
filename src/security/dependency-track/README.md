@@ -24,7 +24,7 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 ### 1) Variable group with secrets
 
-Create an Azure DevOps variable group (per repo or team) that holds the Dependency-Track connection:
+Create an Azure DevOps variable group (per DevOps project) that holds the Dependency-Track connection:
 
 | Variable     | Purpose                                                                                  | Example                                     |
 | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
