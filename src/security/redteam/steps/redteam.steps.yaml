@@ -53,10 +53,6 @@ steps:
   - checkout: self
     clean: true
 
-  - checkout: templates
-    clean: true
-    path: templates
-
   # Node for Promptfoo
   - task: NodeTool@0
     displayName: 'Install Node.js 20'
@@ -146,7 +142,7 @@ steps:
     displayName: 'Publish Test Results (JUnit)'
     inputs:
       testResultsFormat: 'JUnit'
-      testResultsFiles: 'results.junit.xml'
+      testResultsFiles: '**/results.junit.xml'
       searchFolder: '$(System.DefaultWorkingDirectory)'
       mergeTestResults: true
       testRunTitle: 'Promptfoo Red Team'
@@ -157,7 +153,7 @@ steps:
   - ${{ if eq(parameters.publishJson, true) }}:
       - task: PublishBuildArtifacts@1
         inputs:
-          pathtoPublish: '$(System.DefaultWorkingDirectory)/results/results.json'
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/results.json'
           artifactName: 'promptfoo-redteam-results'
         condition: succeededOrFailed()
         displayName: 'Publish Red Team Results (JSON)'
@@ -165,7 +161,7 @@ steps:
   - ${{ if eq(parameters.publishHtml, true) }}:
       - task: PublishBuildArtifacts@1
         inputs:
-          pathtoPublish: '$(System.DefaultWorkingDirectory)/results/report.html'
+          pathtoPublish: '$(System.DefaultWorkingDirectory)/**/report.html'
           artifactName: 'promptfoo-redteam-results'
         condition: succeededOrFailed()
         displayName: 'Publish Red Team Results (HTML)'
