@@ -40,6 +40,7 @@ parameters:
 
   # Fail the job if any upload to Dependency-Track fails.
   # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
+  - name: failOnUploadError
     type: boolean
     default: true
 
@@ -51,19 +52,21 @@ parameters:
 
   # Best-effort attempt to download the SBOM artifact before deactivation.
   # Recommendation: true unless you guarantee SBOMs are already on disk in this job.
+  - name: tryDownloadArtifact
     type: boolean
     default: true
 
-  # Optional parent project details; if left empty no parent is set on upload
+  # Optional parent project details; if left empty no parent is set on upload or deactivation scope
   - name: parentProjectName
     type: string
     default: ' '
+
   - name: parentProjectVersion
     type: string
     default: ' '
 
 steps:
-  # 1) Generate
+  # Generate
   - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
     parameters:
       dotnetProjectsMultiline: |
@@ -75,7 +78,7 @@ steps:
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  # 2) Upload (gated by sbomExists var set by generate template)
+  # Upload (gated by sbomExists var set by generate template)
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
@@ -83,7 +86,7 @@ steps:
       parentProjectName: ${{ parameters.parentProjectName }}
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
 
-  # 3) Deactivate (toggle + run only if prior steps succeeded)
+  # Deactivate (toggle + run only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:
       - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
         parameters:
