@@ -1,4 +1,4 @@
-# Template: deactivate all non-latest active versions (optionally scoping by env tag)
+# Template: deactivate all non-latest active versions (optionally scoping by env tag and parent project)
 parameters:
   - name: artifactName
     type: string
@@ -11,6 +11,11 @@ parameters:
   - name: tryDownloadArtifact
     type: boolean
     default: true
+
+  # Optional parent project name to scope deactivation to a specific container
+  - name: parentProjectName
+    type: string
+    default: ' '
 
 steps:
   # Step 1: Optionally download SBOM artifact
@@ -26,3 +31,4 @@ steps:
   - template: /src/security/dependency-track/steps/deactivate/deactivate-project-versions.step.yaml@templates
     parameters:
       projectNamesCsv: $(deriveProjectNames.projectNamesCsv)
+      parentProjectName: ${{ parameters.parentProjectName }}
