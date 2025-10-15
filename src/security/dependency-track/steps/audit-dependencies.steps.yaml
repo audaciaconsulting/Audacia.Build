@@ -1,4 +1,8 @@
 # Steps template: end-to-end SBOM audit (Generate → Upload → Deactivate)
+
+# This template orchestrates a full SBOM (Software Bill of Materials) audit pipeline for .NET and NPM projects.
+# It generates SBOMs, uploads them to Dependency-Track, and optionally deactivates old project versions.
+
 parameters:
   # One .NET project path per line. List all deployables (API/UI/Functions).
   - name: dotnetProjectsMultiline
@@ -36,7 +40,6 @@ parameters:
 
   # Fail the job if any upload to Dependency-Track fails.
   # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
-  - name: failOnUploadError
     type: boolean
     default: true
 
@@ -48,7 +51,6 @@ parameters:
 
   # Best-effort attempt to download the SBOM artifact before deactivation.
   # Recommendation: true unless you guarantee SBOMs are already on disk in this job.
-  - name: tryDownloadArtifact
     type: boolean
     default: true
 
@@ -56,7 +58,6 @@ parameters:
   - name: parentProjectName
     type: string
     default: ' '
-
   - name: parentProjectVersion
     type: string
     default: ' '
@@ -88,3 +89,4 @@ steps:
         parameters:
           artifactName: ${{ parameters.artifactName }}
           tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
+          parentProjectName: ${{ parameters.parentProjectName }}
