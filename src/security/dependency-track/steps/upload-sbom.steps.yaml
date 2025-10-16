@@ -1,4 +1,4 @@
-# Template: download → tag build → discover → validate → preflight → atomic upload → post-summary → verify
+# Template: download → tag build → discover → validate → preflight → upload → post-summary → verify
 parameters:
   # Name of the artifact to download (produced by generate-sbom template).
   - name: artifactName
@@ -13,11 +13,6 @@ parameters:
 
   # Require an env:* tag and at least one tag overall
   - name: requireProjectTags
-    type: boolean
-    default: true
-
-  # Perform automatic rollback inside the atomic upload step on failure
-  - name: enableRollback
     type: boolean
     default: true
 
@@ -36,20 +31,16 @@ parameters:
     type: string
     default: ' '
 
-    # Optional parent project version to associate with each uploaded project in Dependency-Track
+  # Optional parent project version to associate with each uploaded project in Dependency-Track
   - name: parentProjectVersion
     type: string
     default: ' '
 
 steps:
   # Download SBOM artifact into $(Agent.TempDirectory)/sbom
-  - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
+  - template: /src/security/dependency-track/steps/upload/download-sbom-artifact.step.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
-      targetPath: $(Agent.TempDirectory)/sbom
-      patterns: '**/*.json'
-      runAlways: false
-      tolerateFailure: false
 
   # Build project tags (env:ENV_NAME + optional ADDITIONAL_TAGS)
   - template: /src/security/dependency-track/steps/upload/build-project-tags.step.yaml@templates
@@ -59,11 +50,10 @@ steps:
   # Preflight: discover → validate → plan
   - template: /src/security/dependency-track/steps/upload/prepare-sbom-upload.step.yaml@templates
 
-  # Perform uploads atomically with internal rollback
+  # Perform uploads
   - template: /src/security/dependency-track/steps/upload/perform-uploads.step.yaml@templates
     parameters:
       failOnUploadError: ${{ parameters.failOnUploadError }}
-      enableRollback: ${{ parameters.enableRollback }}
       validationOnly: ${{ parameters.validationOnly }}
       bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
       parentProjectName: ${{ parameters.parentProjectName }}

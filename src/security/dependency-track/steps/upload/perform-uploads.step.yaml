@@ -1,9 +1,6 @@
-# Step: Atomic uploads to Dependency-Track with internal rollback and token wait
+# Step: Upload SBOMs to Dependency-Track with token wait
 parameters:
   - name: failOnUploadError
-    type: boolean
-    default: true
-  - name: enableRollback
     type: boolean
     default: true
   - name: validationOnly
@@ -23,7 +20,7 @@ parameters:
 steps:
   - task: PowerShell@2
     name: uploadScript
-    displayName: "Upload SBOMs to Dependency-Track (Atomic + Rollback)"
+    displayName: "Upload SBOMs to Dependency-Track"
     env:
       # API + context
       DT_API_URL: $(DT_API_URL)
@@ -145,51 +142,6 @@ steps:
           return $false
         }
 
-        function Get-ProjectByNameAndVersion([string]$projectName, [string]$projectVersion) {
-          try {
-            $encodedName = [System.Web.HttpUtility]::UrlEncode($projectName)
-            $encodedVersion = [System.Web.HttpUtility]::UrlEncode($projectVersion)
-            $searchResult = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encodedName&version=$encodedVersion" -baseUrl $base
-            return $searchResult | ConvertFrom-Json
-          } catch { return $null }
-        }
-
-        function Invoke-RollbackUploads {
-          if ("${{ parameters.enableRollback }}" -ne "True") {
-            Write-Host "Rollback disabled, skipping cleanup"
-            return
-          }
-          $deletedOk = 0; $deactivatedOk = 0; $failed = 0
-          Write-Host "##[warning]Starting rollback for $($uploadedProjects.Count) uploaded project(s)..."
-          foreach ($project in $uploadedProjects) {
-            try {
-              $deleteUri = "/v1/project/$($project.Uuid)"
-              try {
-                [void](Invoke-DtApi -method DELETE -path $deleteUri -baseUrl $base)
-                $deletedOk++
-                Write-Host "✓ Rolled back via DELETE: $($project.Name) @ $($project.Version)"
-              } catch {
-                $delErr = $_.Exception.Message
-                Write-Warning "DELETE failed for $($project.Name) ($($project.Uuid)): $delErr. Attempting PATCH active=false fallback."
-                try {
-                  [void](Invoke-DtApi -method PATCH -path "/v1/project/$($project.Uuid)" -body @{ active = $false } -baseUrl $base)
-                  $deactivatedOk++
-                  Write-Host "✓ Rolled back via PATCH active=false: $($project.Name) @ $($project.Version)"
-                } catch {
-                  $patchErr = $_.Exception.Message
-                  Write-Warning "Fallback PATCH active=false failed for $($project.Name) ($($project.Uuid)): $patchErr"
-                  $failed++
-                }
-              }
-            } catch {
-              $failed++
-              Write-Warning "Unexpected rollback error for $($project.Name) ($($project.Uuid)): $($_.Exception.Message)"
-            }
-          }
-          Write-Host "##[section]Rollback summary → deleted=$deletedOk, deactivated=$deactivatedOk, failed=$failed"
-        }
-
-        $uploadedProjects = @()
         $rows = New-Object System.Collections.Generic.List[object]
         $tagsCsv = $env:PROJECT_TAGS_CSV
 
@@ -221,8 +173,6 @@ steps:
             }
 
             try {
-              $existingProject = Get-ProjectByNameAndVersion $projectName $projectVersion
-
               $mp = [System.Net.Http.MultipartFormDataContent]::new()
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
               $mp.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
@@ -255,18 +205,6 @@ steps:
               $note = "token: $($json.token)"
               Write-Host "Uploaded OK: $($f.FullName)  ($note)"
 
-              if (-not $existingProject) {
-                $newProject = Get-ProjectByNameAndVersion $projectName $projectVersion
-                if ($newProject) {
-                  $uploadedProjects += @{
-                    Name    = $projectName
-                    Version = $projectVersion
-                    Uuid    = $newProject.uuid
-                    WasNew  = $true
-                  }
-                }
-              }
-
               $uploaded++
               [void](Wait-BomProcessed -token $json.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
 
@@ -279,7 +217,6 @@ steps:
                 Note     = $note
               })
             } catch {
-              $rollbackRequired = $true
               $err = $_.Exception.Message
               Write-Error "❌ Upload failed for $($f.FullName): $err"
 
@@ -312,10 +249,6 @@ steps:
           Write-Host "##[section]✅ All uploads completed successfully"
         } catch {
           Write-Host "##[error]Upload process failed: $($_.Exception.Message)"
-
-          if ($rollbackRequired -and $uploadedProjects.Count -gt 0) {
-            Invoke-RollbackUploads
-          }
 
           $pairList = @()
           foreach ($r in $rows) { $pairList += @{ Project = $r.Project; Version = $r.Version } }
