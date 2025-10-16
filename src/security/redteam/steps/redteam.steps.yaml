@@ -1,0 +1,107 @@
+parameters:
+  # Path in the calling repo to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured.
+  - name: configPath
+    type: string
+
+  # Path in the calling repo to where your package-lock.json lives (e.g. llm_eval), npm commands run there and promptfoo is installed.
+  - name: npmWorkingDirectory
+    type: string
+
+  # The API url for the target LLM (e.g. https://ai-app.audacia.systems/api).
+  - name: apiUrl
+    type: string
+
+  # The url for authenticating with Entra Id in order to test the LLM (e.g. https://login.microsoftonline.com/{{TenantId}}/oauth2/v2.0/token). TenantId can be found in the App Registration in Azure.
+  - name: authTokenUrl
+    type: string
+
+  # The Entra Id Client Id for the App Registration, in order to be authenticated to test the LLM. Client Id can be found in the App Registration in Azure.
+  - name: authClientId
+    type: string
+
+  # The Entra Id Client Secret for the App Registration, in order to be authenticated to test the LLM. Client Secret can be created in the App Registration in Azure, and should be stored in Keeper.
+  - name: authClientSecret
+    type: string
+
+  # The Entra Id Client Scope for the App Registration, in order to be authenticated to test the LLM (e.g. api://{{ClientId}}/.default).
+  - name: authClientScope
+    type: string
+
+  # Model of LLM for test, usually stored as an enum in the app. Defaults to '100'.
+  - name: chosenModel
+    type: string
+    default: '100'
+
+steps:
+  - checkout: self
+    clean: true
+
+  # Node for Promptfoo
+  - task: NodeTool@0
+    displayName: 'Install Node.js 20'
+    inputs:
+      versionSpec: '20.x'
+
+  # npm install
+  - script: |
+      set -euo pipefail
+      npm ci
+      npm install -g promptfoo
+      promptfoo --version
+    workingDirectory: ${{ parameters.npmWorkingDirectory }}
+    displayName: 'Install dependencies and Promptfoo'
+
+  # Python for target script resolution
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.12'
+    inputs:
+      versionSpec: '3.12'
+      addToPath: true
+
+  - script: |
+      set -euo pipefail
+      python --version
+      python -m pip install --upgrade pip
+      python -m pip install oauthlib pydantic python-dotenv requests requests-oauthlib
+    displayName: 'Install Python dependencies'
+
+  # Run Promptfoo Red Team
+  - script: |
+      set -euo pipefail
+      RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
+      mkdir -p "$RESULTS_DIR"
+
+      CONFIG_PATH="${{ parameters.configPath }}"
+      CONFIG_DIR="$(dirname "$CONFIG_PATH")"
+      CONFIG_FILE="$(basename "$CONFIG_PATH")"
+
+      echo "Running Promptfoo red team:"
+      echo "  Config dir:  $CONFIG_DIR"
+      echo "  Config file: $CONFIG_FILE"
+      echo "  Results dir: $RESULTS_DIR"
+
+      pushd "$CONFIG_DIR" >/dev/null
+
+      npx promptfoo redteam eval \
+        --config "$CONFIG_FILE" \
+        --output "$RESULTS_DIR/results.json" \
+        --output "$RESULTS_DIR/report.html"
+
+      popd >/dev/null
+    displayName: 'Run Promptfoo Red Team'
+    env:
+      PYTHONPATH: $(System.DefaultWorkingDirectory)
+      API_URL: ${{ parameters.apiUrl }}
+      AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
+      AUTH_CLIENT_ID: ${{ parameters.authClientId }}
+      AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
+      AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
+      CHOSEN_MODEL: ${{ parameters.chosenModel }}
+
+  # Publish JSON/HTML artifacts
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Red Team Results'
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/results'
+      artifactName: 'promptfoo-redteam-results'
+    condition: succeededOrFailed()
