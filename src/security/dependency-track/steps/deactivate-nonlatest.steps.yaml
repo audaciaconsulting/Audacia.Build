@@ -20,9 +20,13 @@ parameters:
 steps:
   # Step 1: Optionally download SBOM artifact
   - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
-      - template: /src/security/dependency-track/steps/deactivate/download-artifact.step.yaml@templates
+      - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
         parameters:
           artifactName: ${{ parameters.artifactName }}
+          targetPath: $(Agent.TempDirectory)/sbom
+          patterns: '**/*.json'
+          runAlways: true
+          tolerateFailure: true
 
   # Step 2: Derive project names from SBOM files
   - template: /src/security/dependency-track/steps/deactivate/derive-project-names.step.yaml@templates

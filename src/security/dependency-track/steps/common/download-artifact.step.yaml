@@ -1,0 +1,45 @@
+# Template: generic pipeline artifact download
+parameters:
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+  - name: targetPath
+    type: string
+    default: '$(Agent.TempDirectory)/sbom'
+  - name: patterns
+    type: string
+    default: ''            # e.g. '**/*.json' to restrict to CycloneDX JSON files
+  - name: runAlways
+    type: boolean
+    default: false         # true → condition: always()
+  - name: tolerateFailure
+    type: boolean
+    default: false         # true → continueOnError: true
+  - name: buildType
+    type: string
+    default: 'current'     # keep explicit for clarity
+
+steps:
+  # Two mutually-exclusive task insertions so we can toggle condition via template logic
+  - ${{ if eq(parameters.runAlways, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: "Download artifact: ${{ parameters.artifactName }} (always)"
+        inputs:
+          artifact: ${{ parameters.artifactName }}
+          buildType: ${{ parameters.buildType }}
+          path: ${{ parameters.targetPath }}
+          ${{ if ne(parameters.patterns, '') }}:
+            patterns: ${{ parameters.patterns }}
+        continueOnError: ${{ parameters.tolerateFailure }}
+        condition: always()
+
+  - ${{ if ne(parameters.runAlways, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: "Download artifact: ${{ parameters.artifactName }}"
+        inputs:
+          artifact: ${{ parameters.artifactName }}
+          buildType: ${{ parameters.buildType }}
+          path: ${{ parameters.targetPath }}
+          ${{ if ne(parameters.patterns, '') }}:
+            patterns: ${{ parameters.patterns }}
+        continueOnError: ${{ parameters.tolerateFailure }}
