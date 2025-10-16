@@ -15,8 +15,6 @@ steps:
       PROJECT_NAMES_CSV: ${{ parameters.projectNamesCsv }}
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
-      ENV_NAME: $(ENV_NAME)
-      ADDITIONAL_TAGS: $(ADDITIONAL_TAGS)
       PARENT_PROJECT_NAME: ${{ parameters.parentProjectName }}
     inputs:
       pwsh: true
