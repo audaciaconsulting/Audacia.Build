@@ -50,21 +50,13 @@ steps:
       versionSpec: '20.x'
 
   # npm install
-  - ${{ if ne(parameters.npmWorkingDirectory, '') }}:
-      - script: |
-          set -euo pipefail
-          npm ci
-          npm install -g promptfoo
-          promptfoo --version
-        workingDirectory: ${{ parameters.npmWorkingDirectory }}
-        displayName: 'Install dependencies and Promptfoo'
-  - ${{ if eq(parameters.npmWorkingDirectory, '') }}:
-      - script: |
-          set -euo pipefail
-          npm ci || true
-          npm install -g promptfoo
-          promptfoo --version
-        displayName: 'Install dependencies and Promptfoo'
+  - script: |
+      set -euo pipefail
+      npm ci
+      npm install -g promptfoo
+      promptfoo --version
+    workingDirectory: ${{ parameters.npmWorkingDirectory }}
+    displayName: 'Install dependencies and Promptfoo'
 
   # Python for target script resolution
   - task: UsePythonVersion@0

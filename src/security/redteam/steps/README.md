@@ -83,7 +83,7 @@ stages:
   - The Python target referenced by `redteam.yaml` (e.g., `file://inference_ai_app.py`) and any local modules it imports.
 
 - Your app can authenticate via the provided environment variables.
-- If your `package-lock.json` is not at repo root, set `npmWorkingDirectory`.
+- Your app has a `package-lock.json` in your `npmWorkingDirectory`.
 
 ## Security
 
