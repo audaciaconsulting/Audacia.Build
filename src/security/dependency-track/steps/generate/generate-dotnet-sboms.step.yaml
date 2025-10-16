@@ -13,6 +13,8 @@ parameters:
 steps:
   # Step: Restore .NET projects
   # This step restores the .NET projects specified in the `dotnetProjectsMultiline` parameter.
+  # Only run restore when .NET project paths are provided.
+  # This prevents running restore with an empty list (e.g., for npm-only repos).
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects"
     condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
