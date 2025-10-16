@@ -33,8 +33,6 @@ This template runs a **Promptfoo red team evaluation** against an app’s target
 
   - Publishes the entire `results/` folder as artifact **promptfoo-redteam-results**
 
----
-
 ## Usage
 
 ```yaml
