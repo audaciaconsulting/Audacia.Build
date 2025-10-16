@@ -1,43 +1,43 @@
 parameters:
-  # Path to your redteam.yaml config file
+  # Path in the calling repo to your red team config (e.g., `llm_eval/ai_red_teaming/redteam.yaml`).
   - name: configPath
     type: string
     default: ''
 
-  # Optional path to your npm working directory
+  # Path to where your `package-lock.json` lives (e.g., `llm_eval`), npm commands run there.
   - name: npmWorkingDirectory
     type: string
     default: ''
 
-  # LLM Api Url
+  # Exported as `API_URL` for your Python target.
   - name: apiUrl
     type: string
     default: ''
 
-  # Auth token URL
+  # Exported as `AUTH_TOKEN_URL`.
   - name: authTokenUrl
     type: string
     default: ''
 
-  # Auth client id
+  # Exported as `AUTH_CLIENT_ID`.
   - name: authClientId
     type: string
     default: ''
 
-  # Auth client secret
+  # Exported as `AUTH_CLIENT_SECRET`. Mark secret in your variable group.
   - name: authClientSecret
     type: string
     default: ''
 
-  # Auth client scope
+  # Exported as `AUTH_CLIENT_SCOPE`.
   - name: authClientScope
     type: string
     default: ''
 
-  # Chosen LLM Model
+  # Exported as `CHOSEN_MODEL`. Use whatever LLM selector your app expects.
   - name: chosenModel
     type: string
-    default: '100'
+    default: ''
 
 steps:
   - checkout: self
