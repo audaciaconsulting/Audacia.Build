@@ -45,15 +45,13 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 Most repositories follow this structure:
 
 ```
-
 src/
 ├─ apis/src/YourProject.Api/YourProject.Api.csproj
 ├─ apis/src/YourProject.Functions/YourProject.Functions.csproj
 ├─ apis/src/YourProject.Identity/YourProject.Identity.csproj
 ├─ apis/src/YourProject.Seeding/YourProject.Seeding.csproj
 └─ apps/your-single-page-application/    ← e.g. Angular project root (package.json / package-lock.json)
-
-````
+```
 
 The templates will:
 - Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
@@ -94,12 +92,11 @@ resources:
     - repository: templates
       type: github
       endpoint: shared-github
-      name: 
+      name: audaciaconsulting/Audacia.Build
 
 pool:
   vmImage: windows-latest
 
-# Central variables (API URL/KEY should live in the variable group as secrets)
 variables:
   - group: Organisation.ApplicationName.Dependency-Track
   - name: CLIENT_NAME
@@ -119,7 +116,7 @@ variables:
   - name: DT_API_KEY
     value: $(DT-API-KEY)
   - name: DT_API_URL
-    value: ''
+    value: 'https://api.dependency-track.organisation.tech/api'
 
 stages:
   # =========================
@@ -177,15 +174,14 @@ stages:
               artifactName: $(ArtifactName)
               tryDownloadArtifact: ${{ variables.TryDownloadArtifact }}
               parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
-````
+```
 
 ## Option 2: End-to-End (Single Job)
 
-File in your repo: `dependency-track-e2e.pipeline.yaml`
+File in your repo: `dependency-track-e2e.pipeline.yaml`  
 Runs Generate → Upload → Deactivate in one job using variables.
 
 ```yaml
-
 # RUN E2E TEMPLATE JOB
 name: $(Date:yyyyMMdd)
 trigger: none
@@ -196,7 +192,7 @@ resources:
     - repository: templates
       type: github
       endpoint: shared-github
-      name: 
+      name: audaciaconsulting/Audacia.Build
 
 pool:
   vmImage: windows-latest
@@ -211,8 +207,6 @@ variables:
   - group: Organisation.Project.Dependency-Track
   - name: CLIENT_NAME
     value: Project
-
-  # Runtime config (edit defaults per repo/branch as needed)
   - name: ENV_NAME
     value: dev
   - name: RELEASE_NUMBER
@@ -221,19 +215,14 @@ variables:
     value: ' '
   - name: DEACTIVATE_OLD
     value: true
-
   - name: DT_API_KEY
     value: $(DT-API-KEY)
   - name: DT_API_URL
-    value: ''
-
-  # Optional parent project for upload linkage
+    value: 'https://api.dependency-track.organisation.tech/api'
   - name: PARENT_PROJECT_NAME
     value: 'Organisation - ApplicationName'
   - name: PARENT_PROJECT_VERSION
     value: ''
-
-  # Project paths and settings
   - name: ApiProjectPath
     value: $(System.DefaultWorkingDirectory)/src/Organisation.Project.Api/Organisation.Project.Api.csproj
   - name: UiProjectPath
@@ -276,36 +265,35 @@ stages:
               parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
               deactivateOld: ${{ variables.DEACTIVATE_OLD }}
               tryDownloadArtifact: ${{ variables.TryDownloadArtifact }}
-
 ```
 
 ## Project Tags in Dependency-Track
 
 The upload step builds tags like:
 
-* `env:<ENV_NAME>` when `ENV_NAME` is set
-* Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
+- `env:<ENV_NAME>` when `ENV_NAME` is set
+- Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
 
 Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
 
 ## Parent Project Linking
 
-If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.
-Dependency-Track performs parent resolution via **exact name and version match (case-sensitive)**.
+If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.  
+Dependency-Track performs parent resolution via **exact name and version match (case-sensitive)**.  
 If no exact match is found, the child projects still upload successfully but remain unlinked.
 
 Use the convention `"<Client> - <System>"` for all parent project names to keep the portfolio consistent.
 
 ## Deactivate Non-Latest Versions
 
-After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.
+After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.  
 This keeps the UI focused on the active release while preserving historical versions for audit.
 
 ## Azure DevOps Output
 
-* Generate → SBOM file list and counts
-* Upload → Markdown summary of projects and versions
-* Deactivate → Confirmation of inactive versions set
+- Generate → SBOM file list and counts
+- Upload → Markdown summary of projects and versions
+- Deactivate → Confirmation of inactive versions set
 
 ## Troubleshooting
 
@@ -318,10 +306,10 @@ This keeps the UI focused on the active release while preserving historical vers
 
 ## Verification Checklist
 
-* [ ] Variable group with `DT_API_KEY`
-* [ ] Variable group linked to Key Vault (if applicable)
-* [ ] Correct `.csproj` and `package.json` names
-* [ ] Accurate project paths in pipeline
-* [ ] Parent project created in Dependency-Track
-* [ ] Parent project variables set (`"<Organisation> - <System>"`)
-* [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
+- [ ] Variable group with `DT_API_KEY`
+- [ ] Variable group linked to Key Vault (if applicable)
+- [ ] Correct `.csproj` and `package.json` names
+- [ ] Accurate project paths in pipeline
+- [ ] Parent project created in Dependency-Track
+- [ ] Parent project variables set (`"<Organisation> - <System>"`)
+- [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
