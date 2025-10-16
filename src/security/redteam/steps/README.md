@@ -73,6 +73,19 @@ stages:
 - `results.json` — machine-readable results from Promptfoo
 - `report.html` — human-readable report
 
+## Parameters
+
+| Name                  | Required | Description                                                                                                                                                                                               |
+| --------------------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configPath`          |      Yes | Path (in the **calling repo**) to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured. |
+| `npmWorkingDirectory` |      Yes | Path (in the **calling repo**) to where your `package-lock.json` lives (e.g. `llm_eval`), npm commands run there and promptfoo is installed.                                                              |
+| `apiUrl`              |      Yes | The API url for the target LLM (e.g. https://ai-app.audacia.systems/api).                                                                                                                                 |
+| `authTokenUrl`        |      Yes | The url for authenticating with Entra Id in order to test the LLM (e.g. https://login.microsoftonline.com/{{TenantId}}/oauth2/v2.0/token). TenantId can be found in the App Registration in Azure.        |
+| `authClientId`        |      Yes | The Entra Id Client Id for the App Registration, in order to be authenticated to test the LLM. Client Id can be found in the App Registration in Azure.                                                   |
+| `authClientSecret`    |      Yes | The Entra Id Client Secret for the App Registration, in order to be authenticated to test the LLM. Client Secret can be created in the App Registration in Azure, and should be stored in Keeper.         |
+| `authClientScope`     |      Yes | The Entra Id Client Scope for the App Registration, in order to be authenticated to test the LLM (e.g. api://{{ClientId}}/.default).                                                                      |
+| `chosenModel`         |       No | Model of LLM for test, usually stored as an enum in the app. Defaults to '100'.                                                                                                                           |
+
 ## Prerequisites & Assumptions
 
 - The calling repo contains:
