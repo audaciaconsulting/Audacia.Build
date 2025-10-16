@@ -25,6 +25,12 @@ parameters:
   - name: requireAllExpectedSboms
     type: boolean
     default: true
+  - name: vstsFeed
+    type: string
+    default: ''
+  - name: nugetConfigPath
+    type: string
+    default: ''
 
 steps:
   - task: NuGetAuthenticate@1
@@ -64,6 +70,8 @@ steps:
   - template: /src/security/dependency-track/steps/generate/generate-dotnet-sboms.step.yaml@templates
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
+      vstsFeed: ${{ parameters.vstsFeed }}
+      nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
   # Validate that all expected SBOMs were generated (fail fast if not)
   - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates

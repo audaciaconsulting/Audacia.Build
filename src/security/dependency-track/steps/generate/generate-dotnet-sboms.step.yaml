@@ -9,12 +9,24 @@ parameters:
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+  # Parameter: vstsFeed
+  # The Azure DevOps feed to use for restoring NuGet packages. Defaults to an empty string.
+  # Example: 'MyOrg/MyFeedName'
+  - name: vstsFeed
+    type: string
+    default: ''
+  # Parameter: nugetConfigPath
+  # The path to the NuGet configuration file. Defaults to an empty string.
+  # Example: '$(System.DefaultWorkingDirectory)/NuGet.config'
+  - name: nugetConfigPath
+    type: string
+    default: ''
 
 steps:
   # Step: Restore .NET projects
   # This step restores the .NET projects specified in the `dotnetProjectsMultiline` parameter.
-  # Only run restore when .NET project paths are provided.
-  # This prevents running restore with an empty list (e.g., for npm-only repos).
+  # It only runs if the `dotnetProjectsMultiline` parameter is not empty, preventing unnecessary
+  # restore operations for repositories without .NET projects.
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects"
     condition: and(succeeded(), ne('${{ parameters.dotnetProjectsMultiline }}',''))
@@ -31,61 +43,76 @@ steps:
     inputs:
       targetType: inline
       script: |
-        # Create the output directory for SBOMs
+        # Create the output directory for SBOMs if it does not exist
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
-
+        
         # Set error handling to stop on errors
         $ErrorActionPreference = 'Stop'
-
-        # Retrieve the JSON string of .NET project paths
+        
+        # Retrieve the JSON string containing .NET project paths
         $DotnetProjectsJson = '$(resolveDotnetProjects.dotnetProjectsJson)'
         $OutputDir = '$(Agent.TempDirectory)/sbom/dotnet'
 
         # Initialize an array to store project paths
         $projPaths = @()
-        try {
-            # Convert the JSON string to an array of project paths
-            $projPaths = $DotnetProjectsJson | ConvertFrom-Json
-        } catch {
-            # Log a warning if the JSON is invalid
-            Write-Host "##vso[task.logissue type=warning]Invalid dotnetProjectsJson: $DotnetProjectsJson"
-            $projPaths = @()
+        
+        # Attempt to parse the JSON string into an array of project paths
+        try { 
+          $projPaths = $DotnetProjectsJson | ConvertFrom-Json 
+        } catch { 
+          Write-Host "##vso[task.logissue type=warning]Invalid dotnetProjectsJson: $DotnetProjectsJson"; 
+          $projPaths = @() 
         }
-
-        # Exit if no projects are found
-        if ($projPaths.Count -eq 0) {
-            Write-Host "##vso[task.logissue type=warning].NET project list empty; skipping"
-            exit 0
+        
+        # Exit if no project paths are provided
+        if ($projPaths.Count -eq 0) { 
+          Write-Host "##vso[task.logissue type=warning].NET project list empty; skipping"; 
+          exit 0 
         }
-
-        # Define the output format and file extension for SBOMs
-        $format = 'Json'; $ext = 'json'
-        $ok = 0; $fail = 0
-
-        # Loop through each project path to generate SBOMs
+        
+        # Define output format and file extension for SBOMs
+        $format = 'Json'; 
+        $ext = 'json'; 
+        $ok = 0; 
+        $fail = 0
+        
+        # Iterate over each project path to generate SBOMs
         foreach ($p in $projPaths) {
-            $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
-            $fileName = "{0}-sbom.{1}" -f $base, $ext
-
-            Write-Host "##[group].NET → $p"
-            try {
-                # Generate the SBOM using CycloneDX
-                dotnet CycloneDX "$p" -o "$OutputDir" -F "$format" -fn "$fileName"
-                if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
-                if (Test-Path (Join-Path $OutputDir $fileName)) { $ok++ } else { $fail++ }
-            } catch {
-                # Log a warning if SBOM generation fails
-                Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"
-                $fail++
-            } finally {
-                # Log the output file path
-                Write-Host "Output: $(Join-Path $OutputDir $fileName)"
-                Write-Host "##[endgroup]"
+          $base = [System.IO.Path]::GetFileNameWithoutExtension($p)
+          $fileName = "{0}-sbom.{1}" -f $base, $ext
+        
+          # Log the current project being processed
+          Write-Host "##[group].NET → $p"
+          try {
+            # Run CycloneDX to generate the SBOM
+            dotnet CycloneDX "$p" -o "$OutputDir" -F "$format" -fn "$fileName"
+        
+            # Check if the SBOM file was successfully created
+            if ($LASTEXITCODE -ne 0) { 
+              throw "CycloneDX exit code: $LASTEXITCODE" 
             }
+            if (Test-Path (Join-Path $OutputDir $fileName)) { 
+              $ok++ 
+            } else { 
+              $fail++ 
+            }
+          } catch {
+            # Log a warning if CycloneDX fails
+            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; 
+            $fail++
+          } finally {
+            # Log the output file path and end the log group
+            Write-Host "Output: $(Join-Path $OutputDir $fileName)"; 
+            Write-Host "##[endgroup]"
+          }
         }
-
-        # Log a summary of the SBOM generation results
+        
+        # Log a summary of the SBOM generation process
         Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
-        if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed" }
-        if ($fail -gt 0) { exit 1 }
+        
+        # Exit with an error if any SBOM generation failed
+        if ($fail -gt 0) { 
+          Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed"; 
+          exit 1 
+        }
       pwsh: true

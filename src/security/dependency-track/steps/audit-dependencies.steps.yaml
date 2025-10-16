@@ -55,9 +55,20 @@ parameters:
     type: string
     default: ' '
 
+  # Optional parent project version; if left empty no parent version is set on upload or deactivation scope
   - name: parentProjectVersion
     type: string
     default: ' '
+
+  # Optional VSTS feed to use for NuGet packages.
+  - name: vstsFeed
+    type: string
+    default: ''
+
+  # Optional NuGet config path to use for NuGet packages.
+  - name: nugetConfigPath
+    type: string
+    default: ''
 
 steps:
   # Generate
@@ -71,6 +82,8 @@ steps:
       artifactName: ${{ parameters.artifactName }}
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+      vstsFeed: ${{ parameters.vstsFeed }}
+      nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
   # Upload (gated by sbomExists var set by generate template)
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
