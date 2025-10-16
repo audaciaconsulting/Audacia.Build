@@ -50,12 +50,6 @@ parameters:
     type: boolean
     default: true
 
-  # Best-effort attempt to download the SBOM artifact before deactivation.
-  # Recommendation: true unless you guarantee SBOMs are already on disk in this job.
-  - name: tryDownloadArtifact
-    type: boolean
-    default: true
-
   # Optional parent project details; if left empty no parent is set on upload or deactivation scope
   - name: parentProjectName
     type: string
@@ -91,5 +85,5 @@ steps:
       - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
         parameters:
           artifactName: ${{ parameters.artifactName }}
-          tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
+          tryDownloadArtifact: false # When running e2e like this, we don't need to download the artifact again as this is already done in the upload step.
           parentProjectName: ${{ parameters.parentProjectName }}
