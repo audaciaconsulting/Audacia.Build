@@ -72,8 +72,7 @@ steps:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
-  # Publish SBOM artifact (conditional and fallback)
-  - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
-    parameters:
-      publishArtifact: ${{ parameters.publishArtifact }}
-      artifactName: ${{ parameters.artifactName }}
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
