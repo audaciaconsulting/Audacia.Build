@@ -6,25 +6,18 @@ parameters:
     type: string
     default: 'sbom-files'
 
-  # Parameter: tryDownloadArtifact
-  # - Specifies whether to attempt downloading the SBOM artifact
-  - name: tryDownloadArtifact
-    type: boolean
-    default: true
-
 steps:
-  # Step: Conditionally download SBOM artifact
-  # - Downloads the specified SBOM artifact if `tryDownloadArtifact` is true
+  # Step: Download SBOM artifact
+  # - Always downloads the specified SBOM artifact
   # - Uses the `DownloadPipelineArtifact` task to download the artifact
   # - Downloads the artifact to the temporary directory `$(Agent.TempDirectory)/sbom`
   # - Continues execution even if the download fails
   # - Always runs this step regardless of pipeline conditions
-  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
-      - task: DownloadPipelineArtifact@2
-        displayName: "Try to download SBOM artifact"
-        inputs:
-          artifact: ${{ parameters.artifactName }}
-          path: $(Agent.TempDirectory)/sbom
-          buildType: current
-        continueOnError: true
-        condition: always()
+  - task: DownloadPipelineArtifact@2
+    displayName: "Download SBOM artifact"
+    inputs:
+      artifact: ${{ parameters.artifactName }}
+      path: $(Agent.TempDirectory)/sbom
+      buildType: current
+    continueOnError: true
+    condition: always()

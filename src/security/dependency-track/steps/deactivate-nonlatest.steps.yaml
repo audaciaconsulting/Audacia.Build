@@ -19,10 +19,10 @@ parameters:
 
 steps:
   # Step 1: Optionally download SBOM artifact
-  - template: /src/security/dependency-track/steps/deactivate/download-artifact.step.yaml@templates
-    parameters:
-      artifactName: ${{ parameters.artifactName }}
-      tryDownloadArtifact: ${{ parameters.tryDownloadArtifact }}
+  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
+      - template: /src/security/dependency-track/steps/deactivate/download-artifact.step.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
 
   # Step 2: Derive project names from SBOM files
   - template: /src/security/dependency-track/steps/deactivate/derive-project-names.step.yaml@templates
