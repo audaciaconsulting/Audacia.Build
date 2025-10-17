@@ -38,7 +38,7 @@ parameters:
 
 steps:
   # Download SBOM artifact into $(Agent.TempDirectory)/sbom
-  - template: /src/security/dependency-track/steps/upload/download-sbom-artifact.step.yaml@templates
+  - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
 
