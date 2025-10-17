@@ -85,7 +85,7 @@ steps:
       vstsFeed: ${{ parameters.vstsFeed }}
       nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
-  # Upload (gated by sbomExists var set by generate template)
+  # Upload (preflight validates and fails if no SBOMs are present)
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
@@ -93,7 +93,7 @@ steps:
       parentProjectName: ${{ parameters.parentProjectName }}
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
 
-  # Deactivate (toggle + run only if prior steps succeeded)
+  # Deactivate (toggle + runs only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:
       - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
         parameters:

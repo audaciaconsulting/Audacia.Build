@@ -1,85 +1,93 @@
 # Template: generate SBOMs (npm + .NET), publish artifact if requested.
-# Outputs:
-#   - Sets pipeline variable `sbomExists` = true/false
-#   - Publishes artifact if publishArtifact=true
 
 parameters:
+  # Multiline string containing paths to .NET projects to process.
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+  # Multiline string containing paths to npm project roots to process.
   - name: npmRootsMultiline
     type: string
     default: ''
+  # Boolean flag to determine whether to publish the generated SBOMs as an artifact.
   - name: publishArtifact
     type: boolean
     default: true
+  # Name of the artifact to publish, if publishing is enabled.
   - name: artifactName
     type: string
     default: 'sbom-files'
+  # Version of Node.js to use for npm-related operations.
   - name: nodeVersion
     type: string
     default: '20.x'
+  # Boolean flag to include license texts in the generated SBOMs.
   - name: includeLicenseTexts
     type: boolean
     default: true
+  # Boolean flag to enforce validation of all expected SBOMs.
   - name: requireAllExpectedSboms
     type: boolean
     default: true
+  # Azure Artifacts feed URL for resolving .NET dependencies.
   - name: vstsFeed
     type: string
     default: ''
+  # Path to the NuGet configuration file for .NET dependency resolution.
   - name: nugetConfigPath
     type: string
     default: ''
 
 steps:
+  # Authenticate to Azure Artifacts for .NET dependency resolution.
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
 
-  # Consolidated: environment logging + npm manifest discovery
+  # Log environment details and discover npm manifests.
   - template: /src/security/dependency-track/steps/generate/log-env-and-discover-npm.step.yaml@templates
     parameters:
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
       requireAllExpectedSboms: ${{ parameters.requireAllExpectedSboms }}
 
-  # Setup Node.js tooling
+  # Set up Node.js tooling for npm operations.
   - template: /src/security/dependency-track/steps/generate/setup-node.step.yaml@templates
     parameters:
       nodeVersion: ${{ parameters.nodeVersion }}
 
-  # Setup CycloneDX .NET tool
+  # Set up the CycloneDX tool for .NET SBOM generation.
   - template: /src/security/dependency-track/steps/generate/setup-cyclonedx-dotnet.step.yaml@templates
 
-  # Resolve npm roots
+  # Resolve npm project roots from the provided paths.
   - template: /src/security/dependency-track/steps/generate/resolve-npm-roots.step.yaml@templates
     parameters:
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
-  # Resolve .NET projects
+  # Resolve .NET projects from the provided paths.
   - template: /src/security/dependency-track/steps/generate/resolve-dotnet-projects.step.yaml@templates
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
 
-  # Generate npm SBOMs
+  # Generate SBOMs for npm projects.
   - template: /src/security/dependency-track/steps/generate/generate-npm-sboms.step.yaml@templates
     parameters:
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
 
-  # Generate .NET SBOMs
+  # Generate SBOMs for .NET projects.
   - template: /src/security/dependency-track/steps/generate/generate-dotnet-sboms.step.yaml@templates
     parameters:
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
       vstsFeed: ${{ parameters.vstsFeed }}
       nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
-  # Validate that all expected SBOMs were generated (fail fast if not)
+  # Validate that all expected SBOMs were generated.
   - template: /src/security/dependency-track/steps/generate/validate-expected-sboms.step.yaml@templates
     parameters:
       strict: ${{ parameters.requireAllExpectedSboms }}
       dotnetProjectsMultiline: ${{ parameters.dotnetProjectsMultiline }}
       npmRootsMultiline: ${{ parameters.npmRootsMultiline }}
 
+  # Conditionally publish the generated SBOMs as an artifact if enabled.
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - template: /src/security/dependency-track/steps/generate/publish-sbom-artifact.step.yaml@templates
         parameters:
