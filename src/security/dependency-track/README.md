@@ -4,21 +4,21 @@ These Azure DevOps templates automate SBOM generation, upload to OWASP Dependenc
 
 ## What is Dependency-Track?
 
-[OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses CycloneDX SBOMs for your applications, identifying vulnerabilities, license issues, and policy violations across your portfolio.  
+[OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses CycloneDX SBOMs for your applications, identifying vulnerabilities, license issues, and policy violations across your portfolio.
 Each upload creates or updates a project and version in Dependency-Track, which the platform monitors continuously.
 
 ## Two Ways to Run
 
-| Approach             | File                                 | When to use                                                                                       |
-| -------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Modular / Staged     | `dependency-track.pipeline.yaml`     | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
-| End-to-End           | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
+| Approach         | File                                 | When to use                                                                                       |
+| ---------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Modular / Staged | `dependency-track.pipeline.yaml`     | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
+| End-to-End       | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
 ## Prerequisites
 
 ### 1) Variable group with secrets
 
-The API key for your Dependency-Track instance must be stored in a variable group linked to the pipeline.  
+The API key for your Dependency-Track instance must be stored in a variable group linked to the pipeline.
 You can store this key as a secret in a standard variable group or in a variable group connected to Azure Key Vault.
 
 If your project is hosted in the Audacia Azure DevOps or GitHub organization, create a variable group and link it to the shared Azure Key Vault.
@@ -29,14 +29,14 @@ If your project is hosted in a different organization, you can store the key as 
 
 These are defined as pipeline variables within each YAML file or via the “Variables” tab in Azure DevOps.
 
-| Variable                 | Purpose                                                    | Example                    |
-| ------------------------ |------------------------------------------------------------| -------------------------- |
-| `ENV_NAME`               | Which environment this SBOM represents                     | `dev`, `qa`, `uat`, `prod` |
-| `RELEASE_NUMBER`         | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                     |
-| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project | `owner:team-x,service:abc` |
-| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload   | `true`                     |
-| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track            | `OrganisationName - ApplicationName` |
-| `PARENT_PROJECT_VERSION` | Version of the parent (may be left empty)                  | `2025.10` or empty         |
+| Variable                 | Purpose                                                               | Example                              |
+| ------------------------ | --------------------------------------------------------------------- | ------------------------------------ |
+| `ENV_NAME`               | Which environment this SBOM represents                                | `dev`, `qa`, `uat`, `prod`           |
+| `RELEASE_NUMBER`         | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
+| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project          | `owner:team-x,service:abc`           |
+| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload              | `true`                               |
+| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track                       | `OrganisationName - ApplicationName` |
+| `PARENT_PROJECT_VERSION` | Version of the parent (may be left empty)                             | `2025.10` or empty                   |
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
 
@@ -54,15 +54,16 @@ src/
 ```
 
 The templates will:
-- Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
-- Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).  
+
+* Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
+* Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).
   If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
 
 > The template automatically installs the necessary tools (`CycloneDX` and `@cyclonedx/cyclonedx-npm`) if not already available.
 
 ## Naming Note
 
-Before running the pipeline, verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive.  
+Before running the pipeline, verify that the names defined in your `.csproj` and `package.json` files are correct, consistent, and descriptive.
 Dependency-Track uses these names directly from the SBOMs to create or update projects.
 
 Avoid:
@@ -178,7 +179,7 @@ stages:
 
 ## Option 2: End-to-End (Single Job)
 
-File in your repo: `dependency-track-e2e.pipeline.yaml`  
+File in your repo: `dependency-track-e2e.pipeline.yaml`
 Runs Generate → Upload → Deactivate in one job using variables.
 
 ```yaml
@@ -212,7 +213,7 @@ variables:
   - name: RELEASE_NUMBER
     value: $(Build.SourceBranchName)
   - name: ADDITIONAL_TAGS
-    value: ' '
+    value: ''
   - name: DEACTIVATE_OLD
     value: true
   - name: DT_API_KEY
@@ -264,29 +265,30 @@ stages:
               parentProjectName: ${{ variables.PARENT_PROJECT_NAME }}
               parentProjectVersion: ${{ variables.PARENT_PROJECT_VERSION }}
               deactivateOld: ${{ variables.DEACTIVATE_OLD }}
-              tryDownloadArtifact: ${{ variables.TryDownloadArtifact }}
+              vstsFeed: ''
+              nugetConfigPath: ''
 ```
 
 ## Project Tags in Dependency-Track
 
 The upload step builds tags like:
 
-- `env:<ENV_NAME>` when `ENV_NAME` is set
-- Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
+* `env:<ENV_NAME>` when `ENV_NAME` is set
+* Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
 
 Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
 
 ## Parent Project Linking
 
-If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.  
-Dependency-Track performs parent resolution via **exact name and version match (case-sensitive)**.  
+If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.
+Dependency-Track performs parent resolution via **exact name and version match (case-sensitive)**.
 If no exact match is found, the child projects still upload successfully but remain unlinked.
 
 Use the convention `"<Client> - <System>"` for all parent project names to keep the portfolio consistent.
 
 ## Deactivate Non-Latest Versions
 
-After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.  
+After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.
 This keeps the UI focused on the active release while preserving historical versions for audit.
 
 ## Azure DevOps Output
