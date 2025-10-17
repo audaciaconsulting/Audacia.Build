@@ -1,0 +1,76 @@
+# Template: resolve npm roots from parameter or auto-discovery
+parameters:
+  # Parameter: npmRootsMultiline
+  # - A multiline string containing paths to npm project roots
+  # - Default value is an empty string
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+
+steps:
+  # Step: Resolve npm project roots
+  # - Uses PowerShell to process the `npmRootsMultiline` parameter or auto-discover npm project roots
+  # - Discovers `package-lock.json` and `package.json` files in the workspace
+  # - Resolves project roots based on the parameter or discovered files
+  # - Logs the results and sets the resolved roots as a JSON output variable `npmRootsJson`
+  - task: PowerShell@2
+    displayName: "Resolve npm project roots"
+    inputs:
+      targetType: inline
+      script: |
+        # Stop execution on errors
+        $ErrorActionPreference = 'Stop'
+
+        # Read the multiline parameter containing npm project roots
+        $RootsMultiline = '${{ parameters.npmRootsMultiline }}'
+        $WorkspaceRoot = '$(System.DefaultWorkingDirectory)'
+
+        # Discover npm manifests in the workspace
+        Write-Host "##[group]Discover JS manifests"
+        $locks_npm = Get-ChildItem -Path $WorkspaceRoot -Recurse -Filter 'package-lock.json' -File -ErrorAction SilentlyContinue
+        $pkgs      = Get-ChildItem -Path $WorkspaceRoot -Recurse -Filter 'package.json'      -File -ErrorAction SilentlyContinue
+        Write-Host "Found package-lock.json: $($locks_npm.Count)"
+        Write-Host "Found package.json:      $($pkgs.Count)"
+        Write-Host "##[endgroup]"
+
+        # Resolve project roots from the parameter or discovered files
+        Write-Host "##[group]Resolve roots"
+        $rootsParam = $RootsMultiline -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+        $projects = New-Object System.Collections.ArrayList
+
+        # Process roots from the parameter
+        if ($rootsParam.Count -gt 0) {
+            foreach ($r in $rootsParam) {
+                # Check if the directory contains a package.json file
+                if (Test-Path (Join-Path $r 'package.json')) {
+                    [void]$projects.Add($r)
+                    Write-Host "Root (param): $r"
+                } else {
+                    # Warn if package.json is not found in the specified path
+                    Write-Warning "package.json not found under: $r (skipped)"
+                }
+            }
+        } else {
+            # Auto-discover roots if no parameter is provided
+            if ($locks_npm.Count -gt 0) {
+                # Add directories containing package-lock.json files
+                foreach ($l in $locks_npm) { [void]$projects.Add($l.Directory.FullName) }
+            } elseif ($pkgs.Count -gt 0) {
+                # Add directories containing package.json files
+                foreach ($p in $pkgs) { [void]$projects.Add($p.Directory.FullName) }
+            }
+            # Remove duplicate entries and log the discovered roots
+            $projects = $projects | Select-Object -Unique
+            foreach ($p in $projects) { Write-Host "Root (auto): $p" }
+        }
+        Write-Host "##[endgroup]"
+
+        # Convert the resolved roots to a JSON array
+        $projectsArray = @($projects)
+        $npmRootsJson = $projectsArray | ConvertTo-Json -Compress
+
+        # Set the JSON array as an output variable for use in subsequent steps
+        Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$npmRootsJson"
+        Write-Host "Resolved npm roots JSON: $npmRootsJson"
+      pwsh: true
+    name: resolveNpmRoots

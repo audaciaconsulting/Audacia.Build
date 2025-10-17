@@ -56,9 +56,9 @@ steps:
     inputs:
       targetType: 'inline'
       script: |
-        $sbomFiles = Get-ChildItem -Path "${{ parameters.sbomDir }}" -Filter "*.json"
+        $sbomFiles = Get-ChildItem -Path "${{ parameters.sbomDir }}" -Filter "*.json" -Recurse
         if ($sbomFiles.Count -eq 0) {
-            Write-Host "No SBOM files found in ${env:sbomDir}"
+            Write-Host "No SBOM files found in ${{ parameters.sbomDir }}"
             exit 0
         }
         $exitCode = 0
@@ -74,7 +74,19 @@ steps:
                 Write-Host "Skipping unrecognized SBOM file: $($file.Name)"
                 continue
             }
-            $vulnOutput = Join-Path "${{ parameters.vulnFolder }}" $reportName
+            
+            # Preserve directory structure for vulnerability reports
+            $relativePath = $file.Directory.FullName.Substring("${{ parameters.sbomDir }}".Length).TrimStart('\','/')
+            if ([string]::IsNullOrWhiteSpace($relativePath)) {
+                $vulnOutput = Join-Path "${{ parameters.vulnFolder }}" $reportName
+            } else {
+                $vulnSubDir = Join-Path "${{ parameters.vulnFolder }}" $relativePath
+                if (-not (Test-Path $vulnSubDir)) {
+                    New-Item -ItemType Directory -Path $vulnSubDir -Force | Out-Null
+                }
+                $vulnOutput = Join-Path $vulnSubDir $reportName
+            }
+            
             Write-Host "Running Grype on SBOM file: $($file.FullName). Output: $vulnOutput"
             & "${{ parameters.grypeInstallDir }}/grype.exe" sbom:$($file.FullName) --fail-on low -o ${{ parameters.analysisOutputFormat }}="$vulnOutput" -o table
             if ($LASTEXITCODE -ne 0) {

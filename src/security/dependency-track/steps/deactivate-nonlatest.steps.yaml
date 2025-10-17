@@ -1,0 +1,38 @@
+# Template: deactivate all non-latest active versions (optionally scoping by env tag and parent project)
+parameters:
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+  # If true (recommended): attempt to download the SBOM artifact so we can
+  # derive project names from the generated BOMs. This is safe (continueOnError) and
+  # allows the template to run standalone as well as after "upload".
+  # Set to false only if you guarantee SBOMs are already present in $(Agent.TempDirectory)/sbom.
+  - name: tryDownloadArtifact
+    type: boolean
+    default: true
+
+  # Optional parent project name to scope deactivation to a specific container
+  - name: parentProjectName
+    type: string
+    default: ' '
+
+steps:
+  # Step 1: Optionally download SBOM artifact
+  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
+      - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          targetPath: $(Agent.TempDirectory)/sbom
+          patterns: '**/*.json'
+          runAlways: true
+          tolerateFailure: true
+
+  # Step 2: Derive project names from SBOM files
+  - template: /src/security/dependency-track/steps/deactivate/derive-project-names.step.yaml@templates
+
+  # Step 3: Deactivate non-latest versions for discovered projects
+  - template: /src/security/dependency-track/steps/deactivate/deactivate-project-versions.step.yaml@templates
+    parameters:
+      projectNamesCsv: $(deriveProjectNames.projectNamesCsv)
+      parentProjectName: ${{ parameters.parentProjectName }}

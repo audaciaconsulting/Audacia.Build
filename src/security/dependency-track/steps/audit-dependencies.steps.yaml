@@ -1,0 +1,102 @@
+# Steps template: end-to-end SBOM audit (Generate → Upload → Deactivate)
+
+# This template orchestrates a full SBOM (Software Bill of Materials) audit pipeline for .NET and NPM projects.
+# It generates SBOMs, uploads them to Dependency-Track, and optionally deactivates old project versions.
+
+parameters:
+  # One .NET project path per line. List all deployables (API/UI/Functions).
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+
+  # One npm root per line (optional; auto-discovery falls back to lockfiles).
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+
+  # Publish generated SBOMs as a pipeline artifact.
+  # Recommendation: true in mainline/multi-consumer scenarios; false for ephemeral PR runs.
+  - name: publishArtifact
+    type: boolean
+    default: true
+
+  # Artifact name when publishArtifact=true.
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+  # Node major used for cyclonedx-npm.
+  # Recommendation: pin to LTS (e.g., 20.x).
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+
+  # Embed license texts into SBOMs (primarily via cyclonedx-npm).
+  # Pros: richer compliance evidence. Cons: larger SBOMs, slightly longer generation.
+  # Recommendation: true in mainline; false in fast PR paths if runtime/size matter.
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+
+  # Fail the job if any upload to Dependency-Track fails.
+  # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
+  - name: failOnUploadError
+    type: boolean
+    default: true
+
+  # Deactivate older versions (mark active=false on all non-latest).
+  # Recommendation: true in mainline to keep the portfolio tidy; false in PR/dry-run.
+  - name: deactivateOld
+    type: boolean
+    default: true
+
+  # Optional parent project details; if left empty no parent is set on upload or deactivation scope
+  - name: parentProjectName
+    type: string
+    default: ' '
+
+  # Optional parent project version; if left empty no parent version is set on upload or deactivation scope
+  - name: parentProjectVersion
+    type: string
+    default: ' '
+
+  # Optional VSTS feed to use for NuGet packages.
+  - name: vstsFeed
+    type: string
+    default: ''
+
+  # Optional NuGet config path to use for NuGet packages.
+  - name: nugetConfigPath
+    type: string
+    default: ''
+
+steps:
+  # Generate
+  - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
+    parameters:
+      dotnetProjectsMultiline: |
+        ${{ parameters.dotnetProjectsMultiline }}
+      npmRootsMultiline: |
+        ${{ parameters.npmRootsMultiline }}
+      publishArtifact: ${{ parameters.publishArtifact }}
+      artifactName: ${{ parameters.artifactName }}
+      nodeVersion: ${{ parameters.nodeVersion }}
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+      vstsFeed: ${{ parameters.vstsFeed }}
+      nugetConfigPath: ${{ parameters.nugetConfigPath }}
+
+  # Upload (preflight validates and fails if no SBOMs are present)
+  - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
+    parameters:
+      artifactName: ${{ parameters.artifactName }}
+      failOnUploadError: ${{ parameters.failOnUploadError }}
+      parentProjectName: ${{ parameters.parentProjectName }}
+      parentProjectVersion: ${{ parameters.parentProjectVersion }}
+
+  # Deactivate (toggle + runs only if prior steps succeeded)
+  - ${{ if eq(parameters.deactivateOld, true) }}:
+      - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          tryDownloadArtifact: false # When running e2e like this, we don't need to download the artifact again as this is already done in the upload step.
+          parentProjectName: ${{ parameters.parentProjectName }}

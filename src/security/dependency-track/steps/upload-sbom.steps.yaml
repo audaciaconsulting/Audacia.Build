@@ -1,0 +1,68 @@
+# Template: download → tag build → discover → validate → preflight → upload → post-summary → verify
+parameters:
+  # Name of the artifact to download (produced by generate-sbom template).
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+  # If true: fail the job when any upload fails.
+  # Recommendation: true in mainline; false in exploratory/dry-run scenarios.
+  - name: failOnUploadError
+    type: boolean
+    default: true
+
+  # Require an env:* tag and at least one tag overall
+  - name: requireProjectTags
+    type: boolean
+    default: true
+
+  # Validation-only mode: run validation steps and skip the upload
+  - name: validationOnly
+    type: boolean
+    default: false
+
+  # How long to wait for BOM processing to complete (seconds)
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
+
+  # Optional parent project name to associate with each uploaded project in Dependency-Track
+  - name: parentProjectName
+    type: string
+    default: ' '
+
+  # Optional parent project version to associate with each uploaded project in Dependency-Track
+  - name: parentProjectVersion
+    type: string
+    default: ' '
+
+steps:
+  # Download SBOM artifact into $(Agent.TempDirectory)/sbom
+  - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
+    parameters:
+      artifactName: ${{ parameters.artifactName }}
+
+  # Build project tags (env:ENV_NAME + optional ADDITIONAL_TAGS)
+  - template: /src/security/dependency-track/steps/upload/build-project-tags.step.yaml@templates
+    parameters:
+      requireProjectTags: ${{ parameters.requireProjectTags }}
+
+  # Preflight: discover → validate → plan
+  - template: /src/security/dependency-track/steps/upload/prepare-sbom-upload.step.yaml@templates
+
+  # Perform uploads
+  - template: /src/security/dependency-track/steps/upload/perform-uploads.step.yaml@templates
+    parameters:
+      failOnUploadError: ${{ parameters.failOnUploadError }}
+      validationOnly: ${{ parameters.validationOnly }}
+      bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
+      parentProjectName: ${{ parameters.parentProjectName }}
+      parentProjectVersion: ${{ parameters.parentProjectVersion }}
+
+  # Post summary from rows file (works whether step succeeded or failed)
+  - template: /src/security/dependency-track/steps/upload/post-summary.step.yaml@templates
+
+  # Post-upload verification (kept as a separate step)
+  - template: /src/security/dependency-track/steps/upload/verify-project-state.step.yaml@templates
+    parameters:
+      enforce: false

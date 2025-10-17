@@ -1,0 +1,78 @@
+# Template: validate we generated all expected SBOMs (fail fast if not)
+# Reads:
+#   - DOTNET_PROJECTS_MULTILINE (env): raw multiline .NET projects
+#   - NPM_ROOTS_MULTILINE (env): raw multiline npm roots
+#   - resolveNpmRoots.npmRootsJson / resolveDotnetProjects.dotnetProjectsJson
+# Compares expected count vs actual *.json under $(Agent.TempDirectory)/sbom
+
+parameters:
+  - name: strict
+    type: boolean
+    default: true  # if true, fail the job when counts don't match
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+
+steps:
+  - task: PowerShell@2
+    displayName: "Validate expected SBOMs were generated"
+    env:
+      DOTNET_PROJECTS_MULTILINE: ${{ parameters.dotnetProjectsMultiline }}
+      NPM_ROOTS_MULTILINE: ${{ parameters.npmRootsMultiline }}
+      RESOLVED_DOTNET_JSON: $(resolveDotnetProjects.dotnetProjectsJson)
+      RESOLVED_NPM_JSON: $(resolveNpmRoots.npmRootsJson)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        function Get-ExpectedCountFromMultiline([string]$text) {
+          if (-not $text) { return 0 }
+          ($text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }).Count
+        }
+
+        $expectedDotnet = Get-ExpectedCountFromMultiline $env:DOTNET_PROJECTS_MULTILINE
+        $expectedNpm    = Get-ExpectedCountFromMultiline $env:NPM_ROOTS_MULTILINE
+
+        if ($expectedDotnet -eq 0 -and $env:RESOLVED_DOTNET_JSON) {
+          try { $expectedDotnet = (@($env:RESOLVED_DOTNET_JSON | ConvertFrom-Json)).Count } catch { $expectedDotnet = 0 }
+        }
+        if ($expectedNpm -eq 0 -and $env:RESOLVED_NPM_JSON) {
+          try { $expectedNpm = (@($env:RESOLVED_NPM_JSON | ConvertFrom-Json)).Count } catch { $expectedNpm = 0 }
+        }
+
+        $expectedTotal = [int]$expectedDotnet + [int]$expectedNpm
+
+        $root = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        $found = 0
+        if (Test-Path $root) {
+          $found = (Get-ChildItem -Path $root -Recurse -Filter *.json -File -EA SilentlyContinue | Measure-Object).Count
+        }
+
+        Write-Host "##[section]SBOM validation"
+        Write-Host "Expected  : total=$expectedTotal (dotnet=$expectedDotnet, npm=$expectedNpm)"
+        Write-Host "Discovered: total=$found   under $root"
+
+        Write-Host "##vso[task.setvariable variable=sbomExpected]$expectedTotal"
+        Write-Host "##vso[task.setvariable variable=sbomFound]$found"
+
+        $strict = "${{ parameters.strict }}" -eq "True"
+
+        if ($found -eq 0) {
+          Write-Host "##vso[task.setvariable variable=sbomExists]false"
+          $msg = "No SBOMs found."
+          if ($strict) { Write-Error "❌ $msg"; exit 1 } else { Write-Warning $msg; exit 0 }
+        }
+
+        if ($expectedTotal -gt 0 -and $found -lt $expectedTotal) {
+          Write-Host "##vso[task.setvariable variable=sbomExists]false"
+          $msg = "Only found $found of $expectedTotal expected SBOM(s)."
+          if ($strict) { Write-Error "❌ $msg"; exit 1 } else { Write-Warning $msg; exit 0 }
+        }
+
+        Write-Host "All expected SBOM(s) present or validation criteria met."
+        Write-Host "##vso[task.setvariable variable=sbomExists]true"

@@ -1,0 +1,21 @@
+# This YAML template is used to publish a Software Bill of Materials (SBOM) artifact.
+# The inclusion of this step is managed by the caller, and it is executed unconditionally
+# when included in a pipeline.
+
+parameters:
+    # Parameter to specify the name of the artifact to be published.
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+steps:
+  # Step: Publish SBOM artifact
+  # - Uses the `PublishPipelineArtifact` task to publish the SBOM artifact.
+  # - Publishes the artifact located in the temporary directory `$(Agent.TempDirectory)/sbom`.
+  # - The artifact is published to the pipeline with the name specified by the `artifactName` parameter.
+  - task: PublishPipelineArtifact@1
+    displayName: "Publish SBOM artifact"
+    inputs:
+      targetPath: "$(Agent.TempDirectory)/sbom"
+      publishLocation: pipeline
+      artifact: ${{ parameters.artifactName }}

@@ -1,0 +1,114 @@
+# Step: Preflight SBOM discovery, validation, and upload matrix preparation
+
+# This step discovers all candidate SBOM files, validates them, and builds an upload matrix for downstream steps.
+#
+# Outputs:
+#   - preflight.UploadMatrixPath: Path to a JSON file containing an array of objects with FilePath, ProjectName, and ProjectVersion.
+
+# Behavior:
+#   - ENV_NAME is optional. If missing, a warning is logged but the step does not fail.
+#   - Does not assume an environment tag exists; tags are handled upstream by build-project-tags.
+#   - If no valid SBOMs are found, the step fails.
+
+steps:
+  - task: PowerShell@2
+    name: preflight
+    displayName: "Preflight: discover, validate, and plan uploads"
+    env:
+      # Context vars (ENV_NAME is optional)
+      ENV_NAME: $(ENV_NAME)
+      RELEASE_NUMBER: $(RELEASE_NUMBER)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        # Set strict error handling so the script fails on any error
+        $ErrorActionPreference = 'Stop'
+
+        # Warn if ENV_NAME is missing, but do not fail
+        if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) {
+          Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag."
+        }
+
+        # Locate SBOM folder produced by generation/artifact download
+        $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        if (-not (Test-Path -LiteralPath $sbomRoot)) {
+          throw "SBOM root not found at $sbomRoot. Ensure the 'Download SBOM artifact' step ran successfully."
+        }
+
+        # Discover candidate SBOM files (JSON CycloneDX format)
+        $files = Get-ChildItem -Path $sbomRoot -Recurse -File -Filter *.json -ErrorAction SilentlyContinue
+        if (-not $files -or $files.Count -eq 0) {
+          throw "No SBOM files (*.json) discovered under $sbomRoot."
+        }
+
+        # Helper: Extracts the application name from SBOM metadata
+        function Get-AppNameFromSbom([string]$path) {
+          try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
+        }
+        # Helper: Fallback to parent directory name if SBOM metadata is missing
+        function Get-FallbackName([string]$path) {
+          try {
+            $dir = Split-Path $path -Parent
+            $parent = Split-Path $dir -Leaf
+            if ([string]::IsNullOrWhiteSpace($parent)) { return (Split-Path $path -Leaf) }
+            return $parent
+          } catch { return (Split-Path $path -Leaf) }
+        }
+
+        # Initialize the upload matrix and invalid counter
+        $matrix = New-Object System.Collections.Generic.List[object]
+        $invalid = 0
+
+        # Iterate through discovered SBOM files and validate each
+        foreach ($f in $files) {
+          $filePath = $f.FullName
+          # Basic sanity check: skip empty files
+          if ($f.Length -eq 0) { Write-Warning "Empty SBOM: $filePath"; $invalid++; continue }
+
+          try { $json = Get-Content -Raw -LiteralPath $filePath | ConvertFrom-Json -ea Stop }
+          catch {
+            Write-Warning "Invalid JSON SBOM: $filePath"
+            $invalid++; continue
+          }
+
+          # Resolve project name from SBOM metadata; fallback to parent folder name
+          $name = Get-AppNameFromSbom $filePath
+          if ([string]::IsNullOrWhiteSpace($name)) { $name = Get-FallbackName $filePath }
+
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            Write-Warning "Unable to determine project name for SBOM: $filePath"
+            $invalid++; continue
+          }
+
+          # Version plan: use raw RELEASE_NUMBER (no enforced prefix), as per current convention
+          $version = $env:RELEASE_NUMBER
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            # If RELEASE_NUMBER is not set, fall back to a stable placeholder to avoid hard-fail
+            $version = "unknown"
+            Write-Warning "RELEASE_NUMBER is empty; using version placeholder 'unknown' for: $name"
+          }
+
+          # Add valid SBOM entry to the upload matrix
+          $matrix.Add([pscustomobject]@{
+            FilePath       = $filePath
+            ProjectName    = $name
+            ProjectVersion = $version
+          })
+        }
+
+        # Fail if no valid SBOMs were found after validation
+        if ($matrix.Count -eq 0) {
+          throw "No valid SBOMs after preflight validation; cannot build upload matrix."
+        }
+
+        # Persist the upload matrix to a temp file and expose as an output variable
+        $outPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
+        ($matrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $outPath -Encoding UTF8
+
+        # Output a summary of the preflight results
+        Write-Host "##[section]Preflight summary → valid=$($matrix.Count), invalid=$invalid"
+        Write-Host "Matrix path: $outPath"
+
+        # Output variable for downstream 'perform-uploads' step
+        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$outPath"

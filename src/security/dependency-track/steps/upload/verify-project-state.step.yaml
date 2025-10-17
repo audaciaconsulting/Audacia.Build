@@ -1,0 +1,148 @@
+# Template: verify Dependency-Track reflects expected (Project, Version) as latest after upload
+
+# This step verifies that each uploaded (Project, Version) pair exists in Dependency-Track and is marked as the latest version.
+#
+# Parameters:
+#   - enforce: If true, the step fails if any project is missing or not marked as latest.
+#   - echoDetails: If true, outputs row-by-row verification results to the console.
+
+# Environment Variables:
+#   - DT_API_URL: Dependency-Track API base URL.
+#   - DT_API_KEY: API key for authentication.
+#   - UPLOADED_ROWS_JSON: JSON array of uploaded (Project, Version) pairs.
+
+# Behavior:
+#   - For each (Project, Version), queries Dependency-Track for existence and latest status.
+#   - Outputs a summary and optionally detailed results.
+#   - If enforce=true, fails the step if any project is missing or not latest.
+parameters:
+  - name: enforce
+    type: boolean
+    default: false  # if true, fail if any project isn't latest / can't be found
+  - name: echoDetails
+    type: boolean
+    default: true
+
+steps:
+  - task: PowerShell@2
+    displayName: "Verify Dependency-Track project state (post-upload)"
+    env:
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      UPLOADED_ROWS_JSON: $(uploadScript.uploadedRowsJson)
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        # Set strict error handling so the script fails on any error
+        $ErrorActionPreference = 'Stop'
+
+        # Validate required Dependency-Track API environment variables
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+        }
+        $base = "$($env:DT_API_URL)".TrimEnd('/')
+        Write-Host "Verifying against: $base"
+
+        # Parse uploaded (Project, Version) pairs from environment variable
+        $raw = $env:UPLOADED_ROWS_JSON
+        if (-not $raw -or [string]::IsNullOrWhiteSpace($raw)) { $raw = '[]' }
+        try { $pairs = $raw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
+        if ($pairs -isnot [System.Collections.IEnumerable]) { $pairs = @($pairs) }
+        if (-not $pairs) { $pairs = @() }
+
+        # Create and configure HttpClient for Dependency-Track API
+        Add-Type -AssemblyName System.Net.Http
+        $http = [System.Net.Http.HttpClient]::new()
+        $http.Timeout = [TimeSpan]::FromMinutes(5)
+        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+
+        # Helper: Invoke-DtApi - calls Dependency-Track API with retry logic for transient errors
+        function Invoke-DtApi([string]$method, [string]$path, [object]$body=$null, [int]$retries=3, [string]$baseUrl) {
+          $attempt = 0; $lastErr = $null
+          do {
+            try {
+              $uri  = "$baseUrl$path"
+              $msg  = [System.Net.Http.HttpRequestMessage]::new($method, $uri)
+              if ($body -ne $null) {
+                $json = $body | ConvertTo-Json -Depth 8
+                $msg.Content = [System.Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json')
+              }
+              $resp = $http.SendAsync($msg).GetAwaiter().GetResult()
+              $txt  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($resp.IsSuccessStatusCode) { return $txt }
+              if ([int]$resp.StatusCode -ge 500) { throw "HTTP $($resp.StatusCode): $txt" }
+              throw "API $method $path failed ($($resp.StatusCode)): $txt"
+            } catch {
+              $lastErr = $_
+              $retryable = ($lastErr.Exception -is [System.Net.Http.HttpRequestException]) -or
+                           ($lastErr.Exception -is [System.TimeoutException]) -or
+                           ($lastErr.Exception -is [System.Net.WebException]) -or
+                           ($lastErr.Exception.Message -match '^HTTP 5\d{2}:')
+              if (-not $retryable -or $attempt -ge $retries) { throw $lastErr }
+              $delay = [int][math]::Pow(2, [double]$attempt)
+              Write-Warning "Transient error calling $path. Retry in ${delay}s (attempt $($attempt+1)/$retries): $($lastErr.Exception.Message)"
+              Start-Sleep -Seconds $delay; $attempt++
+            }
+          } while ($true)
+        }
+
+        # Prepare results array for verification output
+        $rows = New-Object System.Collections.Generic.List[object]
+
+        # For each (Project, Version), check existence and latest status in Dependency-Track
+        foreach ($p in $pairs) {
+          $name = $p.Project; $version = $p.Version
+          if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($version)) {
+            $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='NO'; IsLatest='N/A'; Note='Missing project or version value' })
+            continue
+          }
+          $encName = [System.Web.HttpUtility]::UrlEncode($name)
+          $encVer  = [System.Web.HttpUtility]::UrlEncode($version)
+          try {
+            $json = Invoke-DtApi -method GET -path "/v1/project/lookup?name=$encName&version=$encVer" -baseUrl $base
+            if (-not $json) { $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='NO'; IsLatest='N/A'; Note='Not found' }); continue }
+            $obj = $json | ConvertFrom-Json
+            $exists   = ($null -ne $obj -and $obj.uuid)
+            $isLatest = $false
+            if ($exists -and ($obj.PSObject.Properties.Name -contains 'isLatest')) { $isLatest = [bool]$obj.isLatest }
+            $rows.Add([pscustomobject]@{
+              Project = $name; Version = $version
+              Exists  = $(if($exists){'YES'} else {'NO'})
+              IsLatest= $(if($exists){ $(if($isLatest){'YES'}else{'NO'}) } else {'N/A'})
+              Note    = $(if($exists) { "uuid=$($obj.uuid)" } else { "Not found" })
+            })
+          } catch {
+            $rows.Add([pscustomobject]@{ Project=$name; Version=$version; Exists='UNKNOWN'; IsLatest='UNKNOWN'; Note="Lookup error: $($_.Exception.Message)" })
+          }
+        }
+
+        # ---- Console details (NEW) ----
+        # Output a summary and optionally detailed results to the console
+        Write-Host "##[group]Dependency-Track verification details (console)"
+        Write-Host ("Checked items: {0}" -f $rows.Count)
+        $missing = ($rows | Where-Object { $_.Exists -ne 'YES' }).Count
+        $notLatest = ($rows | Where-Object { $_.IsLatest -eq 'NO' }).Count
+        Write-Host ("Missing: {0} | Not latest: {1}" -f $missing, $notLatest)
+
+        if ("${{ parameters.echoDetails }}" -eq "True") {
+          "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "Project","Version","Exists","IsLatest","Note" | Write-Host
+          "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "-------","-------","------","--------","----" | Write-Host
+          foreach ($r in $rows) {
+            "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $r.Project, $r.Version, $r.Exists, $r.IsLatest, ($r.Note -replace '\r?\n',' ') | Write-Host
+          }
+        }
+        Write-Host "##[endgroup]"
+
+        # Enforce: fail the step if any project is missing or not latest (if enforce=true)
+        $shouldFail = $false
+        if ("${{ parameters.enforce }}" -eq "True") {
+          foreach ($r in $rows) {
+            if ($r.Exists -ne 'YES' -or $r.IsLatest -ne 'YES') { $shouldFail = $true; break }
+          }
+          if ($shouldFail) {
+            Write-Error "Post-upload verification failed (enforce=true): at least one project is missing or not marked as latest."
+            exit 1
+          }
+        }
+        Write-Host "Verification complete."
