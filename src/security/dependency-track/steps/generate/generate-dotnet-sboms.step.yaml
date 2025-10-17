@@ -34,7 +34,10 @@ steps:
       command: restore
       projects: |
         ${{ parameters.dotnetProjectsMultiline }}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
+      ${{ if ne(parameters.nugetConfigPath, '') }}:
+        nugetConfigPath: ${{ parameters.nugetConfigPath }}
+      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+        vstsFeed: ${{ parameters.vstsFeed }}
 
   # Step: Generate .NET SBOMs (CycloneDX, JSON)
   # This step generates SBOMs for the restored .NET projects in JSON format using CycloneDX.
