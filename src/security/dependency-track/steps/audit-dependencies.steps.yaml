@@ -93,18 +93,20 @@ steps:
       vstsFeed: ${{ parameters.vstsFeed }}
       nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
-  # Upload (preflight validates and fails if no SBOMs are present)
+  # Upload
+  # When publishArtifact=false (single-job runs), SBOMs are already on disk so we skip the download
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
       parentProjectName: ${{ parameters.parentProjectName }}
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
+      tryDownloadArtifact: ${{ parameters.publishArtifact }}
 
   # Deactivate (toggle + runs only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:
       - template: /src/security/dependency-track/steps/deactivate-nonlatest.steps.yaml@templates
         parameters:
           artifactName: ${{ parameters.artifactName }}
-          tryDownloadArtifact: false # When running e2e like this, we don't need to download the artifact again as this is already done in the upload step.
+          tryDownloadArtifact: false
           parentProjectName: ${{ parameters.parentProjectName }}

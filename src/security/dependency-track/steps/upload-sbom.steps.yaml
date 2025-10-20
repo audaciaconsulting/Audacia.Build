@@ -36,11 +36,20 @@ parameters:
     type: string
     default: ' '
 
+  # Only attempt to download the artifact when one was published by the current run
+  # Set to false when SBOMs already exist on disk in this job (e.g., single-job E2E runs)
+  - name: tryDownloadArtifact
+    type: boolean
+    default: true
+
 steps:
-  # Download SBOM artifact into $(Agent.TempDirectory)/sbom
-  - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
-    parameters:
-      artifactName: ${{ parameters.artifactName }}
+  # Download SBOM artifact into $(Agent.TempDirectory)/sbom when requested
+  # Tolerates "not found" so flows that didn't publish can still proceed using local files
+  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
+      - template: /src/security/dependency-track/steps/common/download-artifact.step.yaml@templates
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          tolerateFailure: true
 
   # Build project tags (env:ENV_NAME + optional ADDITIONAL_TAGS)
   - template: /src/security/dependency-track/steps/upload/build-project-tags.step.yaml@templates
