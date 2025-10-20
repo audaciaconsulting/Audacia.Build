@@ -46,10 +46,23 @@ steps:
 
         # Parse uploaded (Project, Version) pairs from environment variable
         $raw = $env:UPLOADED_ROWS_JSON
-        if (-not $raw -or [string]::IsNullOrWhiteSpace($raw)) { $raw = '[]' }
-        try { $pairs = $raw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
-        if ($pairs -isnot [System.Collections.IEnumerable]) { $pairs = @($pairs) }
-        if (-not $pairs) { $pairs = @() }
+        if ([string]::IsNullOrWhiteSpace($raw)) { $raw = '[]' }
+
+        try {
+          $pairs = $raw | ConvertFrom-Json
+        } catch {
+          Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."
+          exit 1
+        }
+
+        # Normalize: handle null before wrapping, then ensure array shape, then drop nulls
+        if ($null -eq $pairs) {
+          $pairs = @()
+        }
+        elseif ($pairs -isnot [System.Collections.IEnumerable] -or $pairs -is [string]) {
+          $pairs = @($pairs)
+        }
+        $pairs = @($pairs | Where-Object { $_ -ne $null })
 
         # Create and configure HttpClient for Dependency-Track API
         Add-Type -AssemblyName System.Net.Http
