@@ -78,6 +78,22 @@ parameters:
     type: string
     default: ''
 
+  # Require at least one project tag overall (env:ENV_NAME when present plus any ADDITIONAL_TAGS).
+  # Passed through to the upload-sbom template → build-project-tags step.
+  - name: requireProjectTags
+    type: boolean
+    default: true
+
+  # Validation-only dry-run: perform discovery/validation/summary but skip the actual upload.
+  - name: validationOnly
+    type: boolean
+    default: false
+
+  # Wait time (seconds) for Dependency-Track BOM token processing after each upload.
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
+
 steps:
   # Generate
   - template: /src/security/dependency-track/steps/generate-sbom.steps.yaml@templates
@@ -93,15 +109,16 @@ steps:
       vstsFeed: ${{ parameters.vstsFeed }}
       nugetConfigPath: ${{ parameters.nugetConfigPath }}
 
-  # Upload
-  # When publishArtifact=false (single-job runs), SBOMs are already on disk so we skip the download
+  # Upload (preflight validates and fails if no SBOMs are present)
   - template: /src/security/dependency-track/steps/upload-sbom.steps.yaml@templates
     parameters:
       artifactName: ${{ parameters.artifactName }}
       failOnUploadError: ${{ parameters.failOnUploadError }}
+      requireProjectTags: ${{ parameters.requireProjectTags }}
+      validationOnly: ${{ parameters.validationOnly }}
+      bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
       parentProjectName: ${{ parameters.parentProjectName }}
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
-      tryDownloadArtifact: ${{ parameters.publishArtifact }}
 
   # Deactivate (toggle + runs only if prior steps succeeded)
   - ${{ if eq(parameters.deactivateOld, true) }}:
