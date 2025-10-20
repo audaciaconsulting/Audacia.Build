@@ -40,7 +40,7 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
 
-## Typical Repo Layout (SPA + .NET)
+## Specifying Projects for SBOM Generation
 
 Most repositories follow this structure:
 
