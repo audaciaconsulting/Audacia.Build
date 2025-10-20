@@ -9,10 +9,10 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 ## Two Ways to Run
 
-| Approach         | File                                 | When to use                                                                                       |
-| ---------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Modular / Staged | `dependency-track.pipeline.yaml`     | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
-| End-to-End       | `dependency-track-e2e.pipeline.yaml` | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
+| Approach         | File                                                        | When to use                                                                                       |
+| ---------------- |-------------------------------------------------------------| ------------------------------------------------------------------------------------------------- |
+| Modular / Staged | See the `dependency-track.pipeline.yaml` example below.     | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
+| End-to-End       | See the `dependency-track-e2e.pipeline.yaml` example below. | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
 ## Prerequisites
 
