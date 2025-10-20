@@ -39,7 +39,7 @@ steps:
 
         # Validate required Dependency-Track API environment variables
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
-          throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
+          throw "DT_API_URL and/or DT_API_KEY not set. Check the variable group holding your Dependency-Track values."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Verifying against: $base"
