@@ -1,6 +1,6 @@
 # Dependency-Track Pipeline Templates
 
-These Azure DevOps templates automate SBOM generation, upload to OWASP Dependency-Track, and optional deactivation of non-latest project versions.
+These Azure Pipelines templates automate SBOM generation, upload to OWASP Dependency-Track, and optional deactivation of non-latest project versions.
 
 ## What is Dependency-Track?
 
