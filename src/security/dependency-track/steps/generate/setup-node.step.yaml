@@ -1,10 +1,10 @@
 # Template: setup Node.js and expose tooling paths
 parameters:
   # Parameter: nodeVersion
-  # - Specifies the version of Node.js to use
+  # - Specifies the version of Node.js to use (e.g., "20.x")
   - name: nodeVersion
     type: string
-    default: '20.x'
+    default: ''
 
 steps:
   # Step: Use Node.js
@@ -23,11 +23,15 @@ steps:
       # Stop execution on errors
       $ErrorActionPreference = 'Stop'
 
+      if (-not '${{ parameters.nodeVersion }}' -or [string]::IsNullOrWhiteSpace('${{ parameters.nodeVersion }}')) {
+        throw "setup-node.step.yaml: 'nodeVersion' was not provided. Pass a spec such as '20.x'"
+      }
+
       # Function: Get-NodeToolPaths
       # - Resolves the paths for Node.js tooling based on the major version
       # - Throws an error if the required tools are not found
       function Get-NodeToolPaths {
-        param([string]$major = '20')
+        param([string]$major)
         $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
         if (-not (Test-Path $root)) { throw "Node tools directory not found: $root" }
         $ver = Get-ChildItem $root -Directory -Name | Where-Object { $_ -like "$major.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
@@ -42,8 +46,13 @@ steps:
         [pscustomobject]@{ Node=$node; Npm=$npm; Npx=$npx; Bin=$bin; Version=$ver }
       }
 
+      # Derive major from the provided version spec (e.g., "20.x" → "20")
+      $spec  = '${{ parameters.nodeVersion }}'
+      $major = [regex]::Match($spec, '^\d+').Value
+      if (-not $major) { throw "Could not derive Node major version from spec: '$spec'." }
+
       # Resolve Node.js tooling paths for the specified major version
-      $tool = Get-NodeToolPaths -major '20'
+      $tool = Get-NodeToolPaths -major $major
 
       # Log the resolved Node.js tooling information
       Write-Host "##[group]Node tooling (resolved)"
