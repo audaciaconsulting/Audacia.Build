@@ -7,6 +7,10 @@ parameters:
   - name: parentProjectName
     type: string
     default: ''
+  # Page size for Dependency-Track project pagination
+  - name: pageSize
+    type: number
+    default: 500
 
 steps:
   - task: PowerShell@2
@@ -16,6 +20,7 @@ steps:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
       PARENT_PROJECT_NAME: ${{ parameters.parentProjectName }}
+      PAGE_SIZE: ${{ parameters.pageSize }}
     inputs:
       pwsh: true
       targetType: inline
@@ -32,6 +37,9 @@ steps:
           Write-Warning "No project names provided. Nothing to deactivate."
           exit 0
         }
+
+        $pageSize = [int]($env:PAGE_SIZE ?? 500)
+        Write-Host "Using page size: $pageSize"
 
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
@@ -74,12 +82,12 @@ steps:
           $results = @()
           $page=1
           while ($true) {
-            $json = Invoke-DtApi -method GET -path "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=500&page=$page" -baseUrl $base
+            $json = Invoke-DtApi -method GET -path "/v1/project?name=$([uri]::EscapeDataString($name))&pageSize=$pageSize&page=$page" -baseUrl $base
             $arr = @()
             if ($json) { $arr = $json | ConvertFrom-Json }
             if (-not $arr -or $arr.Count -eq 0) { break }
             $results += $arr
-            if ($arr.Count -lt 500) { break }
+            if ($arr.Count -lt $pageSize) { break }
             $page++
           }
           return $results
