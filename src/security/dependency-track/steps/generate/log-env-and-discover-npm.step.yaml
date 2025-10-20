@@ -4,6 +4,10 @@
 parameters:
   # Parameter: npmRootsMultiline
   # Description: A multiline string containing paths to specific npm root directories to scan.
+  # Multiline usage example:
+  #   npmRootsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui
+  #     $(System.DefaultWorkingDirectory)/src/Admin.Web
   - name: npmRootsMultiline
     type: string
     default: ''

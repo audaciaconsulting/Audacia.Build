@@ -2,7 +2,10 @@
 parameters:
   # Parameter: npmRootsMultiline
   # - A multiline string containing paths to npm project roots
-  # - Default value is an empty string
+  # - Multiline usage example:
+  #     npmRootsMultiline: |
+  #       $(System.DefaultWorkingDirectory)/src/App.Ui
+  #       $(System.DefaultWorkingDirectory)/src/Admin.Web
   - name: npmRootsMultiline
     type: string
     default: ''

@@ -2,37 +2,53 @@
 
 parameters:
   # Multiline string containing paths to .NET projects to process.
+  # Multiline usage example:
+  #   dotnetProjectsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Api/App.Api.csproj
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui/App.Ui.csproj
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+
   # Multiline string containing paths to npm project roots to process.
+  # Multiline usage example:
+  #   npmRootsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui
+  #     $(System.DefaultWorkingDirectory)/src/Admin.Web
   - name: npmRootsMultiline
     type: string
     default: ''
+
   # Boolean flag to determine whether to publish the generated SBOMs as an artifact.
   - name: publishArtifact
     type: boolean
     default: true
+
   # Name of the artifact to publish, if publishing is enabled.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
   # Version of Node.js to use for npm-related operations.
   - name: nodeVersion
     type: string
     default: '20.x'
+
   # Boolean flag to include license texts in the generated SBOMs.
   - name: includeLicenseTexts
     type: boolean
     default: true
+
   # Boolean flag to enforce validation of all expected SBOMs.
   - name: requireAllExpectedSboms
     type: boolean
     default: true
+
   # Azure Artifacts feed URL for resolving .NET dependencies.
   - name: vstsFeed
     type: string
     default: ''
+
   # Path to the NuGet configuration file for .NET dependency resolution.
   - name: nugetConfigPath
     type: string

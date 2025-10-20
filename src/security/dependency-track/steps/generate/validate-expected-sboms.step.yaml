@@ -9,9 +9,21 @@ parameters:
   - name: strict
     type: boolean
     default: true  # if true, fail the job when counts don't match
+
+  # Multiline string mirroring the list of .NET projects.
+  # Multiline usage example:
+  #   dotnetProjectsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Api/App.Api.csproj
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui/App.Ui.csproj
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+
+  # Multiline string mirroring the list of npm project roots.
+  # Multiline usage example:
+  #   npmRootsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui
+  #     $(System.DefaultWorkingDirectory)/src/Admin.Web
   - name: npmRootsMultiline
     type: string
     default: ''

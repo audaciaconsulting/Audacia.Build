@@ -5,11 +5,19 @@
 
 parameters:
   # One .NET project path per line. List all deployables (API/UI/Functions).
+  # Multiline usage example:
+  #   dotnetProjectsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Api/App.Api.csproj
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui/App.Ui.csproj
   - name: dotnetProjectsMultiline
     type: string
     default: ''
 
   # One npm root per line (optional; auto-discovery falls back to lockfiles).
+  # Multiline usage example:
+  #   npmRootsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui
+  #     $(System.DefaultWorkingDirectory)/src/Admin.Web
   - name: npmRootsMultiline
     type: string
     default: ''

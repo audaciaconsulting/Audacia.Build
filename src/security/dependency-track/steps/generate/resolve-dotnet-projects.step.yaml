@@ -5,9 +5,10 @@
 parameters:
   # Parameter: dotnetProjectsMultiline
   # - A multiline string containing paths to .NET projects.
-  # - Each line represents a project path.
-  # - Lines starting with '#' or empty lines are ignored.
-  # - Default value is an empty string.
+  # - Multiline usage example:
+  #     dotnetProjectsMultiline: |
+  #       $(System.DefaultWorkingDirectory)/src/App.Api/App.Api.csproj
+  #       $(System.DefaultWorkingDirectory)/src/App.Ui/App.Ui.csproj
   - name: dotnetProjectsMultiline
     type: string
     default: ''

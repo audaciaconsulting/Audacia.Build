@@ -5,16 +5,22 @@
 
 parameters:
   # Parameter: dotnetProjectsMultiline
-  # A multiline string containing paths to .NET projects. Defaults to an empty string.
+  # A multiline string containing paths to .NET projects.
+  # Multiline usage example:
+  #   dotnetProjectsMultiline: |
+  #     $(System.DefaultWorkingDirectory)/src/App.Api/App.Api.csproj
+  #     $(System.DefaultWorkingDirectory)/src/App.Ui/App.Ui.csproj
   - name: dotnetProjectsMultiline
     type: string
     default: ''
+
   # Parameter: vstsFeed
   # The Azure DevOps feed to use for restoring NuGet packages. Defaults to an empty string.
   # Example: 'MyOrg/MyFeedName'
   - name: vstsFeed
     type: string
     default: ''
+
   # Parameter: nugetConfigPath
   # The path to the NuGet configuration file. Defaults to an empty string.
   # Example: '$(System.DefaultWorkingDirectory)/NuGet.config'
