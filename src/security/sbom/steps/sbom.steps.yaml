@@ -5,7 +5,7 @@ parameters:
     default: '$(Agent.TempDirectory)/sbom'           # Directory to store generated SBOM files.
   - name: dependencyLockArtifactDirectory
     type: string
-    default: '$(Agent.TempDirectory)/lock-deps'       # If not provided, the aggregated Dependency Lock artifact will be downloaded.
+    default: '$(Agent.TempDirectory)/dependency-lock'       # If not provided, the aggregated Dependency Lock artifact will be downloaded.
   - name: outputFormat
     type: string
     default: 'cyclonedx-json'                         # SBOM output format.
@@ -29,26 +29,26 @@ parameters:
     default: '$(Agent.TempDirectory)'                 # Directory for installing Grype.
   - name: downloadArtifact
     type: boolean
-    default: false                                    # If true, download the SBOM artifact before analysis.
+    default: true                                    # If true, download the SBOM artifact before analysis.
   - name: syftConfigFile
     type: string
     default: ''                                   # Directory where an optional configuration file for Syft located.
 
 steps:
-  # If a dependencyLockArtifactDirectory isn't provided, download the aggregated Dependency Lock artifact.
-  - ${{ if eq(parameters.dependencyLockArtifactDirectory, '$(Agent.TempDirectory)/lock-deps') }}:
+  # If a dependencyLockArtifactDirectory isn’t provided, download the aggregated Dependency Lock artifact.
+  - ${{ if eq(parameters.dependencyLockArtifactDirectory, '') }}:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download Aggregated Dependency Lock Artifact'
         inputs:
           buildType: 'current'
-          artifact: 'lock-deps-files'
+          artifact: 'dependency-lock-files'
           path: ${{ parameters.dependencyLockArtifactDirectory }}
 
   # Generate SBOMs using the aggregated Dependency Lock files.
   - template: sbom-generation.yaml@templates
     parameters:
       sbomOutputDir: ${{ parameters.sbomOutputDir }}
-      # In composite mode we assume the aggregated files are in $(Agent.TempDirectory)/lock-deps.
+      # In composite mode we assume the aggregated files are in $(Agent.TempDirectory)/dependency-lock.
       dependencyLockArtifactDirectory: ${{ parameters.dependencyLockArtifactDirectory }}
       outputFormat: ${{ parameters.outputFormat }}
       publishArtifact: ${{ parameters.publishGenerationArtifact }}
