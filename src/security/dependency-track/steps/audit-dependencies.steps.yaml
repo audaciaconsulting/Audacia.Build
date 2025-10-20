@@ -61,12 +61,12 @@ parameters:
   # Optional parent project details; if left empty no parent is set on upload or deactivation scope
   - name: parentProjectName
     type: string
-    default: ' '
+    default: ''
 
   # Optional parent project version; if left empty no parent version is set on upload or deactivation scope
   - name: parentProjectVersion
     type: string
-    default: ' '
+    default: ''
 
   # Optional VSTS feed to use for NuGet packages.
   - name: vstsFeed

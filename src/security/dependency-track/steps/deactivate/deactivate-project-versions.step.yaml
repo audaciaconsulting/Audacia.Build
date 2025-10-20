@@ -6,7 +6,7 @@ parameters:
   # Optional parent container (project) name; when provided, deactivation is limited to siblings under this parent
   - name: parentProjectName
     type: string
-    default: ' '
+    default: ''
 
 steps:
   - task: PowerShell@2

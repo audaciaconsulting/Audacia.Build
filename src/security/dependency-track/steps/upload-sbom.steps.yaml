@@ -29,12 +29,12 @@ parameters:
   # Optional parent project name to associate with each uploaded project in Dependency-Track
   - name: parentProjectName
     type: string
-    default: ' '
+    default: ''
 
   # Optional parent project version to associate with each uploaded project in Dependency-Track
   - name: parentProjectVersion
     type: string
-    default: ' '
+    default: ''
 
   # Only attempt to download the artifact when one was published by the current run
   # Set to false when SBOMs already exist on disk in this job (e.g., single-job E2E runs)

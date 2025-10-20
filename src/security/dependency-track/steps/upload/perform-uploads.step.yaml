@@ -12,10 +12,10 @@ parameters:
   # Optional parent project parameters (leave blank for no parent linkage)
   - name: parentProjectName
     type: string
-    default: ' '
+    default: ''
   - name: parentProjectVersion
     type: string
-    default: ' '
+    default: ''
 
 steps:
   - task: PowerShell@2
