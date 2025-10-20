@@ -17,9 +17,12 @@ steps:
           try { $rows = Get-Content -Raw -LiteralPath $rowsPath | ConvertFrom-Json } catch { $rows=@() }
         }
         # Ensure $rows is always an array for consistent processing
-        if ($rows -isnot [System.Collections.IEnumerable]) { $rows = @($rows) }
-        if (-not $rows) { $rows = @() }
-
+          if ($null -eq $rows) {
+          $rows = @()
+        } elseif ($rows -isnot [System.Collections.IEnumerable]) {
+          $rows = @($rows)
+        }
+        
         # ---- Console output (grouped) ----
         # Output a summary group to the Azure DevOps log
         Write-Host "##[group]Dependency-Track Upload Summary (console)"
