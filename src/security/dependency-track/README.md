@@ -18,12 +18,9 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 ### 1) Variable group with secrets
 
-The API key for your Dependency-Track instance must be stored in a variable group linked to the pipeline.
-You can store this key as a secret in a standard variable group or in a variable group connected to Azure Key Vault.
+To authenticate with your Dependency-Track instance, you must provide an API key to the pipeline. Store this key securely using your preferred secret management mechanism (such as a variable group, environment variable, or secret store) and ensure it is accessible to the pipeline at runtime.
 
-If your project is hosted in the Audacia Azure DevOps or GitHub organization, create a variable group and link it to the shared Azure Key Vault.
-
-If your project is hosted in a different organization, you can store the key as a secret or use a variable group linked to another Azure Key Vault.
+If using Azure DevOps, you can store the key as a secret in a variable group or connect it to Azure Key Vault. For other CI/CD systems, follow the recommended approach for securely managing secrets in your environment.
 
 ### 2) Variables configured in the pipeline (optional)
 
