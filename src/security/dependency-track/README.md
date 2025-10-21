@@ -39,7 +39,7 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 
 ## Specifying Projects for SBOM Generation
 
-Most repositories follow this structure:
+Many repositories follow this structure:
 
 ```
 src/
