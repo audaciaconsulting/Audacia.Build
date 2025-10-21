@@ -78,7 +78,9 @@ Ensure names reflect the deployable artifact or service that will appear in repo
 
 ## Project Tags in Dependency-Track
 
-Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
+Tagging is not currently implemented in our Dependency-Track setup but may be added in the future (e.g., for uploading multiple SBOMs from a single repository for different environments). Our pipelines do, however, support this functionality if needed.
+
+In Dependency-Track, tags appear under each project and support filtering, dashboards, and portfolio access control.
 
 The upload step builds tags like:
 
