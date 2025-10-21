@@ -1,0 +1,93 @@
+# Template: end-to-end SBOM audit
+# Runs generate (.NET + npm), optionally publishes artifact once, uploads to Dependency-Track, optionally deactivates old versions.
+
+parameters:
+  - name: dotnetProjectsMultiline
+    type: string
+    default: ''
+  - name: npmRootsMultiline
+    type: string
+    default: ''
+  - name: publishArtifact
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+  - name: failOnUploadError
+    type: boolean
+    default: true
+  - name: deactivateOld
+    type: boolean
+    default: true
+  - name: parentProjectName
+    type: string
+    default: ''
+  - name: parentProjectVersion
+    type: string
+    default: ''
+  - name: vstsFeed
+    type: string
+    default: ''
+  - name: nugetConfigPath
+    type: string
+    default: ''
+  - name: requireProjectTags
+    type: boolean
+    default: true
+  - name: validationOnly
+    type: boolean
+    default: false
+  - name: bomProcessingTimeoutSec
+    type: number
+    default: 300
+
+steps:
+  - template: ./generate-dotnet-sbom.steps.yaml
+    parameters:
+      dotnetProjectsMultiline: |
+        ${{ parameters.dotnetProjectsMultiline }}
+      vstsFeed: ${{ parameters.vstsFeed }}
+      nugetConfigPath: ${{ parameters.nugetConfigPath }}
+      publishArtifact: false
+      artifactName: ${{ parameters.artifactName }}
+
+  - template: ./generate-npm-sbom.steps.yaml
+    parameters:
+      npmRootsMultiline: |
+        ${{ parameters.npmRootsMultiline }}
+      nodeVersion: ${{ parameters.nodeVersion }}
+      includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
+      publishArtifact: false
+      artifactName: ${{ parameters.artifactName }}
+
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: "Publish SBOM artifact (combined)"
+        inputs:
+          targetPath: "$(Agent.TempDirectory)/sbom"
+          publishLocation: pipeline
+          artifact: ${{ parameters.artifactName }}
+
+  - template: ./upload-sbom.steps.yaml
+    parameters:
+      artifactName: ${{ parameters.artifactName }}
+      failOnUploadError: ${{ parameters.failOnUploadError }}
+      requireProjectTags: ${{ parameters.requireProjectTags }}
+      validationOnly: ${{ parameters.validationOnly }}
+      bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
+      parentProjectName: ${{ parameters.parentProjectName }}
+      parentProjectVersion: ${{ parameters.parentProjectVersion }}
+
+  - ${{ if eq(parameters.deactivateOld, true) }}:
+      - template: ./deactivate-nonlatest.steps.yaml
+        parameters:
+          artifactName: ${{ parameters.artifactName }}
+          tryDownloadArtifact: false
+          parentProjectName: ${{ parameters.parentProjectName }}
