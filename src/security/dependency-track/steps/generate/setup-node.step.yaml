@@ -4,7 +4,6 @@ parameters:
   # - Specifies the version of Node.js to use (e.g., "20.x")
   - name: nodeVersion
     type: string
-    default: ''
 
 steps:
   # Step: Use Node.js
