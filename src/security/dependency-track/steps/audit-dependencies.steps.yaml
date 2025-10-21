@@ -3,10 +3,10 @@
 
 parameters:
   - name: dotnetProjects
-    type: stringList
+    type: object
     default: []
   - name: npmRoots
-    type: stringList
+    type: object
     default: []
   - name: publishArtifact
     type: boolean
