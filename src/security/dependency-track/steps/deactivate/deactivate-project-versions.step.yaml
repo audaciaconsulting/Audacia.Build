@@ -7,10 +7,6 @@ parameters:
   - name: parentProjectName
     type: string
     default: ''
-  # Page size for Dependency-Track project pagination
-  - name: pageSize
-    type: number
-    default: 500
 
 steps:
   - task: PowerShell@2
@@ -20,26 +16,26 @@ steps:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
       PARENT_PROJECT_NAME: ${{ parameters.parentProjectName }}
-      PAGE_SIZE: ${{ parameters.pageSize }}
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
 
+        # Pagination size for project listing
+        $pageSize = 500
+
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) {
           throw "DT_API_URL and/or DT_API_KEY not set. Check the 'Dependency-Track' variable group."
         }
         $base = "$($env:DT_API_URL)".TrimEnd('/')
         Write-Host "Using Dependency-Track API base: $base"
+        Write-Host "Using page size: $pageSize"
 
         if ([string]::IsNullOrWhiteSpace($env:PROJECT_NAMES_CSV)) {
           Write-Warning "No project names provided. Nothing to deactivate."
           exit 0
         }
-
-        $pageSize = [int]($env:PAGE_SIZE ?? 500)
-        Write-Host "Using page size: $pageSize"
 
         Add-Type -AssemblyName System.Net.Http
         $http = [System.Net.Http.HttpClient]::new()
