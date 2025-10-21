@@ -77,12 +77,14 @@ Ensure names reflect the deployable artifact or service that will appear in repo
 
 ## Project Tags in Dependency-Track
 
+Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
+They are not currently used in our Dependency-Track architecture, however, they may be in the future when we potentially have SBOMs for multiple environments per project.
+They have been left in place for now should individual teams wish to use them for their own purposes.
+
 The upload step builds tags like:
 
 * `env:<ENV_NAME>` when `ENV_NAME` is set
 * Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
-
-Tags appear in Dependency-Track under each project and help with filtering, dashboards, and portfolio access control.
 
 ## Parent Project Linking
 
