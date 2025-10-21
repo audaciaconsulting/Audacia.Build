@@ -82,7 +82,29 @@ steps:
         $rootsParam = @()
         try { $rootsParam = $rootsJson | ConvertFrom-Json } catch { $rootsParam = @() }
 
+        # Normalize user-provided npmRoots (handle "/" vs "\", absolute -> relative, dedupe)
         $workspace = '$(System.DefaultWorkingDirectory)'
+        $wsFull = [IO.Path]::GetFullPath($workspace)
+
+        function To-RelativeUnderRoot([string]$p, [string]$root) {
+          $full = [IO.Path]::GetFullPath($p)
+          if ($full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $full.Substring($root.Length).TrimStart('\')
+          }
+          return $full
+        }
+
+        $normalizedRoots = New-Object System.Collections.Generic.List[string]
+        foreach ($r in $rootsParam) {
+          if ([string]::IsNullOrWhiteSpace($r)) { continue }
+          $x = ($r -replace '/', '\').Trim().Trim('"').Trim()
+          $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
+          try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
+          if (-not ($normalizedRoots -contains $rel)) { $normalizedRoots.Add($rel) }
+        }
+        $rootsParam = $normalizedRoots
+
+        # Discover manifests across the workspace for auto mode
         Write-Host "##[group]Discover JS manifests"
         $locks = Get-ChildItem -Path $workspace -Recurse -Filter 'package-lock.json' -File -EA SilentlyContinue
         $pkgs  = Get-ChildItem -Path $workspace -Recurse -Filter 'package.json'      -File -EA SilentlyContinue
