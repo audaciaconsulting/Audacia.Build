@@ -94,12 +94,18 @@ steps:
           return $full
         }
 
-        $normalizedRoots = New-Object System.Collections.Generic.List[string]
-        foreach ($r in $rootsParam) {
+          $normalizedRoots = New-Object System.Collections.Generic.List[string]
+          foreach ($r in $rootsParam) {
           if ([string]::IsNullOrWhiteSpace($r)) { continue }
           $x = ($r -replace '/', '\').Trim().Trim('"').Trim()
           $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
           try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
+        
+          # Dedupe only identical paths that resolve to the same directory
+          # (e.g., absolute vs relative, '/' vs '\').
+          # This avoids generating the same SBOM twice — it does NOT hide real
+          # duplicate applications or identical project names, which will still
+          # be detected and surfaced later in preflight/upload validation.
           if (-not ($normalizedRoots -contains $rel)) { $normalizedRoots.Add($rel) }
         }
         $rootsParam = $normalizedRoots

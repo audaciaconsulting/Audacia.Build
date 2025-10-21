@@ -53,9 +53,11 @@ steps:
         }
 
         $normalized = New-Object System.Collections.Generic.List[string]
+        
         foreach ($p in $inputProjects) {
           if (-not [string]::IsNullOrWhiteSpace($p)) {
             $x = ($p -replace '/', '\').Trim().Trim('"').Trim()
+            # If the value still contains $(Build.SourcesDirectory) or $(System.DefaultWorkingDirectory), expand via environment
             # If the value still contains $(Build.SourcesDirectory) or $(System.DefaultWorkingDirectory), expand via environment
             $x = $x -replace '\$\((?i:Build\.SourcesDirectory)\)', $srcRoot
             $x = $x -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $srcRoot
@@ -73,7 +75,11 @@ steps:
                 Write-Warning "Project path could not be verified: '$p' → '$candidateRel'. Ensure the file exists."
               }
             }
-
+        
+            # Dedupe only paths that resolve to the same project file (e.g. absolute vs relative, '/' vs '\')
+            # This prevents generating the same SBOM multiple times, but does NOT hide genuine duplicate
+            # applications or identical Dependency-Track project names — those will still surface later
+            # during the preflight and upload validation steps.
             if (-not [string]::IsNullOrWhiteSpace($chosen) -and -not ($normalized -contains $chosen)) {
               $normalized.Add($chosen)
             }
