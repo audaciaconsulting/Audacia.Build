@@ -2,12 +2,12 @@
 # Runs generate (.NET + npm), optionally publishes artifact once, uploads to Dependency-Track, optionally deactivates old versions.
 
 parameters:
-  - name: dotnetProjectsMultiline
-    type: string
-    default: ''
-  - name: npmRootsMultiline
-    type: string
-    default: ''
+  - name: dotnetProjects
+    type: stringList
+    default: []
+  - name: npmRoots
+    type: stringList
+    default: []
   - name: publishArtifact
     type: boolean
     default: true
@@ -51,8 +51,7 @@ parameters:
 steps:
   - template: ./generate-dotnet-sbom.steps.yaml
     parameters:
-      dotnetProjectsMultiline: |
-        ${{ parameters.dotnetProjectsMultiline }}
+      dotnetProjects: ${{ parameters.dotnetProjects }}
       vstsFeed: ${{ parameters.vstsFeed }}
       nugetConfigPath: ${{ parameters.nugetConfigPath }}
       publishArtifact: false
@@ -60,8 +59,7 @@ steps:
 
   - template: ./generate-npm-sbom.steps.yaml
     parameters:
-      npmRootsMultiline: |
-        ${{ parameters.npmRootsMultiline }}
+      npmRoots: ${{ parameters.npmRoots }}
       nodeVersion: ${{ parameters.nodeVersion }}
       includeLicenseTexts: ${{ parameters.includeLicenseTexts }}
       publishArtifact: false
