@@ -11,8 +11,8 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 | Approach         | When to use                                                                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility. Use `dependency-track.pipeline.yaml`.              |
-| End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. Use `dependency-track-e2e.pipeline.yaml`. |
+| Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility.         |
+| End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
 ## Prerequisites
 
