@@ -1,8 +1,8 @@
 # Template: generate npm SBOMs using cyclonedx-npm
 
 parameters:
-  - name: npmRoots                 # was: npmRootsMultiline
-    type: object
+  - name: npmRoots
+    type: stringList
     default: []
   - name: nodeVersion
     type: string

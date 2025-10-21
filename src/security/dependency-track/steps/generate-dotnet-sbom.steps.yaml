@@ -2,7 +2,7 @@
 
 parameters:
   - name: dotnetProjects
-    type: object
+    type: stringList
     default: []
   - name: vstsFeed
     type: string
@@ -26,13 +26,12 @@ steps:
     condition: and(succeeded(), ne(${{ length(parameters.dotnetProjects) }}, 0))
     inputs:
       command: restore
-      projects: |
-        ${{ each p in parameters.dotnetProjects }}:
-          ${{ p }}
+      projects: ${{ join(parameters.dotnetProjects, '\n') }}
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
+
 
   - task: PowerShell@2
     displayName: "Install CycloneDX .NET tool"
