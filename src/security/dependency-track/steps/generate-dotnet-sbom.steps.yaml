@@ -73,26 +73,26 @@ steps:
         $projects = $raw -split "`r?`n" | % { $_.Trim() } | ? { $_ -and -not $_.StartsWith('#') }
 
         if ($projects.Count -eq 0) {
-        Write-Host "##[section].NET summary → ok=0, failed=0"
-        Write-Warning "No .NET projects provided; skipping .NET generation."
-        exit 0
+          Write-Host "##[section].NET summary → ok=0, failed=0"
+          Write-Warning "No .NET projects provided; skipping .NET generation."
+          exit 0
         }
       
         $ok=0; $fail=0
         foreach ($p in $projects) {
-        $base = [IO.Path]::GetFileNameWithoutExtension($p)
-        $file = "$base-sbom.json"
-        Write-Host "##[group].NET → $p"
-        try {
-        dotnet CycloneDX "$p" -o "$outputDir" -F Json -fn "$file"
-        if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
-          if (Test-Path (Join-Path $outputDir $file)) { $ok++ } else { $fail++ }
-        } catch {
-        Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; $fail++
-        } finally {
-        Write-Host "Output: $(Join-Path $outputDir $file)"
-          Write-Host "##[endgroup]"
-        }
+          $base = [IO.Path]::GetFileNameWithoutExtension($p)
+          $file = "$base-sbom.json"
+          Write-Host "##[group].NET → $p"
+          try {
+            dotnet CycloneDX "$p" -o "$outputDir" -F Json -fn "$file"
+            if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
+            if (Test-Path (Join-Path $outputDir $file)) { $ok++ } else { $fail++ }
+          } catch {
+            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; $fail++
+          } finally {
+            Write-Host "Output: $(Join-Path $outputDir $file)"
+            Write-Host "##[endgroup]"
+          }
         }
       
         Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
