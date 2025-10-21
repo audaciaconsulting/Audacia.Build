@@ -14,6 +14,17 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 | Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility.         |
 | End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
+> **Implementation note:**  
+> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml` and `generate-npm-sbom.steps.yaml`), the `publishArtifact` setting controls whether each generator publishes its output as a pipeline artifact.
+>
+> -  **If you are running only one generator** (for example, just the .NET or npm template), set `publishArtifact: true` to publish its SBOMs directly.
+> - ️ **If you are running multiple generators** (for example, both .NET and npm), set `publishArtifact: false` on each generator and add a single `PublishPipelineArtifact@1` step afterwards. This publishes a single combined artifact (e.g. `sbom-files`) containing all SBOM outputs.
+>
+> This approach ensures:
+> - A single, consolidated SBOM artifact for multi-ecosystem projects
+> - No duplicate or conflicting artifact names
+> - Consistent behavior between modular (staged) and end-to-end pipeline designs
+
 ## Prerequisites
 
 ### 1) Variable group with secrets
