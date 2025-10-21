@@ -2,7 +2,7 @@
 
 parameters:
   - name: dotnetProjects
-    type: stringList
+    type: object
     default: []
   - name: vstsFeed
     type: string

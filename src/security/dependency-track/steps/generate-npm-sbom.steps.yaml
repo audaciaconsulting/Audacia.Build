@@ -2,7 +2,7 @@
 
 parameters:
   - name: npmRoots
-    type: stringList
+    type: object
     default: []
   - name: nodeVersion
     type: string
