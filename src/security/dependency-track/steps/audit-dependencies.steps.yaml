@@ -49,6 +49,9 @@ parameters:
     default: 300
 
 steps:
+  # Publish is disabled in the per-ecosystem generators so we can publish ONCE here.
+  # This avoids duplicate/conflicting artifact names and guarantees a single combined
+  # artifact that contains both npm and .NET outputs.
   - template: ./generate-dotnet-sbom.steps.yaml
     parameters:
       dotnetProjects: ${{ parameters.dotnetProjects }}
@@ -65,6 +68,7 @@ steps:
       publishArtifact: false
       artifactName: ${{ parameters.artifactName }}
 
+  # Publish the combined folder once so consumers download a single artifact.
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
         displayName: "Publish SBOM artifact (combined)"
