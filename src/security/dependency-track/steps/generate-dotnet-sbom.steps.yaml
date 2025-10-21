@@ -21,17 +21,88 @@ steps:
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
 
+  - task: PowerShell@2
+    name: normalizeDotnet
+    displayName: "Normalize .NET project paths for matcher"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        # Pull the YAML array as JSON into PowerShell
+        $projJson = @'
+        ${{ convertToJson(parameters.dotnetProjects) }}
+        '@
+
+        try { $inputProjects = $projJson | ConvertFrom-Json } catch { $inputProjects = @() }
+        if ($null -eq $inputProjects) { $inputProjects = @() }
+        if ($inputProjects -isnot [System.Collections.IEnumerable]) { $inputProjects = @($inputProjects) }
+
+        $srcRoot = $env:BUILD_SOURCESDIRECTORY
+        if (-not $srcRoot) { $srcRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
+        $srcRoot = [IO.Path]::GetFullPath($srcRoot)
+
+        function To-RelativeUnderRoot([string]$full, [string]$root) {
+          $fullPath = [IO.Path]::GetFullPath($full)
+          if ($fullPath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $rel = $fullPath.Substring($root.Length).TrimStart('\')
+            return $rel
+          }
+          return $fullPath
+        }
+
+        $normalized = New-Object System.Collections.Generic.List[string]
+        foreach ($p in $inputProjects) {
+          if (-not [string]::IsNullOrWhiteSpace($p)) {
+            $x = ($p -replace '/', '\').Trim().Trim('"').Trim()
+            # If the value still contains $(Build.SourcesDirectory) or $(System.DefaultWorkingDirectory), expand via environment
+            $x = $x -replace '\$\((?i:Build\.SourcesDirectory)\)', $srcRoot
+            $x = $x -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $srcRoot
+
+            # Prefer a relative path if it's under the repo
+            try { $candidateRel = To-RelativeUnderRoot -full $x -root $srcRoot } catch { $candidateRel = $x }
+
+            $chosen = $candidateRel
+            # Validate existence and fall back if needed
+            if (-not (Test-Path -LiteralPath (Join-Path $srcRoot $candidateRel))) {
+              if (Test-Path -LiteralPath $x) {
+                # Absolute path exists; use it (DotNetCoreCLI can still match absolute)
+                $chosen = [IO.Path]::GetFullPath($x)
+              } else {
+                Write-Warning "Project path could not be verified: '$p' → '$candidateRel'. Ensure the file exists."
+              }
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($chosen) -and -not ($normalized -contains $chosen)) {
+              $normalized.Add($chosen)
+            }
+          }
+        }
+
+        if ($normalized.Count -eq 0) {
+          Write-Host "##[section].NET summary → ok=0, failed=0"
+          Write-Warning "No .NET projects provided after normalization; DotNet restore will be skipped."
+        }
+
+        $multiline = ($normalized -join "`n")
+        Write-Host "##[group]Normalized .NET project paths"
+        $normalized | ForEach-Object { Write-Host $_ }
+        Write-Host "##[endgroup]"
+        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects"
-    condition: and(succeeded(), ne(${{ length(parameters.dotnetProjects) }}, 0))
+    # Only run if we have at least one path after normalization
+    condition: and(succeeded(), ne(variables['normalizeDotnet.projectsMultiline'], ''))
     inputs:
       command: restore
-      projects: ${{ join(parameters.dotnetProjects, '\n') }}
+      # Feed the normalized, newline-separated list
+      projects: "$(normalizeDotnet.projectsMultiline)"
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
-
 
   - task: PowerShell@2
     displayName: "Install CycloneDX .NET tool"
@@ -64,12 +135,10 @@ steps:
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
         $outputDir = "$(Agent.TempDirectory)/sbom/dotnet"
 
-        # Receive the YAML list as JSON so PowerShell gets a real array
-        $projJson = @'
-        ${{ convertToJson(parameters.dotnetProjects) }}
-        '@
+        # Reuse normalized list from earlier
+        $projectsRaw = '$(normalizeDotnet.projectsMultiline)'
         $projects = @()
-        try { $projects = $projJson | ConvertFrom-Json } catch { $projects = @() }
+        if ($projectsRaw) { $projects = $projectsRaw -split "(\r?\n)" | ? { $_ -and $_ -notmatch "^\r?$" } }
 
         if (-not $projects -or $projects.Count -eq 0) {
           Write-Host "##[section].NET summary → ok=0, failed=0"
@@ -79,11 +148,15 @@ steps:
 
         $ok=0; $fail=0
         foreach ($p in $projects) {
-          $base = [IO.Path]::GetFileNameWithoutExtension($p)
+          $full = $p
+          if (-not [System.IO.Path]::IsPathRooted($full)) {
+            $full = Join-Path $env:BUILD_SOURCESDIRECTORY $p
+          }
+          $base = [IO.Path]::GetFileNameWithoutExtension($full)
           $file = "$base-sbom.json"
-          Write-Host "##[group].NET → $p"
+          Write-Host "##[group].NET → $full"
           try {
-            dotnet CycloneDX "$p" -o "$outputDir" -F Json -fn "$file"
+            dotnet CycloneDX "$full" -o "$outputDir" -F Json -fn "$file"
             if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
             if (Test-Path (Join-Path $outputDir $file)) { $ok++ } else { $fail++ }
           } catch {
