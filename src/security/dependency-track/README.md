@@ -52,8 +52,8 @@ src/
 
 The templates will:
 
-* Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
-* Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).
+- Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
+- Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).
   If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
 
 > The template automatically installs the necessary tools (`CycloneDX` and `@cyclonedx/cyclonedx-npm`) if not already available.
@@ -65,14 +65,14 @@ Dependency-Track uses these names directly from the SBOMs to create or update pr
 
 Avoid:
 
-* Too generic names (`"App"`, `"WebApplication1"`)
-* Duplicates across repositories
-* Inconsistent naming across components
+- Too generic names (`"App"`, `"WebApplication1"`)
+- Duplicates across repositories
+- Inconsistent naming across components
 
 Recommended naming conventions:
 
-* Backends: `Company.Product.Component`
-* Frontends: `company-product-ui`
+- Backends: `Company.Product.Component`
+- Frontends: `company-product-ui`
 
 Ensure names reflect the deployable artifact or service that will appear in reports.
 
@@ -84,8 +84,8 @@ In Dependency-Track, tags appear under each project and support filtering, dashb
 
 The upload step builds tags like:
 
-* `env:<ENV_NAME>` when `ENV_NAME` is set
-* Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
+- `env:<ENV_NAME>` when `ENV_NAME` is set
+- Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
 
 ## Parent Project Linking
 
@@ -102,9 +102,9 @@ This keeps the UI focused on the active release while preserving historical vers
 
 ## Azure DevOps Output
 
-* Generate → SBOM file list and counts
-* Upload → summary of projects and versions
-* Deactivate → Confirmation of inactive versions set
+- Generate → SBOM file list and counts
+- Upload → summary of projects and versions
+- Deactivate → Confirmation of inactive versions set
 
 ## Troubleshooting
 
@@ -117,10 +117,10 @@ This keeps the UI focused on the active release while preserving historical vers
 
 ## Verification Checklist
 
-* [ ] Variable group with `DT_API_KEY`
-* [ ] Variable group linked to Key Vault (if applicable)
-* [ ] Correct `.csproj` and `package.json` names
-* [ ] Accurate project paths in pipeline
-* [ ] Parent project created in Dependency-Track
-* [ ] Parent project variables set (`"<Organisation> - <System>"`)
-* [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
+- [ ] Variable group with `DT_API_KEY`
+- [ ] Variable group linked to Key Vault (if applicable)
+- [ ] Correct `.csproj` and `package.json` names
+- [ ] Accurate project paths in pipeline
+- [ ] Parent project created in Dependency-Track
+- [ ] Parent project variables set (`"<Organisation> - <System>"`)
+- [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
