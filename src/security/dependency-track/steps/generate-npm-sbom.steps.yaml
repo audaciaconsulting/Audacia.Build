@@ -68,7 +68,7 @@ steps:
 
   - task: PowerShell@2
     name: resolveNpmRoots
-    displayName: "Resolve npm project roots"
+    displayName: "Validate npm project roots"
     inputs:
       pwsh: true
       targetType: inline
@@ -79,10 +79,16 @@ steps:
         $rootsJson = @'
         ${{ convertToJson(parameters.npmRoots) }}
         '@
-        $rootsParam = @()
-        try { $rootsParam = $rootsJson | ConvertFrom-Json } catch { $rootsParam = @() }
 
-        # Normalize user-provided npmRoots (handle "/" vs "\", absolute -> relative, dedupe)
+        $inputRoots = @()
+        try { $inputRoots = $rootsJson | ConvertFrom-Json } catch { $inputRoots = @() }
+        if ($null -eq $inputRoots) { $inputRoots = @() }
+        if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
+
+        if ($inputRoots.Count -eq 0) {
+          throw "No package.json file paths were provided. Please provide one or more explicit directories that contain package.json."
+        }
+
         $workspace = '$(System.DefaultWorkingDirectory)'
         $wsFull = [IO.Path]::GetFullPath($workspace)
 
@@ -94,51 +100,37 @@ steps:
           return $full
         }
 
-          $normalizedRoots = New-Object System.Collections.Generic.List[string]
-          foreach ($r in $rootsParam) {
+        $normalizedRoots = New-Object System.Collections.Generic.List[string]
+
+        foreach ($r in $inputRoots) {
           if ([string]::IsNullOrWhiteSpace($r)) { continue }
           $x = ($r -replace '/', '\').Trim().Trim('"').Trim()
+
           $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
           try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
-        
-          # Dedupe only identical paths that resolve to the same directory
-          # (e.g., absolute vs relative, '/' vs '\').
-          # This avoids generating the same SBOM twice — it does NOT hide real
-          # duplicate applications or identical project names, which will still
-          # be detected and surfaced later in preflight/upload validation.
-          if (-not ($normalizedRoots -contains $rel)) { $normalizedRoots.Add($rel) }
-        }
-        $rootsParam = $normalizedRoots
 
-        # Discover manifests across the workspace for auto mode
-        Write-Host "##[group]Discover JS manifests"
-        $locks = Get-ChildItem -Path $workspace -Recurse -Filter 'package-lock.json' -File -EA SilentlyContinue
-        $pkgs  = Get-ChildItem -Path $workspace -Recurse -Filter 'package.json'      -File -EA SilentlyContinue
-        Write-Host "Found package-lock.json: $($locks.Count)"
-        Write-Host "Found package.json:      $($pkgs.Count)"
+          $target = $rel
+          $abs = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path $wsFull $rel }
+
+          $pkg = Join-Path $abs 'package.json'
+          if (-not (Test-Path -LiteralPath $pkg)) {
+            throw "Invalid npm root: '$r' → '$rel'. Expected file not found: package.json"
+          }
+
+          if (-not ($normalizedRoots -contains $target)) {
+            $normalizedRoots.Add($target)
+          }
+        }
+
+        if ($normalizedRoots.Count -eq 0) {
+          throw "Validation produced an empty list of npm roots. Ensure you pass directories that contain package.json."
+        }
+
+        Write-Host "##[group]Validated npm roots"
+        $normalizedRoots | ForEach-Object { Write-Host $_ }
         Write-Host "##[endgroup]"
 
-        $projects = New-Object System.Collections.ArrayList
-        if ($rootsParam.Count -gt 0) {
-          foreach ($r in $rootsParam) {
-            if (Test-Path (Join-Path $r 'package.json')) {
-              [void]$projects.Add($r)
-              Write-Host "Root (param): $r"
-            } else {
-              Write-Warning "package.json not found under: $r (skipped)"
-            }
-          }
-        } else {
-          if ($locks.Count -gt 0) {
-            foreach ($l in $locks) { [void]$projects.Add($l.Directory.FullName) }
-          } elseif ($pkgs.Count -gt 0) {
-            foreach ($p in $pkgs) { [void]$projects.Add($p.Directory.FullName) }
-          }
-          $projects = $projects | Select-Object -Unique
-          foreach ($p in $projects) { Write-Host "Root (auto): $p" }
-        }
-
-        $json = (@($projects) | ConvertTo-Json -Compress)
+        $json = (@($normalizedRoots) | ConvertTo-Json -Compress)
         Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
         Write-Host "Resolved npm roots JSON: $json"
 
@@ -159,11 +151,9 @@ steps:
         $rootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $projects = @()
         try { $projects = $rootsJson | ConvertFrom-Json } catch { $projects=@() }
-        $count = ($projects | Measure-Object).Count
-        if ($count -eq 0) {
-          Write-Host "##[section]npm summary → ok=0, failed=0"
-          Write-Warning "No npm projects discovered. Provide parameters.npmRoots or commit lockfiles."
-          exit 0
+
+        if (-not $projects -or $projects.Count -eq 0) {
+          throw "No npm project roots available after validation. This step requires explicit directories containing package.json."
         }
 
         $includeLt = "${{ parameters.includeLicenseTexts }}" -eq "True"
@@ -171,22 +161,29 @@ steps:
         $ok=0; $fail=0
 
         foreach ($proj in $projects) {
-          $name = Split-Path $proj -Leaf
+          $abs = if ([System.IO.Path]::IsPathRooted($proj)) { $proj } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $proj }
+          $pkgPath  = Join-Path $abs 'package.json'
+          $lockPath = Join-Path $abs 'package-lock.json'
+
+          if (-not (Test-Path -LiteralPath $pkgPath)) {
+            throw "package.json is required but was not found at: $pkgPath"
+          }
+
+          $name = Split-Path $abs -Leaf
           if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
           $safe = ($name -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
           $outDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $safe
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           $outFile = Join-Path $outDir "$safe-sbom.$ext"
 
-          Write-Host "##[group]JS SBOM → $proj"
-          Push-Location $proj
+          Write-Host "##[group]JS SBOM → $abs"
+          Push-Location $abs
           try {
-            $lockPath = Join-Path $proj 'package-lock.json'
             $hasLock = Test-Path -LiteralPath $lockPath
-            if (-not $hasLock -and (Test-Path -LiteralPath (Join-Path $proj 'package.json'))) {
+            if (-not $hasLock) {
               npm install --package-lock-only --ignore-scripts --no-audit --no-fund
               $hasLock = Test-Path -LiteralPath $lockPath
-              if (-not $hasLock) { throw "Failed to create package-lock.json" }
+              if (-not $hasLock) { throw "Failed to create package-lock.json in '$abs'" }
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
 
