@@ -76,11 +76,8 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
-        
-        Write-Host "RAW rootsMultiline >>>$rootsMultiline<<<"
 
-        # Read the parameter value as a JSON array at template-time.
-        # Using convertToJson avoids the '\n' join edge case with single runtime $(...) entries.
+        # Primary path: compile-time JSON (works when values are literals)
         $rootsJson = @'
         ${{ convertToJson(parameters.npmRoots) }}
         '@
@@ -88,6 +85,43 @@ steps:
         try { $inputRoots = $rootsJson | ConvertFrom-Json } catch { $inputRoots = @() }
         if ($null -eq $inputRoots) { $inputRoots = @() }
         if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
+
+        #  Runtime fallback: if compile-time JSON was empty because values were $(...) macros,
+        #    try to harvest npm roots from environment variables (Azure uppercases variable names).
+        if ($inputRoots.Count -eq 0) {
+          $candidates = New-Object System.Collections.Generic.List[string]
+
+          # Common “root” variable names we use in pipelines (add more if needed).
+          $wellKnown = @(
+            'PLAYWRIGHTNPMROOT',  # Olympus-Playwright
+            'UINPMROOT',          # UI repos
+            'NPMROOT', 'NPM_ROOT'
+          )
+
+          foreach ($name in $wellKnown) {
+            $val = [Environment]::GetEnvironmentVariable($name)
+            if ($val -and $val.Trim()) { $candidates.Add($val.Trim()) }
+          }
+
+          # As a last resort, scan *all* env vars that end with NPMROOT or NPMROOTS
+          if ($candidates.Count -eq 0) {
+            Get-ChildItem Env:* | Where-Object {
+              $_.Name -match '(?i)(^|_)NPMROOTS?$'
+            } | ForEach-Object {
+              if ($_.Value -and $_.Value.Trim()) { $candidates.Add($_.Value.Trim()) }
+            }
+          }
+
+          # Split any delimited values that may have been provided (comma or newline)
+          $expanded = New-Object System.Collections.Generic.List[string]
+          foreach ($c in $candidates) {
+            ($c -split '[,\r\n]') | ForEach-Object {
+              $s = $_.Trim()
+              if ($s) { $expanded.Add($s) }
+            }
+          }
+          $inputRoots = $expanded
+        }
 
         if ($inputRoots.Count -eq 0) {
           throw "No package.json file paths were provided. Please provide one or more explicit directories that contain package.json."
