@@ -1,9 +1,8 @@
 # Template: generate npm SBOMs using cyclonedx-npm
-
 parameters:
   - name: npmRoots
-    type: object
-    default: []
+    type: string
+    default: ''
   - name: nodeVersion
     type: string
     default: '20.x'
@@ -75,15 +74,15 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # YAML list → JSON → PowerShell array
-        $rootsJson = @'
-        ${{ convertToJson(parameters.npmRoots) }}
+        # Parse multiline string into array
+        $rootsInput = @'
+        ${{ parameters.npmRoots }}
         '@
 
         $inputRoots = @()
-        try { $inputRoots = $rootsJson | ConvertFrom-Json } catch { $inputRoots = @() }
-        if ($null -eq $inputRoots) { $inputRoots = @() }
-        if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
+        if (-not [string]::IsNullOrWhiteSpace($rootsInput)) {
+          $inputRoots = $rootsInput -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
 
         if ($inputRoots.Count -eq 0) {
           throw "No package.json file-paths were provided. Provide one or more explicit directories that contain package.json."
