@@ -86,7 +86,7 @@ steps:
         if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
 
         if ($inputRoots.Count -eq 0) {
-          throw "No package.json file-pahs were provided. Provide one or more explicit directories that contain package.json."
+          throw "No package.json file-paths were provided. Provide one or more explicit directories that contain package.json."
         }
 
         $workspace = '$(System.DefaultWorkingDirectory)'
