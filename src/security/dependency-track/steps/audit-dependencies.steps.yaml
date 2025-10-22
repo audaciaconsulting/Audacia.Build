@@ -3,11 +3,11 @@
 
 parameters:
   - name: dotnetProjects
-    type: object
-    default: []
+    type: string
+    default: ''
   - name: npmRoots
-    type: object
-    default: []
+    type: string
+    default: ''
   - name: publishArtifact
     type: boolean
     default: true
