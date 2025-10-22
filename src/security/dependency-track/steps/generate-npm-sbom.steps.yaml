@@ -1,6 +1,4 @@
 # Template: generate npm SBOMs using cyclonedx-npm
-
-
 parameters:
   - name: npmRoots
     type: object
@@ -72,79 +70,78 @@ steps:
 
   - task: PowerShell@2
     name: resolveNpmRoots
-    displayName: "Validate npm project roots"
+    displayName: "Validate npm project roots (no auto-discovery)"
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+        
+        Write-Host "RAW rootsMultiline >>>$rootsMultiline<<<"
 
-        # Build a newline-delimited list at template-time WITHOUT resolving $(...) runtime vars.
-        # At runtime we split it and then expand the macros against the workspace path.
-        $rootsMultiline = @"
-        ${{ join(parameters.npmRoots, '\n') }}
-        "@
-      
-              # Split on literal '\n' to produce individual lines
-              $inputRoots = @()
-              if ($rootsMultiline) {
-                $inputRoots = $rootsMultiline -split "\\n" | Where-Object { $_ -and $_.Trim() }
-        }
+        # Read the parameter value as a JSON array at template-time.
+        # Using convertToJson avoids the '\n' join edge case with single runtime $(...) entries.
+        $rootsJson = @'
+        ${{ convertToJson(parameters.npmRoots) }}
+        '@
 
+        try { $inputRoots = $rootsJson | ConvertFrom-Json } catch { $inputRoots = @() }
         if ($null -eq $inputRoots) { $inputRoots = @() }
+        if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
+
         if ($inputRoots.Count -eq 0) {
-        throw "No package.json file paths were provided. Provide one or more explicit directories that contain package.json."
+          throw "No package.json file paths were provided. Please provide one or more explicit directories that contain package.json."
         }
-      
+
         $workspace = '$(System.DefaultWorkingDirectory)'
         $wsFull = [IO.Path]::GetFullPath($workspace)
-        
+
         function To-RelativeUnderRoot([string]$p, [string]$root) {
-        $full = [IO.Path]::GetFullPath($p)
-        if ($full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
-        return $full.Substring($root.Length).TrimStart('\')
-        }
-        return $full
-        }
-      
-        $normalizedRoots = New-Object System.Collections.Generic.List[string]
-        
-        foreach ($r in $inputRoots) {
-        if ([string]::IsNullOrWhiteSpace($r)) { continue }
-        
-        # Normalise slashes and trim any quoting
-        $x = ($r -replace '/', '\').Trim().Trim('"').Trim("'").Trim()
-        
-        # Expand common Azure DevOps runtime macros to absolute paths under the workspace
-        $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
-        
-        # Prefer relative paths if under the repo root
-        try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
-        
-        $target = $rel
-        $abs = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path $wsFull $rel }
-        
-        $pkg = Join-Path $abs 'package.json'
-        if (-not (Test-Path -LiteralPath $pkg)) {
-          throw "Invalid npm root: '$r' → '$rel'. Expected file not found: package.json"
+          $full = [IO.Path]::GetFullPath($p)
+          if ($full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $full.Substring($root.Length).TrimStart('\')
           }
-          
-            if (-not ($normalizedRoots -contains $target)) {
+          return $full
+        }
+
+        $normalizedRoots = New-Object System.Collections.Generic.List[string]
+
+        foreach ($r in $inputRoots) {
+          if ([string]::IsNullOrWhiteSpace($r)) { continue }
+
+          # Normalise slashes and trim any quoting
+          $x = ($r -replace '/', '\').Trim().Trim('"').Trim("'").Trim()
+
+          # Expand common ADO macros to absolute paths
+          $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
+
+          # Prefer relative paths if under the repo root
+          try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
+
+          $target = $rel
+          $abs = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path $wsFull $rel }
+
+          $pkg = Join-Path $abs 'package.json'
+          if (-not (Test-Path -LiteralPath $pkg)) {
+            throw "Invalid npm root: '$r' → '$rel'. Expected file not found: package.json"
+          }
+
+          if (-not ($normalizedRoots -contains $target)) {
             $normalizedRoots.Add($target)
           }
-          }
-          
-            if ($normalizedRoots.Count -eq 0) {
-            throw "Validation produced an empty list of npm roots. Ensure you pass directories that contain package.json."
-          }
-          
-            Write-Host "##[group]Validated npm roots"
-            $normalizedRoots | ForEach-Object { Write-Host $_ }
-            Write-Host "##[endgroup]"
-            
-            $json = (@($normalizedRoots) | ConvertTo-Json -Compress)
-            Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
-          Write-Host "Resolved npm roots JSON: $json"
+        }
+
+        if ($normalizedRoots.Count -eq 0) {
+          throw "Validation produced an empty list of npm roots. Ensure you pass directories that contain package.json."
+        }
+
+        Write-Host "##[group]Validated npm roots"
+        $normalizedRoots | ForEach-Object { Write-Host $_ }
+        Write-Host "##[endgroup]"
+
+        $json = (@($normalizedRoots) | ConvertTo-Json -Compress)
+        Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
+        Write-Host "Resolved npm roots JSON: $json"
 
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
