@@ -2,8 +2,8 @@
 
 parameters:
   - name: dotnetProjects
-    type: object
-    default: []
+    type: string
+    default: ''
   - name: vstsFeed
     type: string
     default: ''
@@ -30,14 +30,15 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # Pull the YAML array as JSON into PowerShell
-        $projJson = @'
-        ${{ convertToJson(parameters.dotnetProjects) }}
+        # Parse multiline string into array
+        $projectsInput = @'
+        ${{ parameters.dotnetProjects }}
         '@
 
-        try { $inputProjects = $projJson | ConvertFrom-Json } catch { $inputProjects = @() }
-        if ($null -eq $inputProjects) { $inputProjects = @() }
-        if ($inputProjects -isnot [System.Collections.IEnumerable]) { $inputProjects = @($inputProjects) }
+        $inputProjects = @()
+        if (-not [string]::IsNullOrWhiteSpace($projectsInput)) {
+          $inputProjects = $projectsInput -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
 
         $srcRoot = $env:BUILD_SOURCESDIRECTORY
         if (-not $srcRoot) { $srcRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
