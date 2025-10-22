@@ -72,7 +72,7 @@ steps:
 
   - task: PowerShell@2
     name: resolveNpmRoots
-    displayName: "Validate npm project roots (no auto-discovery)"
+    displayName: "Validate npm project roots"
     inputs:
       pwsh: true
       targetType: inline
