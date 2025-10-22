@@ -1,4 +1,5 @@
 # Template: generate npm SBOMs using cyclonedx-npm
+
 parameters:
   - name: npmRoots
     type: object
@@ -34,10 +35,7 @@ steps:
           param([string]$major)
           $root = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
           if (-not (Test-Path $root)) { throw "Node tools directory not found: $root" }
-          $ver = Get-ChildItem $root -Directory -Name |
-            Where-Object { $_ -like "$major.*" } |
-            Sort-Object { [version]$_ } -Descending |
-            Select-Object -First 1
+          $ver = Get-ChildItem $root -Directory -Name | Where-Object { $_ -like "$major.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
           if (-not $ver) { throw "No Node $major.* found under $root" }
           $bin = Join-Path (Join-Path $root $ver) 'x64'
           $node = Join-Path $bin 'node.exe'
@@ -70,61 +68,25 @@ steps:
 
   - task: PowerShell@2
     name: resolveNpmRoots
-    displayName: "Validate npm project roots (no auto-discovery)"
+    displayName: "Validate npm project roots"
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # Primary path: compile-time JSON (works when values are literals)
+        # YAML list → JSON → PowerShell array
         $rootsJson = @'
         ${{ convertToJson(parameters.npmRoots) }}
         '@
 
+        $inputRoots = @()
         try { $inputRoots = $rootsJson | ConvertFrom-Json } catch { $inputRoots = @() }
         if ($null -eq $inputRoots) { $inputRoots = @() }
         if ($inputRoots -isnot [System.Collections.IEnumerable]) { $inputRoots = @($inputRoots) }
 
-        #  Runtime fallback: if compile-time JSON was empty because values were $(...) macros,
-        #    try to harvest npm roots from environment variables (Azure uppercases variable names).
         if ($inputRoots.Count -eq 0) {
-          $candidates = New-Object System.Collections.Generic.List[string]
-
-          # Common “root” variable names we use in pipelines (add more if needed).
-          $wellKnown = @(
-            'PLAYWRIGHTNPMROOT',  # Olympus-Playwright
-            'UINPMROOT',          # UI repos
-            'NPMROOT', 'NPM_ROOT'
-          )
-
-          foreach ($name in $wellKnown) {
-            $val = [Environment]::GetEnvironmentVariable($name)
-            if ($val -and $val.Trim()) { $candidates.Add($val.Trim()) }
-          }
-
-          # As a last resort, scan *all* env vars that end with NPMROOT or NPMROOTS
-          if ($candidates.Count -eq 0) {
-            Get-ChildItem Env:* | Where-Object {
-              $_.Name -match '(?i)(^|_)NPMROOTS?$'
-            } | ForEach-Object {
-              if ($_.Value -and $_.Value.Trim()) { $candidates.Add($_.Value.Trim()) }
-            }
-          }
-
-          # Split any delimited values that may have been provided (comma or newline)
-          $expanded = New-Object System.Collections.Generic.List[string]
-          foreach ($c in $candidates) {
-            ($c -split '[,\r\n]') | ForEach-Object {
-              $s = $_.Trim()
-              if ($s) { $expanded.Add($s) }
-            }
-          }
-          $inputRoots = $expanded
-        }
-
-        if ($inputRoots.Count -eq 0) {
-          throw "No package.json file paths were provided. Please provide one or more explicit directories that contain package.json."
+          throw "No package.json file-pahs were provided. Provide one or more explicit directories that contain package.json."
         }
 
         $workspace = '$(System.DefaultWorkingDirectory)'
@@ -142,14 +104,9 @@ steps:
 
         foreach ($r in $inputRoots) {
           if ([string]::IsNullOrWhiteSpace($r)) { continue }
+          $x = ($r -replace '/', '\').Trim().Trim('"').Trim()
 
-          # Normalise slashes and trim any quoting
-          $x = ($r -replace '/', '\').Trim().Trim('"').Trim("'").Trim()
-
-          # Expand common ADO macros to absolute paths
           $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
-
-          # Prefer relative paths if under the repo root
           try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
 
           $target = $rel
@@ -184,41 +141,41 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
-        
+
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
-        
+
         if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
         npm config set cache "$(Pipeline.Workspace)/.npm" --global | Out-Null
-        
+
         $rootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $projects = @()
         try { $projects = $rootsJson | ConvertFrom-Json } catch { $projects=@() }
-        
+
         if (-not $projects -or $projects.Count -eq 0) {
           throw "No npm project roots available after validation. This step requires explicit directories containing package.json."
         }
-        
+
         $includeLt = "${{ parameters.includeLicenseTexts }}" -eq "True"
         $format = 'json'; $ext='json'
         $ok=0; $fail=0
-        
+
         foreach ($proj in $projects) {
           $abs = if ([System.IO.Path]::IsPathRooted($proj)) { $proj } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $proj }
           $pkgPath  = Join-Path $abs 'package.json'
           $lockPath = Join-Path $abs 'package-lock.json'
-        
+
           if (-not (Test-Path -LiteralPath $pkgPath)) {
             throw "package.json is required but was not found at: $pkgPath"
           }
-        
+
           $name = Split-Path $abs -Leaf
           if ([string]::IsNullOrWhiteSpace($name)) { $name = 'app' }
           $safe = ($name -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
           $outDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $safe
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           $outFile = Join-Path $outDir "$safe-sbom.$ext"
-        
+
           Write-Host "##[group]JS SBOM → $abs"
           Push-Location $abs
           try {
@@ -229,11 +186,11 @@ steps:
               if (-not $hasLock) { throw "Failed to create package-lock.json in '$abs'" }
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
-        
+
             $args = @('--output-format', $format, '--output-file', $outFile)
             if ($includeLt) { $args += @('--gather-license-texts') }
             if ($hasLock)   { $args += @('--package-lock-only') }
-        
+
             npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args
             if (Test-Path $outFile) { $ok++ } else { $fail++ }
           } catch {
@@ -244,7 +201,7 @@ steps:
             Write-Host "##[endgroup]"
           }
         }
-        
+
         Write-Host "##[section]npm summary → ok=$ok, failed=$fail"
         if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed"; exit 1 }
 
