@@ -38,9 +38,9 @@ If using Azure DevOps, you can store the key as a secret in a variable group or 
 These are defined as pipeline variables within each YAML file or via the “Variables” tab in Azure DevOps.
 
 | Variable                 | Purpose                                                               | Example                              |
-| ------------------------ | --------------------------------------------------------------------- | ------------------------------------ |
+|--------------------------| --------------------------------------------------------------------- | ------------------------------------ |
 | `ENV_NAME`               | Which environment this SBOM represents                                | `dev`, `qa`, `uat`, `prod`           |
-| `RELEASE_NUMBER`         | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
+| `VERSION`                | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
 | `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project          | `owner:team-x,service:abc`           |
 | `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload              | `true`                               |
 | `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track                       | `OrganisationName - ApplicationName` |
@@ -137,4 +137,4 @@ This keeps the UI focused on the active release while preserving historical vers
 - [ ] Accurate project paths in pipeline
 - [ ] Parent project created in Dependency-Track
 - [ ] Parent project variables set (`"<Organisation> - <System>"`)
-- [ ] Pipeline variables defined: `ENV_NAME`, `RELEASE_NUMBER`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
+- [ ] Pipeline variables defined: `ENV_NAME`, `VERSION`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)

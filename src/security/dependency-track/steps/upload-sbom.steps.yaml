@@ -49,7 +49,7 @@ parameters:
     default: ''
 
   # Version label sent with each upload. Typical values include branch name, build number, or semantic version.
-  - name: releaseNumber
+  - name: version
     type: string
     default: ''
 
@@ -117,7 +117,7 @@ steps:
     displayName: "Preflight: discover, validate, and plan uploads"
     env:
       ENV_NAME_IN: ${{ parameters.envName }}
-      RELEASE_NUMBER_IN: ${{ parameters.releaseNumber }}
+      VERSION_IN: ${{ parameters.version }}
     inputs:
       pwsh: true
       targetType: inline
@@ -150,7 +150,7 @@ steps:
 
         $uploadMatrix = New-Object System.Collections.Generic.List[object]
         $invalidCount = 0
-        $releaseNumber = $env:RELEASE_NUMBER_IN
+        $version = $env:VERSION_IN
 
         foreach ($sbomFile in $sbomFiles) {
           if ($sbomFile.Length -eq 0) { Write-Warning "Empty SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
@@ -160,10 +160,10 @@ steps:
           if ([string]::IsNullOrWhiteSpace($projectName)) { $projectName = Get-FallbackProjectName $sbomFile.FullName }
           if ([string]::IsNullOrWhiteSpace($projectName)) { Write-Warning "Unable to determine project name for SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
 
-          $projectVersion = $releaseNumber
+          $projectVersion = $version
           if ([string]::IsNullOrWhiteSpace($projectVersion)) {
             $projectVersion = 'unknown'
-            Write-Warning "releaseNumber parameter is empty; using placeholder 'unknown' for: $projectName"
+            Write-Warning "version parameter is empty; using placeholder 'unknown' for: $projectName"
           }
 
           $uploadMatrix.Add([pscustomobject]@{
@@ -188,7 +188,7 @@ steps:
       DT_API_KEY: $(DT_API_KEY)
       CLIENT_NAME_IN: ${{ parameters.projectName }}
       ENV_NAME_IN: ${{ parameters.envName }}
-      RELEASE_NUMBER_IN: ${{ parameters.releaseNumber }}
+      VERSION_IN: ${{ parameters.version }}
       ADDITIONAL_TAGS_IN: ${{ parameters.additionalTags }}
       PROJECT_TAGS_CSV: $(buildTags.projectTagsCsv)
       UPLOAD_MATRIX_PATH: $(preflight.UploadMatrixPath)
