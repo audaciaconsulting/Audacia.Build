@@ -7,10 +7,10 @@ parameters:
     type: string
     default: ''
 
-  # Node.js version spec understood by UseNode (e.g., "20.x"). The major version is resolved on the hosted agent.
+  # Node.js version spec understood by UseNode (e.g., "22.x"). The major version is resolved on the hosted agent.
   - name: nodeVersion
     type: string
-    default: '20.x'
+    default: '22.x'
 
   # When true, runs a clean installation and gathers license texts. Produces richer SBOMs at the cost of time and artifact size.
   - name: includeLicenseTexts

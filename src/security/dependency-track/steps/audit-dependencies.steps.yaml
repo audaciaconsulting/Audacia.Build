@@ -22,10 +22,10 @@ parameters:
     type: string
     default: 'sbom-files'
 
-  # Node.js version spec understood by UseNode (e.g., "20.x").
+  # Node.js version spec understood by UseNode (e.g., "22.x").
   - name: nodeVersion
     type: string
-    default: '20.x'
+    default: '22.x'
 
   # When true, npm SBOMs include license texts and perform a clean installation.
   - name: includeLicenseTexts
