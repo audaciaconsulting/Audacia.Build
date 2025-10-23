@@ -1,12 +1,19 @@
 # Template: optionally download SBOM artifact → derive project names → deactivate non-latest versions
 
 parameters:
+  # Artifact to download when discovery relies on previously published SBOMs.
+  # Set tryDownloadArtifact=false if SBOMs already exist in $(Agent.TempDirectory)/sbom.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # Attempt to download the artifact first. Disable when chaining inside a template that already downloaded it.
   - name: tryDownloadArtifact
     type: boolean
     default: true
+
+  # Optional parent project name to scope deactivation to a specific hierarchy.
+  # When empty, all projects matching the discovered name will be considered.
   - name: parentProjectName
     type: string
     default: ''

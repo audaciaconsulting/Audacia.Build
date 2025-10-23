@@ -2,60 +2,96 @@
 # Runs generate (.NET + npm), optionally publishes artifact once, uploads to Dependency-Track, optionally deactivates old versions.
 
 parameters:
+  # One or more .csproj paths. Accepts string or multiline string; repo-relative or absolute.
   - name: dotnetProjects
     type: string
     default: ''
+
+  # One or more directories that contain a package.json. Accepts string or multiline string.
   - name: npmRoots
     type: string
     default: ''
+
+  # Publish a single combined artifact for all ecosystems. Disable if publishing elsewhere.
   - name: publishArtifact
     type: boolean
     default: true
+
+  # Logical name for the combined artifact when publishing is enabled.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # Node.js version spec understood by UseNode (e.g., "20.x").
   - name: nodeVersion
     type: string
     default: '20.x'
+
+  # When true, npm SBOMs include license texts and perform a clean installation.
   - name: includeLicenseTexts
     type: boolean
     default: true
+
+  # Fail the job if an upload error occurs. Set false to surface warnings instead.
   - name: failOnUploadError
     type: boolean
     default: true
+
+  # Run deactivation of non-latest project versions after upload.
   - name: deactivateOld
     type: boolean
     default: true
+
+  # Parent project association for uploads and deactivation scope.
   - name: parentProjectName
     type: string
-    default: ''
+
+  # Optional parent version to pair with parentProjectName.
   - name: parentProjectVersion
     type: string
     default: ''
+
+  # Azure Artifacts feed used by .NET restore when nugetConfigPath is not supplied.
   - name: vstsFeed
     type: string
     default: ''
+
+  # Optional path to a custom nuget.config for .NET restore; overrides vstsFeed when set.
   - name: nugetConfigPath
     type: string
     default: ''
+
+  # Enforce the presence of project tags during upload (e.g., env and additional tags).
   - name: requireProjectTags
     type: boolean
     default: true
+
+  # Validate and discover SBOMs without uploading. Useful for PR/CI validation.
   - name: validationOnly
     type: boolean
     default: false
+
+  # Max seconds to poll Dependency-Track for BOM processing per token.
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
+
+  # Environment label used to produce a tag like "env:<name>".
   - name: envName
     type: string
     default: ''
+
+  # Comma-separated key:value pairs appended to project tags. Example: "owner:team-a, service:portal".
   - name: additionalTags
     type: string
     default: ''
+
+  # Version label to associate with each uploaded project (branch, build, or semantic version).
   - name: releaseNumber
     type: string
     default: ''
+
+  # Optional logical label written to logs; include in additionalTags if you want it as a tag.
   - name: clientName
     type: string
     default: ''

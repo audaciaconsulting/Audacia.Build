@@ -1,18 +1,30 @@
 # Template: generate .NET SBOMs using CycloneDX
 
 parameters:
+  # One or more .csproj paths. Accepts a single string or a multiline string.
+  # Paths may be repo-relative (preferred) or absolute. Mixed separators are normalized.
   - name: dotnetProjects
     type: string
     default: ''
+
+  # Azure Artifacts feed to use for restore when no custom NuGet config is provided.
+  # Example formats: "Org/FeedName" or a GUID feed id. Ignored if nugetConfigPath is set.
   - name: vstsFeed
     type: string
     default: ''
+
+  # Optional path to a custom nuget.config. When supplied, this takes precedence over vstsFeed.
+  # Use for private feeds, extra sources, or credential flows not covered by NuGetAuthenticate.
   - name: nugetConfigPath
     type: string
     default: ''
+
+  # Publish the SBOM output from this step. Set false when combining with npm to publish once later.
   - name: publishArtifact
     type: boolean
     default: false
+
+  # Logical name for the pipeline artifact when publishing is enabled.
   - name: artifactName
     type: string
     default: 'sbom-files'

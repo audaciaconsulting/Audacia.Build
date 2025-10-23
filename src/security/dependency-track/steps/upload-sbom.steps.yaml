@@ -1,39 +1,62 @@
 # Template: download → build tags → preflight discovery/validation → upload with token wait → summary → verify
 
 parameters:
+  # The name of the artifact produced by earlier steps. Must match the publish task's artifact name.
   - name: artifactName
     type: string
     default: 'sbom-files'
+
+  # Fail the step if any upload fails. Set false to allow the job to continue and emit warnings.
   - name: failOnUploadError
     type: boolean
     default: true
+
+  # Require at least one project tag to be built (e.g., from envName/additionalTags).
+  # Useful for enforcing Portfolio Access Control or tagging policies.
   - name: requireProjectTags
     type: boolean
     default: true
+
+  # Validate inputs and discover SBOMs without calling the API. Useful for dry runs or PR checks.
   - name: validationOnly
     type: boolean
     default: false
+
+  # Max seconds to poll Dependency-Track for BOM processing per token. Does not block the entire job indefinitely.
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
+
+  # The parent project to associate with uploads. Sets parentName/parentVersion when provided.
   - name: parentProjectName
     type: string
     default: ''
+
+  # Optional parent version when parentProjectName is set. Leave empty to omit the parentVersion.
   - name: parentProjectVersion
     type: string
     default: ''
+
+  # Environment label used to build a tag like "env:<name>" (e.g., dev, qa, prod).
   - name: envName
     type: string
     default: ''
+
+  # Comma-separated key:value pairs appended to project tags. Example: "owner:team-a, service:portal".
+  # Whitespace around commas is trimmed.
   - name: additionalTags
     type: string
-    default: ''   # comma-separated list e.g. "owner:team-olympus, service:tickets"
+    default: ''
+
+  # Version label sent with each upload. Typical values include branch name, build number, or semantic version.
   - name: releaseNumber
     type: string
-    default: ''   # typically $(Build.SourceBranchName) or similar
+    default: ''
+
+  # Optional logical label recorded in logs; not sent to the API as a tag unless included in additionalTags.
   - name: clientName
     type: string
-    default: ''   # optional tag/label for uploads
+    default: ''
 
 steps:
   - task: DownloadPipelineArtifact@2

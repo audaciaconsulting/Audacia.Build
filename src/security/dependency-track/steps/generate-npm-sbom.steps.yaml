@@ -1,17 +1,28 @@
 # Template: generate npm SBOMs using cyclonedx-npm
+
 parameters:
+  # One or more directories that contain a package.json. Accepts a single string or a multiline string.
+  # Paths may be repo-relative or absolute. Mixed separators are normalized and each entry is validated.
   - name: npmRoots
     type: string
     default: ''
+
+  # Node.js version spec understood by UseNode (e.g., "20.x"). The major version is resolved on the hosted agent.
   - name: nodeVersion
     type: string
     default: '20.x'
+
+  # When true, runs a clean installation and gathers license texts. Produces richer SBOMs at the cost of time and artifact size.
   - name: includeLicenseTexts
     type: boolean
     default: true
+
+  # Publish the SBOM output from this step. Set false when combining with .NET to publish once later.
   - name: publishArtifact
     type: boolean
     default: false
+
+  # Logical name for the pipeline artifact when publishing is enabled.
   - name: artifactName
     type: string
     default: 'sbom-files'
