@@ -136,7 +136,6 @@ steps:
         Write-Host "##[endgroup]"
 
         # Always emit a JSON array; '.' means repo root
-        # Ensure array conversion even for a single item
         $rootsArray = @()
         $rootsArray += $normalizedRoots.ToArray()
 
@@ -203,12 +202,16 @@ steps:
               npm install --package-lock-only --ignore-scripts --no-audit --no-fund
               $hasLock = Test-Path -LiteralPath $lockPath
               if (-not $hasLock) { throw "Failed to create package-lock.json in '$abs'" }
+            }
+
+            # If gathering license texts, ensure node_modules is present so cyclonedx-npm can read LICENSE files.
+            if ($includeLt) {
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
 
             $args = @('--output-format', $format, '--output-file', $outFile)
             if ($includeLt) { $args += @('--gather-license-texts') }
-            if ($hasLock)   { $args += @('--package-lock-only') }
+            if (-not $includeLt -and $hasLock) { $args += @('--package-lock-only') }
 
             npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args
             if (Test-Path $outFile) { $ok++ } else { $fail++ }
