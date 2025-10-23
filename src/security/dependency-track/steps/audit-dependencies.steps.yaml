@@ -87,7 +87,7 @@ parameters:
     default: ''
 
   # Version label to associate with each uploaded project (branch, build, or semantic version).
-  - name: releaseNumber
+  - name: version
     type: string
     default: ''
 
@@ -136,7 +136,7 @@ steps:
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
       envName: ${{ parameters.envName }}
       additionalTags: ${{ parameters.additionalTags }}
-      releaseNumber: ${{ parameters.releaseNumber }}
+      version: ${{ parameters.version }}
       projectName: ${{ parameters.projectName }}
 
   - ${{ if eq(parameters.deactivateOld, true) }}:
