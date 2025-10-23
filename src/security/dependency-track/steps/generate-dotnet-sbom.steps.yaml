@@ -30,81 +30,73 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
 
-        # Parse multiline string into array
-        $projectsInput = @'
+        $projectsMultilineLiteral = @'
         ${{ parameters.dotnetProjects }}
         '@
 
-        $inputProjects = @()
-        if (-not [string]::IsNullOrWhiteSpace($projectsInput)) {
-          $inputProjects = $projectsInput -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        $inputProjectEntries = @()
+        if (-not [string]::IsNullOrWhiteSpace($projectsMultilineLiteral)) {
+          $inputProjectEntries = $projectsMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         }
 
-        $srcRoot = $env:BUILD_SOURCESDIRECTORY
-        if (-not $srcRoot) { $srcRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
-        $srcRoot = [IO.Path]::GetFullPath($srcRoot)
+        $repoRoot = $env:BUILD_SOURCESDIRECTORY
+        if (-not $repoRoot) { $repoRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
+        $repoRoot = [IO.Path]::GetFullPath($repoRoot)
 
-        function To-RelativeUnderRoot([string]$full, [string]$root) {
-          $fullPath = [IO.Path]::GetFullPath($full)
-          if ($fullPath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $rel = $fullPath.Substring($root.Length).TrimStart('\')
-            return $rel
+        function Convert-ToRelativeIfUnderRoot([string]$fullPath, [string]$rootPath) {
+          $resolvedFullPath = [IO.Path]::GetFullPath($fullPath)
+          if ($resolvedFullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $relative = $resolvedFullPath.Substring($rootPath.Length).TrimStart('\')
+            return $relative
           }
-          return $fullPath
+          return $resolvedFullPath
         }
 
-        $normalized = New-Object System.Collections.Generic.List[string]
+        $normalizedProjectPaths = New-Object System.Collections.Generic.List[string]
         
-        foreach ($p in $inputProjects) {
-          if (-not [string]::IsNullOrWhiteSpace($p)) {
-            $x = ($p -replace '/', '\').Trim().Trim('"').Trim()
-            # If the value still contains $(Build.SourcesDirectory) or $(System.DefaultWorkingDirectory), expand via environment
-            # If the value still contains $(Build.SourcesDirectory) or $(System.DefaultWorkingDirectory), expand via environment
-            $x = $x -replace '\$\((?i:Build\.SourcesDirectory)\)', $srcRoot
-            $x = $x -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $srcRoot
+        foreach ($projectEntry in $inputProjectEntries) {
+          if (-not [string]::IsNullOrWhiteSpace($projectEntry)) {
+            $candidatePath = ($projectEntry -replace '/', '\').Trim().Trim('"').Trim()
 
-            # Prefer a relative path if it's under the repo
-            try { $candidateRel = To-RelativeUnderRoot -full $x -root $srcRoot } catch { $candidateRel = $x }
+            $candidatePath = $candidatePath -replace '\$\((?i:Build\.SourcesDirectory)\)', $repoRoot
+            $candidatePath = $candidatePath -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $repoRoot
 
-            $chosen = $candidateRel
-            # Validate existence and fall back if needed
-            if (-not (Test-Path -LiteralPath (Join-Path $srcRoot $candidateRel))) {
-              if (Test-Path -LiteralPath $x) {
-                # Absolute path exists; use it (DotNetCoreCLI can still match absolute)
-                $chosen = [IO.Path]::GetFullPath($x)
+            try { $relativeUnderRoot = Convert-ToRelativeIfUnderRoot -fullPath $candidatePath -rootPath $repoRoot } catch { $relativeUnderRoot = $candidatePath }
+
+            $chosenPath = $relativeUnderRoot
+
+            if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $relativeUnderRoot))) {
+              if (Test-Path -LiteralPath $candidatePath) {
+                $chosenPath = [IO.Path]::GetFullPath($candidatePath)
               } else {
-                Write-Warning "Project path could not be verified: '$p' → '$candidateRel'. Ensure the file exists."
+                Write-Warning "Project path could not be verified: '$projectEntry' → '$relativeUnderRoot'. Ensure the file exists."
               }
             }
         
-            # Dedupe only paths that resolve to the same project file (e.g. absolute vs relative, '/' vs '\')
-            # This prevents generating the same SBOM multiple times, but does NOT hide genuine duplicate
-            # applications or identical Dependency-Track project names — those will still surface later
-            # during the preflight and upload validation steps.
-            if (-not [string]::IsNullOrWhiteSpace($chosen) -and -not ($normalized -contains $chosen)) {
-              $normalized.Add($chosen)
+            # Dedupe only truly identical project files to avoid generating the same SBOM twice.
+            # This does not hide real duplicate applications or identical Dependency-Track project names.
+            if (-not [string]::IsNullOrWhiteSpace($chosenPath) -and -not ($normalizedProjectPaths -contains $chosenPath)) {
+              $normalizedProjectPaths.Add($chosenPath)
             }
           }
         }
 
-        if ($normalized.Count -eq 0) {
+        if ($normalizedProjectPaths.Count -eq 0) {
           Write-Host "##[section].NET summary → ok=0, failed=0"
           Write-Warning "No .NET projects provided after normalization; DotNet restore will be skipped."
         }
 
-        $multiline = ($normalized -join "`n")
+        $normalizedMultiline = ($normalizedProjectPaths -join "`n")
         Write-Host "##[group]Normalized .NET project paths"
-        $normalized | ForEach-Object { Write-Host $_ }
+        $normalizedProjectPaths | ForEach-Object { Write-Host $_ }
         Write-Host "##[endgroup]"
-        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$normalizedMultiline"
 
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects"
-    # Only run if we have at least one path after normalization
     condition: and(succeeded(), ne(variables['normalizeDotnet.projectsMultiline'], ''))
     inputs:
       command: restore
-      # Feed the normalized, newline-separated list
       projects: "$(normalizeDotnet.projectsMultiline)"
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
@@ -124,11 +116,11 @@ steps:
           dotnet tool install --global CycloneDX
           if ($LASTEXITCODE -ne 0) { throw "Failed to install CycloneDX .NET tool" }
         }
-        $tools = "$env:USERPROFILE\.dotnet\tools"
-        Write-Host "##vso[task.prependpath]$tools"
-        $env:PATH = "$tools;$env:PATH"
+        $dotnetToolsPath = "$env:USERPROFILE\.dotnet\tools"
+        Write-Host "##vso[task.prependpath]$dotnetToolsPath"
+        $env:PATH = "$dotnetToolsPath;$env:PATH"
         dotnet CycloneDX --version | Write-Host
-        Write-Host "Installed tools in: $tools"
+        Write-Host "Installed tools in: $dotnetToolsPath"
         Write-Host "##[endgroup]"
 
   - task: PowerShell@2
@@ -140,42 +132,42 @@ steps:
       script: |
         $ErrorActionPreference = 'Stop'
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
-        $outputDir = "$(Agent.TempDirectory)/sbom/dotnet"
+        $sbomOutputDirectory = "$(Agent.TempDirectory)/sbom/dotnet"
 
-        # Reuse normalized list from earlier
-        $projectsRaw = '$(normalizeDotnet.projectsMultiline)'
-        $projects = @()
-        if ($projectsRaw) { $projects = $projectsRaw -split "(\r?\n)" | ? { $_ -and $_ -notmatch "^\r?$" } }
+        $normalizedProjectsRaw = '$(normalizeDotnet.projectsMultiline)'
+        $normalizedProjects = @()
+        if ($normalizedProjectsRaw) { $normalizedProjects = $normalizedProjectsRaw -split "(\r?\n)" | Where-Object { $_ -and $_ -notmatch "^\r?$" } }
 
-        if (-not $projects -or $projects.Count -eq 0) {
+        if (-not $normalizedProjects -or $normalizedProjects.Count -eq 0) {
           Write-Host "##[section].NET summary → ok=0, failed=0"
           Write-Warning "No .NET projects provided; skipping .NET generation."
           exit 0
         }
 
-        $ok=0; $fail=0
-        foreach ($p in $projects) {
-          $full = $p
-          if (-not [System.IO.Path]::IsPathRooted($full)) {
-            $full = Join-Path $env:BUILD_SOURCESDIRECTORY $p
+        $successCount = 0
+        $failureCount = 0
+        foreach ($projectPath in $normalizedProjects) {
+          $fullProjectPath = $projectPath
+          if (-not [System.IO.Path]::IsPathRooted($fullProjectPath)) {
+            $fullProjectPath = Join-Path $env:BUILD_SOURCESDIRECTORY $projectPath
           }
-          $base = [IO.Path]::GetFileNameWithoutExtension($full)
-          $file = "$base-sbom.json"
-          Write-Host "##[group].NET → $full"
+          $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($fullProjectPath)
+          $outputFileName = "$projectBaseName-sbom.json"
+          Write-Host "##[group].NET → $fullProjectPath"
           try {
-            dotnet CycloneDX "$full" -o "$outputDir" -F Json -fn "$file"
+            dotnet CycloneDX "$fullProjectPath" -o "$sbomOutputDirectory" -F Json -fn "$outputFileName"
             if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
-            if (Test-Path (Join-Path $outputDir $file)) { $ok++ } else { $fail++ }
+            if (Test-Path (Join-Path $sbomOutputDirectory $outputFileName)) { $successCount++ } else { $failureCount++ }
           } catch {
-            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; $fail++
+            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; $failureCount++
           } finally {
-            Write-Host "Output: $(Join-Path $outputDir $file)"
+            Write-Host "Output: $(Join-Path $sbomOutputDirectory $outputFileName)"
             Write-Host "##[endgroup]"
           }
         }
 
-        Write-Host "##[section].NET summary → ok=$ok, failed=$fail"
-        if ($fail -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed"; exit 1 }
+        Write-Host "##[section].NET summary → ok=$successCount, failed=$failureCount"
+        if ($failureCount -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed"; exit 1 }
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1

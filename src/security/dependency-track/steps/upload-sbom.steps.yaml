@@ -42,11 +42,11 @@ steps:
         $tags = New-Object System.Collections.Generic.List[string]
         if ($env:ENV_NAME -and -not [string]::IsNullOrWhiteSpace($env:ENV_NAME)) { $tags.Add("env:$($env:ENV_NAME)") } else { Write-Warning "ENV_NAME is empty or not set; 'env:<NAME>' tag will be omitted." }
         if ($env:ADDITIONAL_TAGS -and $env:ADDITIONAL_TAGS.Trim().Length -gt 0) {
-          $env:ADDITIONAL_TAGS -split ',' | % { $_.Trim() } | ? { $_ } | % { [void]$tags.Add($_) }
+          $env:ADDITIONAL_TAGS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object { [void]$tags.Add($_) }
         }
         $tagsCsv = ''
         if ($tags.Count -gt 0) {
-          $seen=@{}; $deduped = $tags | ? { if ($seen.ContainsKey($_)) {$false} else {$seen[$_]=$true; $true} }
+          $seenMap=@{}; $deduped = $tags | Where-Object { if ($seenMap.ContainsKey($_)) { $false } else { $seenMap[$_] = $true; $true } }
           $tagsCsv = $deduped -join ','
         }
         if ("${{ parameters.requireProjectTags }}" -eq "True" -and [string]::IsNullOrWhiteSpace($tagsCsv)) { throw "No project tags produced." }
@@ -66,31 +66,32 @@ steps:
       script: |
         $ErrorActionPreference='Stop'
         if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) { Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag." }
-        $root = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
-        if (-not (Test-Path -LiteralPath $root)) { throw "SBOM root not found at $root. Ensure artifact download ran." }
-        $files = Get-ChildItem -Path $root -Recurse -File -Filter *.json -EA SilentlyContinue
-        if (-not $files -or $files.Count -eq 0) { throw "No SBOM files (*.json) discovered under $root." }
+        $sbomRootDirectory = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        if (-not (Test-Path -LiteralPath $sbomRootDirectory)) { throw "SBOM root not found at $sbomRootDirectory. Ensure artifact download ran." }
+        $sbomFiles = Get-ChildItem -Path $sbomRootDirectory -Recurse -File -Filter *.json -EA SilentlyContinue
+        if (-not $sbomFiles -or $sbomFiles.Count -eq 0) { throw "No SBOM files (*.json) discovered under $sbomRootDirectory." }
 
-        function Get-AppNameFromSbom([string]$path) { try { (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null } }
-        function Get-FallbackName([string]$path) { try { $dir = Split-Path $path -Parent; $parent = Split-Path $dir -Leaf; if ([string]::IsNullOrWhiteSpace($parent)) { return (Split-Path $path -Leaf) } return $parent } catch { return (Split-Path $path -Leaf) } }
+        function Get-ProjectNameFromSbom([string]$sbomPath) { try { (Get-Content -Raw -LiteralPath $sbomPath | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null } }
+        function Get-FallbackProjectName([string]$sbomPath) { try { $parentDir = Split-Path (Split-Path $sbomPath -Parent) -Leaf; if ([string]::IsNullOrWhiteSpace($parentDir)) { return (Split-Path $sbomPath -Leaf) } return $parentDir } catch { return (Split-Path $sbomPath -Leaf) } }
 
-        $matrix = New-Object System.Collections.Generic.List[object]; $invalid = 0
-        foreach ($f in $files) {
-          if ($f.Length -eq 0) { Write-Warning "Empty SBOM: $($f.FullName)"; $invalid++; continue }
-          try { $json = Get-Content -Raw -LiteralPath $f.FullName | ConvertFrom-Json -ea Stop } catch { Write-Warning "Invalid JSON SBOM: $($f.FullName)"; $invalid++; continue }
-          $name = Get-AppNameFromSbom $f.FullName
-          if ([string]::IsNullOrWhiteSpace($name)) { $name = Get-FallbackName $f.FullName }
-          if ([string]::IsNullOrWhiteSpace($name)) { Write-Warning "Unable to determine project name for SBOM: $($f.FullName)"; $invalid++; continue }
-          $version = $env:RELEASE_NUMBER; if ([string]::IsNullOrWhiteSpace($version)) { $version = 'unknown'; Write-Warning "RELEASE_NUMBER is empty; using placeholder 'unknown' for: $name" }
-          $matrix.Add([pscustomobject]@{ FilePath=$f.FullName; ProjectName=$name; ProjectVersion=$version })
+        $uploadMatrix = New-Object System.Collections.Generic.List[object]
+        $invalidCount = 0
+        foreach ($sbomFile in $sbomFiles) {
+          if ($sbomFile.Length -eq 0) { Write-Warning "Empty SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
+          try { $null = Get-Content -Raw -LiteralPath $sbomFile.FullName | ConvertFrom-Json -ea Stop } catch { Write-Warning "Invalid JSON SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
+          $projectName = Get-ProjectNameFromSbom $sbomFile.FullName
+          if ([string]::IsNullOrWhiteSpace($projectName)) { $projectName = Get-FallbackProjectName $sbomFile.FullName }
+          if ([string]::IsNullOrWhiteSpace($projectName)) { Write-Warning "Unable to determine project name for SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
+          $projectVersion = $env:RELEASE_NUMBER; if ([string]::IsNullOrWhiteSpace($projectVersion)) { $projectVersion = 'unknown'; Write-Warning "RELEASE_NUMBER is empty; using placeholder 'unknown' for: $projectName" }
+          $uploadMatrix.Add([pscustomobject]@{ FilePath=$sbomFile.FullName; ProjectName=$projectName; ProjectVersion=$projectVersion })
         }
 
-        if ($matrix.Count -eq 0) { throw "No valid SBOMs after preflight validation; cannot build upload matrix." }
-        $out = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
-        ($matrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $out -Encoding UTF8
-        Write-Host "##[section]Preflight summary → valid=$($matrix.Count), invalid=$invalid"
-        Write-Host "Matrix path: $out"
-        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$out"
+        if ($uploadMatrix.Count -eq 0) { throw "No valid SBOMs after preflight validation; cannot build upload matrix." }
+        $uploadMatrixPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
+        ($uploadMatrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $uploadMatrixPath -Encoding UTF8
+        Write-Host "##[section]Preflight summary → valid=$($uploadMatrix.Count), invalid=$invalidCount"
+        Write-Host "Matrix path: $uploadMatrixPath"
+        Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$uploadMatrixPath"
 
   - task: PowerShell@2
     name: uploadScript
@@ -111,15 +112,15 @@ steps:
         $ErrorActionPreference='Stop'
         if (-not $env:ENV_NAME -or [string]::IsNullOrWhiteSpace($env:ENV_NAME)) { Write-Warning "ENV_NAME is empty or not set; proceeding without an environment tag." }
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) { throw "DT_API_URL and/or DT_API_KEY not set. Check the variable group." }
-        $base = "$($env:DT_API_URL)".TrimEnd('/')
-        $matrixPath = $env:UPLOAD_MATRIX_PATH
-        if (-not $matrixPath -or -not (Test-Path -LiteralPath $matrixPath)) { throw "Upload matrix file not found: $matrixPath" }
-        try { $matrix = Get-Content -Raw -LiteralPath $matrixPath | ConvertFrom-Json } catch { throw "Upload matrix JSON invalid at $matrixPath" }
-        if (-not $matrix -or $matrix.Count -eq 0) { throw "Upload matrix is empty; nothing to upload." }
+        $apiBaseUrl = "$($env:DT_API_URL)".TrimEnd('/')
+        $uploadMatrixPath = $env:UPLOAD_MATRIX_PATH
+        if (-not $uploadMatrixPath -or -not (Test-Path -LiteralPath $uploadMatrixPath)) { throw "Upload matrix file not found: $uploadMatrixPath" }
+        try { $uploadMatrix = Get-Content -Raw -LiteralPath $uploadMatrixPath | ConvertFrom-Json } catch { throw "Upload matrix JSON invalid at $uploadMatrixPath" }
+        if (-not $uploadMatrix -or $uploadMatrix.Count -eq 0) { throw "Upload matrix is empty; nothing to upload." }
 
-        $parentName    = '${{ parameters.parentProjectName }}'
-        $parentVersion = '${{ parameters.parentProjectVersion }}'
-        if ($parentName) { Write-Host "Parent project specified → Name='$parentName' Version='$parentVersion'" } else { Write-Host "No parent project specified; uploads will not set parentName/parentVersion." }
+        $parentProjectNameParam    = '${{ parameters.parentProjectName }}'
+        $parentProjectVersionParam = '${{ parameters.parentProjectVersion }}'
+        if ($parentProjectNameParam) { Write-Host "Parent project specified → Name='$parentProjectNameParam' Version='$parentProjectVersionParam'" } else { Write-Host "No parent project specified; uploads will not set parentName/parentVersion." }
 
         if ("${{ parameters.validationOnly }}" -eq "True") {
           Write-Host "Validation-only mode enabled. Skipping upload."
@@ -129,16 +130,16 @@ steps:
         }
 
         Add-Type -AssemblyName System.Net.Http
-        $http = [System.Net.Http.HttpClient]::new()
-        $http.Timeout = [TimeSpan]::FromMinutes(10)
-        $http.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
+        $httpClient = [System.Net.Http.HttpClient]::new()
+        $httpClient.Timeout = [TimeSpan]::FromMinutes(10)
+        $httpClient.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
         function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
           if (-not $token) { return $false }
           $deadline = (Get-Date).AddSeconds($timeoutSec)
           while ((Get-Date) -lt $deadline) {
             try {
-              $resp = $http.GetAsync("$base/v1/bom/token/$token").GetAwaiter().GetResult()
+              $resp = $httpClient.GetAsync("$apiBaseUrl/v1/bom/token/$token").GetAwaiter().GetResult()
               $txt  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
               if ($resp.IsSuccessStatusCode) {
                 $obj = $txt | ConvertFrom-Json
@@ -157,56 +158,56 @@ steps:
           return $false
         }
 
-        $rows = New-Object System.Collections.Generic.List[object]
+        $uploadedRows = New-Object System.Collections.Generic.List[object]
         try {
-          foreach ($item in $matrix) {
-            $bom = Get-Item -LiteralPath $item.FilePath
-            Write-Host "##[group]Uploading SBOM -> $($item.ProjectName) @ $($item.ProjectVersion)"
+          foreach ($uploadItem in $uploadMatrix) {
+            $bomFile = Get-Item -LiteralPath $uploadItem.FilePath
+            Write-Host "##[group]Uploading SBOM -> $($uploadItem.ProjectName) @ $($uploadItem.ProjectVersion)"
             try {
-              $form = [System.Net.Http.MultipartFormDataContent]::new()
-              $form.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
-              $form.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
-              $form.Add([System.Net.Http.StringContent]::new($item.ProjectName), 'projectName')
-              $form.Add([System.Net.Http.StringContent]::new($item.ProjectVersion), 'projectVersion')
-              if ($parentName) {
-                $form.Add([System.Net.Http.StringContent]::new($parentName), 'parentName')
-                $form.Add([System.Net.Http.StringContent]::new($parentVersion), 'parentVersion')
+              $multipartForm = [System.Net.Http.MultipartFormDataContent]::new()
+              $multipartForm.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
+              $multipartForm.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
+              $multipartForm.Add([System.Net.Http.StringContent]::new($uploadItem.ProjectName), 'projectName')
+              $multipartForm.Add([System.Net.Http.StringContent]::new($uploadItem.ProjectVersion), 'projectVersion')
+              if ($parentProjectNameParam) {
+                $multipartForm.Add([System.Net.Http.StringContent]::new($parentProjectNameParam), 'parentName')
+                $multipartForm.Add([System.Net.Http.StringContent]::new($parentProjectVersionParam), 'parentVersion')
               }
               if ($env:PROJECT_TAGS_CSV -and $env:PROJECT_TAGS_CSV.Trim().Length -gt 0) {
-                $form.Add([System.Net.Http.StringContent]::new($env:PROJECT_TAGS_CSV), 'projectTags')
+                $multipartForm.Add([System.Net.Http.StringContent]::new($env:PROJECT_TAGS_CSV), 'projectTags')
               }
-              $fs = [IO.File]::OpenRead($bom.FullName)
+              $fileStream = [IO.File]::OpenRead($bomFile.FullName)
               try {
-                $content = [System.Net.Http.StreamContent]::new($fs)
-                $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
-                $form.Add($content, 'bom', $bom.Name)
-                $resp = $http.PostAsync("$base/v1/bom", $form).GetAwaiter().GetResult()
-              } finally { $fs.Dispose() }
+                $streamContent = [System.Net.Http.StreamContent]::new($fileStream)
+                $streamContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json')
+                $multipartForm.Add($streamContent, 'bom', $bomFile.Name)
+                $response = $httpClient.PostAsync("$apiBaseUrl/v1/bom", $multipartForm).GetAwaiter().GetResult()
+              } finally { $fileStream.Dispose() }
 
-              if (-not $resp.IsSuccessStatusCode) {
-                $body = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-                throw "HTTP $($resp.StatusCode) - $body"
+              if (-not $response.IsSuccessStatusCode) {
+                $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                throw "HTTP $($response.StatusCode) - $responseBody"
               }
-              $obj = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-              $note = "token: $($obj.token)"
-              Write-Host "Uploaded OK: $($bom.FullName) ($note)"
-              [void](Wait-BomProcessed -token $obj.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
-              $rows.Add([pscustomobject]@{ Project=$item.ProjectName; Version=$item.ProjectVersion })
+              $uploadResponse = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+              $tokenNote = "token: $($uploadResponse.token)"
+              Write-Host "Uploaded OK: $($bomFile.FullName) ($tokenNote)"
+              [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+              $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
-              Write-Error "❌ Upload failed for $($bom.FullName): $($_.Exception.Message)"
+              Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
               throw
             } finally {
               Write-Host "##[endgroup]"
             }
           }
-          $uploaded = ($rows | ConvertTo-Json -Compress); if (-not $uploaded) { $uploaded = '[]' }
-          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploaded"
-          Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploaded -Encoding UTF8
+          $uploadedRowsJson = ($uploadedRows | ConvertTo-Json -Compress); if (-not $uploadedRowsJson) { $uploadedRowsJson = '[]' }
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploadedRowsJson"
+          Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploadedRowsJson -Encoding UTF8
           Write-Host "##[section]✅ All uploads completed successfully"
         } catch {
-          $uploaded = ($rows | ConvertTo-Json -Compress); if (-not $uploaded) { $uploaded = '[]' }
-          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploaded"
-          Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploaded -Encoding UTF8
+          $uploadedRowsJson = ($uploadedRows | ConvertTo-Json -Compress); if (-not $uploadedRowsJson) { $uploadedRowsJson = '[]' }
+          Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploadedRowsJson"
+          Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploadedRowsJson -Encoding UTF8
           if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { exit 0 }
         }
 
@@ -217,18 +218,18 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference='Stop'
-        $rowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
-        $rows = @()
-        if (Test-Path -LiteralPath $rowsPath) {
-          try { $rows = Get-Content -Raw -LiteralPath $rowsPath | ConvertFrom-Json } catch { $rows=@() }
+        $uploadedRowsPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json'
+        $uploadedRows = @()
+        if (Test-Path -LiteralPath $uploadedRowsPath) {
+          try { $uploadedRows = Get-Content -Raw -LiteralPath $uploadedRowsPath | ConvertFrom-Json } catch { $uploadedRows=@() }
         }
-        if ($null -eq $rows) { $rows=@() } elseif ($rows -isnot [System.Collections.IEnumerable]) { $rows=@($rows) }
+        if ($null -eq $uploadedRows) { $uploadedRows=@() } elseif ($uploadedRows -isnot [System.Collections.IEnumerable]) { $uploadedRows=@($uploadedRows) }
         Write-Host "##[group]Dependency-Track Upload Summary (console)"
-        Write-Host ("Total Projects: {0}" -f $rows.Count)
-        if ($rows.Count -gt 0) {
+        Write-Host ("Total Projects: {0}" -f $uploadedRows.Count)
+        if ($uploadedRows.Count -gt 0) {
           "{0,-50} {1,-30}" -f "Project","Version" | Write-Host
           "{0,-50} {1,-30}" -f "-------","-------" | Write-Host
-          foreach ($r in $rows) { "{0,-50} {1,-30}" -f ([string]$r.Project), ([string]$r.Version) | Write-Host }
+          foreach ($row in $uploadedRows) { "{0,-50} {1,-30}" -f ([string]$row.Project), ([string]$row.Version) | Write-Host }
         } else { Write-Host "_No projects to list._" }
         Write-Host "##[endgroup]"
 
@@ -244,44 +245,44 @@ steps:
       script: |
         $ErrorActionPreference='Stop'
         if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) { throw "DT_API_URL and/or DT_API_KEY not set." }
-        $base = "$($env:DT_API_URL)".TrimEnd('/')
-        $raw = if ($env:UPLOADED_ROWS_JSON) { $env:UPLOADED_ROWS_JSON } else { '[]' }
-        try { $pairs = $raw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
-        if ($pairs -isnot [System.Collections.IEnumerable]) { $pairs = @($pairs) }
-        if (-not $pairs) { $pairs = @() }
+        $apiBaseUrl = "$($env:DT_API_URL)".TrimEnd('/')
+        $uploadedRowsRaw = if ($env:UPLOADED_ROWS_JSON) { $env:UPLOADED_ROWS_JSON } else { '[]' }
+        try { $uploadedPairs = $uploadedRowsRaw | ConvertFrom-Json } catch { Write-Error "UPLOADED_ROWS_JSON could not be parsed as JSON."; exit 1 }
+        if ($uploadedPairs -isnot [System.Collections.IEnumerable]) { $uploadedPairs = @($uploadedPairs) }
+        if (-not $uploadedPairs) { $uploadedPairs = @() }
 
         Add-Type -AssemblyName System.Net.Http
-        $http=[System.Net.Http.HttpClient]::new(); $http.Timeout=[TimeSpan]::FromMinutes(5); $http.DefaultRequestHeaders.Add('X-Api-Key',$env:DT_API_KEY)
+        $httpClient=[System.Net.Http.HttpClient]::new(); $httpClient.Timeout=[TimeSpan]::FromMinutes(5); $httpClient.DefaultRequestHeaders.Add('X-Api-Key',$env:DT_API_KEY)
 
-        function Lookup([string]$n,[string]$v) {
-          $encN=[uri]::EscapeDataString($n); $encV=[uri]::EscapeDataString($v)
-          $resp = $http.GetAsync("$base/v1/project/lookup?name=$encN&version=$encV").GetAwaiter().GetResult()
-          $txt = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          if ($resp.IsSuccessStatusCode) { return $txt | ConvertFrom-Json }
+        function Get-ProjectByNameVersion([string]$name,[string]$version) {
+          $encName=[uri]::EscapeDataString($name); $encVersion=[uri]::EscapeDataString($version)
+          $response = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
+          $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if ($response.IsSuccessStatusCode) { return $text | ConvertFrom-Json }
           return $null
         }
 
-        $rows = New-Object System.Collections.Generic.List[object]
-        foreach ($p in $pairs) {
-          $name=$p.Project; $ver=$p.Version
-          if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($ver)) {
-            $rows.Add([pscustomobject]@{ Project=$name; Version=$ver; Exists='NO'; IsLatest='N/A'; Note='Missing project or version value' }); continue
+        $verificationRows = New-Object System.Collections.Generic.List[object]
+        foreach ($pair in $uploadedPairs) {
+          $projectName=$pair.Project; $projectVersion=$pair.Version
+          if ([string]::IsNullOrWhiteSpace($projectName) -or [string]::IsNullOrWhiteSpace($projectVersion)) {
+            $verificationRows.Add([pscustomobject]@{ Project=$projectName; Version=$projectVersion; Exists='NO'; IsLatest='N/A'; Note='Missing project or version value' }); continue
           }
           try {
-            $obj = Lookup $name $ver
-            $exists = ($null -ne $obj -and $obj.uuid)
+            $projectObj = Get-ProjectByNameVersion $projectName $projectVersion
+            $exists = ($null -ne $projectObj -and $projectObj.uuid)
             $isLatest = $false
-            if ($exists -and ($obj.PSObject.Properties.Name -contains 'isLatest')) { $isLatest = [bool]$obj.isLatest }
-            $rows.Add([pscustomobject]@{ Project=$name; Version=$ver; Exists=$(if($exists){'YES'}else{'NO'}); IsLatest=$(if($exists){$(if($isLatest){'YES'}else{'NO'})}else{'N/A'}); Note=$(if($exists){"uuid=$($obj.uuid)"}else{"Not found"}) })
-          } catch { $rows.Add([pscustomobject]@{ Project=$name; Version=$ver; Exists='UNKNOWN'; IsLatest='UNKNOWN'; Note="Lookup error" }) }
+            if ($exists -and ($projectObj.PSObject.Properties.Name -contains 'isLatest')) { $isLatest = [bool]$projectObj.isLatest }
+            $verificationRows.Add([pscustomobject]@{ Project=$projectName; Version=$projectVersion; Exists=$(if($exists){'YES'}else{'NO'}); IsLatest=$(if($exists){$(if($isLatest){'YES'}else{'NO'})}else{'N/A'}); Note=$(if($exists){"uuid=$($projectObj.uuid)"}else{"Not found"}) })
+          } catch { $verificationRows.Add([pscustomobject]@{ Project=$projectName; Version=$projectVersion; Exists='UNKNOWN'; IsLatest='UNKNOWN'; Note="Lookup error" }) }
         }
 
         Write-Host "##[group]Dependency-Track verification details (console)"
-        Write-Host ("Checked items: {0}" -f $rows.Count)
-        $missing = ($rows | ? { $_.Exists -ne 'YES' }).Count
-        $notLatest = ($rows | ? { $_.IsLatest -eq 'NO' }).Count
-        Write-Host ("Missing: {0} | Not latest: {1}" -f $missing, $notLatest)
+        Write-Host ("Checked items: {0}" -f $verificationRows.Count)
+        $missingCount = ($verificationRows | Where-Object { $_.Exists -ne 'YES' }).Count
+        $notLatestCount = ($verificationRows | Where-Object { $_.IsLatest -eq 'NO' }).Count
+        Write-Host ("Missing: {0} | Not latest: {1}" -f $missingCount, $notLatestCount)
         "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "Project","Version","Exists","IsLatest","Note" | Write-Host
         "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "-------","-------","------","--------","----" | Write-Host
-        foreach ($r in $rows) { "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $r.Project, $r.Version, $r.Exists, $r.IsLatest, ($r.Note -replace '\r?\n',' ') | Write-Host }
+        foreach ($row in $verificationRows) { "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $row.Project, $row.Version, $row.Exists, $row.IsLatest, ($row.Note -replace '\r?\n',' ') | Write-Host }
         Write-Host "##[endgroup]"
