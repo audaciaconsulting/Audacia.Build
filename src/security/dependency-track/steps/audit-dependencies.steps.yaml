@@ -47,6 +47,18 @@ parameters:
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
+  - name: envName
+    type: string
+    default: ''
+  - name: additionalTags
+    type: string
+    default: ''
+  - name: releaseNumber
+    type: string
+    default: ''
+  - name: clientName
+    type: string
+    default: ''
 
 steps:
   # Publish is disabled in the per-ecosystem generators so we can publish ONCE here.
@@ -86,6 +98,10 @@ steps:
       bomProcessingTimeoutSec: ${{ parameters.bomProcessingTimeoutSec }}
       parentProjectName: ${{ parameters.parentProjectName }}
       parentProjectVersion: ${{ parameters.parentProjectVersion }}
+      envName: ${{ parameters.envName }}
+      additionalTags: ${{ parameters.additionalTags }}
+      releaseNumber: ${{ parameters.releaseNumber }}
+      clientName: ${{ parameters.clientName }}
 
   - ${{ if eq(parameters.deactivateOld, true) }}:
       - template: ./deactivate-nonlatest.steps.yaml
