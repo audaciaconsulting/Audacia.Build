@@ -50,16 +50,19 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 
 ## Specifying Projects for SBOM Generation
 
-Many repositories follow this structure:
+When specifying a dotnet project, the template expects a `.csproj` file to be specified.
+Examples might include:
+- `$(System.DefaultWorkingDirectory)/src/YourProject.Api/YourProject.Api.csproj`
+- `$(System.DefaultWorkingDirectory)/src/YourProject.Functions/YourProject.Functions.csproj`
+- `$(System.DefaultWorkingDirectory)/src/YourProject.Identity/YourProject.Identity.csproj`
+- `$(System.DefaultWorkingDirectory)/src/YourProject.Seeding/YourProject.Seeding.csproj`
 
-```
-src/
-├─ apis/src/YourProject.Api/YourProject.Api.csproj
-├─ apis/src/YourProject.Functions/YourProject.Functions.csproj
-├─ apis/src/YourProject.Identity/YourProject.Identity.csproj
-├─ apis/src/YourProject.Seeding/YourProject.Seeding.csproj
-└─ apps/your-single-page-application/    ← e.g. Angular project root (package.json / package-lock.json)
-```
+When specifying an npm project, the template expects **the directory** that contains the `package.json` and `package-lock.json` files.
+Examples might include:
+- `$(System.DefaultWorkingDirectory)/src/YourProject.Ui`
+- `$(System.DefaultWorkingDirectory)/src/apps`
+- `$(System.DefaultWorkingDirectory)/playwright`
+- `$(System.DefaultWorkingDirectory)/performance`
 
 The templates will:
 
