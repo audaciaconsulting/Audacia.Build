@@ -54,7 +54,7 @@ parameters:
     default: ''
 
   # Optional logical label recorded in logs; not sent to the API as a tag unless included in additionalTags.
-  - name: clientName
+  - name: projectName
     type: string
     default: ''
 
@@ -186,7 +186,7 @@ steps:
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
-      CLIENT_NAME_IN: ${{ parameters.clientName }}
+      CLIENT_NAME_IN: ${{ parameters.projectName }}
       ENV_NAME_IN: ${{ parameters.envName }}
       RELEASE_NUMBER_IN: ${{ parameters.releaseNumber }}
       ADDITIONAL_TAGS_IN: ${{ parameters.additionalTags }}
@@ -273,7 +273,7 @@ steps:
               }
 
               # Optional context values, not required by the API but kept for parity/logging
-              $clientName = $env:CLIENT_NAME_IN
+              $projectName = $env:CLIENT_NAME_IN
               $envName    = $env:ENV_NAME_IN
               $additional = $env:ADDITIONAL_TAGS_IN | Out-String
 

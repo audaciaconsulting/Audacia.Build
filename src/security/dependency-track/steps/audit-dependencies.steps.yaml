@@ -92,7 +92,7 @@ parameters:
     default: ''
 
   # Optional logical label written to logs; include in additionalTags if you want it as a tag.
-  - name: clientName
+  - name: projectName
     type: string
     default: ''
 
@@ -137,7 +137,7 @@ steps:
       envName: ${{ parameters.envName }}
       additionalTags: ${{ parameters.additionalTags }}
       releaseNumber: ${{ parameters.releaseNumber }}
-      clientName: ${{ parameters.clientName }}
+      projectName: ${{ parameters.projectName }}
 
   - ${{ if eq(parameters.deactivateOld, true) }}:
       - template: ./deactivate-nonlatest.steps.yaml
