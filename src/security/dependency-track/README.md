@@ -9,16 +9,16 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 
 ## Two Ways to Run
 
-| Approach         | When to use                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility.         |
+| Approach         | When to use                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
 | End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
-> **Implementation note:**  
-> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml` and `generate-npm-sbom.steps.yaml`), the `publishArtifact` setting controls whether each generator publishes its output as a pipeline artifact.
+> **Implementation note:**
+> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml` and `generate-npm-sbom.steps.yaml`), the `publishArtifact` variable controls whether each generator publishes its output as a pipeline artifact.
 >
-> -  **If you are running only one generator** (for example, just the .NET or npm template), set `publishArtifact: true` to publish its SBOMs directly.
-> - ️ **If you are running multiple generators** (for example, both .NET and npm), set `publishArtifact: false` on each generator and add a single `PublishPipelineArtifact@1` step afterwards. This publishes a single combined artifact (e.g. `sbom-files`) containing all SBOM outputs.
+> - **If you are running only one generator** (for example, just the .NET or npm template), set `publishArtifact: true` to publish its SBOMs directly.
+> - **If you are running multiple generators** (for example, both .NET and npm), set `publishArtifact: false` on each generator and add a single `PublishPipelineArtifact@1` step afterwards. This publishes a single combined artifact (e.g. `sbom-files`) containing all SBOM outputs.
 >
 > This approach ensures:
 > - A single, consolidated SBOM artifact for multi-ecosystem projects
@@ -37,21 +37,22 @@ If using Azure DevOps, you can store the key as a secret in a variable group or 
 
 These are defined as pipeline variables within each YAML file or via the “Variables” tab in Azure DevOps.
 
-| Variable                 | Purpose                                                               | Example                              |
-|--------------------------| --------------------------------------------------------------------- | ------------------------------------ |
-| `ENV_NAME`               | Which environment this SBOM represents                                | `dev`, `qa`, `uat`, `prod`           |
-| `VERSION`                | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
-| `ADDITIONAL_TAGS`        | Optional extra tags recorded on the Dependency-Track project          | `owner:team-x,service:abc`           |
-| `DEACTIVATE_OLD`         | Whether to mark all older versions inactive after upload              | `true`                               |
-| `PARENT_PROJECT_NAME`    | Optional parent “container” in Dependency-Track                       | `OrganisationName - ApplicationName` |
-| `PARENT_PROJECT_VERSION` | Version of the parent (may be left empty)                             | `2025.10` or empty                   |
+| Variable               | Purpose                                                               | Example                              |
+| ---------------------- | --------------------------------------------------------------------- | ------------------------------------ |
+| `envName`              | Which environment this SBOM represents                                | `dev`, `qa`, `uat`, `prod`           |
+| `version`              | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
+| `additionalTags`       | Optional extra tags recorded on the Dependency-Track project          | `owner:team-x,service:abc`           |
+| `deactivateOld`        | Whether to mark all older versions inactive after upload              | `true`                               |
+| `parentProjectName`    | Optional parent “container” in Dependency-Track                       | `OrganisationName - ApplicationName` |
+| `parentProjectVersion` | Version of the parent (may be left empty)                             | `2025.10` or empty                   |
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
 
 ## Specifying Projects for SBOM Generation
 
-When specifying a dotnet project, the template expects a `.csproj` file to be specified.
+When specifying a .NET project, the template expects a `.csproj` file to be specified.
 Examples might include:
+
 - `$(System.DefaultWorkingDirectory)/src/YourProject.Api/YourProject.Api.csproj`
 - `$(System.DefaultWorkingDirectory)/src/YourProject.Functions/YourProject.Functions.csproj`
 - `$(System.DefaultWorkingDirectory)/src/YourProject.Identity/YourProject.Identity.csproj`
@@ -59,6 +60,7 @@ Examples might include:
 
 When specifying an npm project, the template expects **the directory** that contains the `package.json` and `package-lock.json` files.
 Examples might include:
+
 - `$(System.DefaultWorkingDirectory)/src/YourProject.Ui`
 - `$(System.DefaultWorkingDirectory)/src/apps`
 - `$(System.DefaultWorkingDirectory)/playwright`
@@ -98,12 +100,12 @@ In Dependency-Track, tags appear under each project and support filtering, dashb
 
 The upload step builds tags like:
 
-- `env:<ENV_NAME>` when `ENV_NAME` is set
-- Optional comma-separated `ADDITIONAL_TAGS` (e.g. `owner:team-app,service:tickets`)
+- `env:<envName>` when `envName` is set
+- Optional comma-separated `additionalTags` (for example `owner:team-app,service:tickets`)
 
 ## Parent Project Linking
 
-If you provide `PARENT_PROJECT_NAME`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.
+If you provide `parentProjectName`, the upload attempts to set `parentName` and `parentVersion` for each SBOM.
 Dependency-Track performs parent resolution via **exact name and version match (case-sensitive)**.
 If no exact match is found, the child projects still upload successfully but remain unlinked.
 
@@ -137,4 +139,4 @@ This keeps the UI focused on the active release while preserving historical vers
 - [ ] Accurate project paths in pipeline
 - [ ] Parent project created in Dependency-Track
 - [ ] Parent project variables set (`"<Organisation> - <System>"`)
-- [ ] Pipeline variables defined: `ENV_NAME`, `VERSION`, `DEACTIVATE_OLD`, `ADDITIONAL_TAGS` (optional)
+- [ ] Pipeline variables defined: `envName`, `version`, `deactivateOld`, `additionalTags` (optional)
