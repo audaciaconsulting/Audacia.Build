@@ -88,7 +88,11 @@ steps:
           throw "No package.json file-paths were provided. Provide one or more explicit directories that contain package.json."
         }
 
-        $workspace = '$(System.DefaultWorkingDirectory)'
+        # Resolve the real workspace path from environment, not a literal token
+        $workspace = $env:SYSTEM_DEFAULTWORKINGDIRECTORY
+        if (-not $workspace -or [string]::IsNullOrWhiteSpace($workspace)) {
+          $workspace = $env:BUILD_SOURCESDIRECTORY
+        }
         $wsFull = [IO.Path]::GetFullPath($workspace)
 
         function To-RelativeUnderRoot([string]$p, [string]$root) {
@@ -105,10 +109,12 @@ steps:
           if ([string]::IsNullOrWhiteSpace($r)) { continue }
           $x = ($r -replace '/', '\').Trim().Trim('"').Trim()
 
+          # Expand common Azure Pipelines tokens to their env values
           $x = $x -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $wsFull
           try { $rel = To-RelativeUnderRoot -p $x -root $wsFull } catch { $rel = $x }
 
-          $target = $rel
+          # Use '.' for repo root rather than an empty relative path
+          $target = if ([string]::IsNullOrWhiteSpace($rel)) { '.' } else { $rel }
           $abs = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path $wsFull $rel }
 
           $pkg = Join-Path $abs 'package.json'
@@ -129,7 +135,8 @@ steps:
         $normalizedRoots | ForEach-Object { Write-Host $_ }
         Write-Host "##[endgroup]"
 
-        $json = (@($normalizedRoots) | ConvertTo-Json -Compress)
+        # Always emit a JSON array; '.' means repo root
+        $json = (@($normalizedRoots.ToArray()) | ConvertTo-Json -Compress)
         Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
         Write-Host "Resolved npm roots JSON: $json"
 
