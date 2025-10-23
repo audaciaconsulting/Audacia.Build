@@ -136,9 +136,20 @@ steps:
         Write-Host "##[endgroup]"
 
         # Always emit a JSON array; '.' means repo root
-        $json = (@($normalizedRoots.ToArray()) | ConvertTo-Json -Compress)
+        # Ensure array conversion even for a single item
+        $rootsArray = @()
+        $rootsArray += $normalizedRoots.ToArray()
+
+        # Show the absolute paths we resolved
+        $absList = $rootsArray | ForEach-Object {
+          if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $wsFull $_ }
+        }
+
+        $json = ($rootsArray | ConvertTo-Json -Compress)
         Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
         Write-Host "Resolved npm roots JSON: $json"
+        Write-Host "Resolved absolute path(s):"
+        $absList | ForEach-Object { Write-Host " - $_" }
 
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
@@ -182,7 +193,9 @@ steps:
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           $outFile = Join-Path $outDir "$safe-sbom.$ext"
 
-          Write-Host "##[group]JS SBOM → $abs"
+          $label = $abs
+          if ($proj -eq '.') { $label = "$abs (repo root)" }
+          Write-Host "##[group]JS SBOM → $label"
           Push-Location $abs
           try {
             $hasLock = Test-Path -LiteralPath $lockPath
