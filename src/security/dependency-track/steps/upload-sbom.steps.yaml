@@ -54,7 +54,8 @@ parameters:
     default: ''
 
   # Optional logical label recorded in logs; not sent to the API as a tag unless included in additionalTags.
-  - name: projectName
+  # This is intentionally named "systemName" to avoid confusion with Dependency-Track's "project" entity.
+  - name: systemName
     type: string
     default: ''
 
@@ -186,7 +187,7 @@ steps:
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
-      CLIENT_NAME_IN: ${{ parameters.projectName }}
+      SYSTEM_NAME_IN: ${{ parameters.systemName }}
       ENV_NAME_IN: ${{ parameters.envName }}
       VERSION_IN: ${{ parameters.version }}
       ADDITIONAL_TAGS_IN: ${{ parameters.additionalTags }}
@@ -273,7 +274,7 @@ steps:
               }
 
               # Optional context values, not required by the API but kept for parity/logging
-              $projectName = $env:CLIENT_NAME_IN
+              $systemName = $env:SYSTEM_NAME_IN
               $envName    = $env:ENV_NAME_IN
               $additional = $env:ADDITIONAL_TAGS_IN | Out-String
 
