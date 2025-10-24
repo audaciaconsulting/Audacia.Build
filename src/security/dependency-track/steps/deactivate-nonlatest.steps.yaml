@@ -1,0 +1,137 @@
+# Template: optionally download SBOM artifact → derive project names → deactivate non-latest versions
+
+parameters:
+  # Artifact to download when discovery relies on previously published SBOMs.
+  # Set tryDownloadArtifact=false if SBOMs already exist in $(Agent.TempDirectory)/sbom.
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+  # Attempt to download the artifact first. Disable when chaining inside a template that already downloaded it.
+  - name: tryDownloadArtifact
+    type: boolean
+    default: true
+
+  # Optional parent project name to scope deactivation to a specific hierarchy.
+  # When empty, all projects matching the discovered name will be considered.
+  - name: parentProjectName
+    type: string
+    default: ''
+
+steps:
+  - ${{ if eq(parameters.tryDownloadArtifact, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: "Download artifact: ${{ parameters.artifactName }}"
+        inputs:
+          artifact: ${{ parameters.artifactName }}
+          buildType: current
+          path: "$(Agent.TempDirectory)/sbom"
+        continueOnError: true
+
+  - task: PowerShell@2
+    name: deriveProjectNames
+    displayName: "Derive project names from SBOM files"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference='Stop'
+        function Get-ProjectNamesFromSboms([string]$rootDirectory) {
+          $derivedNames = New-Object System.Collections.Generic.List[string]
+          if (-not (Test-Path $rootDirectory)) { return @() }
+          $sbomFiles = Get-ChildItem -Path $rootDirectory -Recurse -Filter *.json -File -EA SilentlyContinue
+          foreach ($sbomFile in $sbomFiles) {
+            try {
+              $nameFromSbom = (Get-Content -Raw -LiteralPath $sbomFile.FullName | ConvertFrom-Json -ea Stop).metadata.component.name
+              if ($nameFromSbom) { $derivedNames.Add($nameFromSbom) } else { $derivedNames.Add($sbomFile.Directory.Parent.BaseName) }
+            } catch { $derivedNames.Add($sbomFile.Directory.Parent.BaseName) }
+          }
+          return ($derivedNames | Where-Object { $_ } | Select-Object -Unique)
+        }
+        $sbomRoot = Join-Path $env:AGENT_TEMPDIRECTORY 'sbom'
+        $projectNames = Get-ProjectNamesFromSboms $sbomRoot
+        if (-not $projectNames -or $projectNames.Count -eq 0) { Write-Warning "Could not derive any project names from SBOMs in $sbomRoot. Nothing to deactivate."; $csv="" }
+        else { Write-Host "Projects discovered from SBOMs: $($projectNames -join ', ')"; $csv = $projectNames -join ',' }
+        Write-Host "##vso[task.setvariable variable=projectNamesCsv;isOutput=true]$csv"
+
+  - task: PowerShell@2
+    displayName: "Deactivate non-latest versions in Dependency-Track"
+    env:
+      PROJECT_NAMES_CSV: $(deriveProjectNames.projectNamesCsv)
+      DT_API_URL: $(DT_API_URL)
+      DT_API_KEY: $(DT_API_KEY)
+      PARENT_PROJECT_NAME: ${{ parameters.parentProjectName }}
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference='Stop'
+        $pageSize = 500
+        if ([string]::IsNullOrWhiteSpace($env:DT_API_URL) -or [string]::IsNullOrWhiteSpace($env:DT_API_KEY)) { throw "DT_API_URL and/or DT_API_KEY not set." }
+        $apiBaseUrl = "$($env:DT_API_URL)".TrimEnd('/')
+        if ([string]::IsNullOrWhiteSpace($env:PROJECT_NAMES_CSV)) { Write-Warning "No project names provided. Nothing to deactivate."; exit 0 }
+
+        Add-Type -AssemblyName System.Net.Http
+        $httpClient=[System.Net.Http.HttpClient]::new(); $httpClient.Timeout=[TimeSpan]::FromMinutes(10); $httpClient.DefaultRequestHeaders.Add('X-Api-Key',$env:DT_API_KEY)
+
+        function Invoke-DtApi([string]$method,[string]$path,[object]$body=$null){
+          $url="$apiBaseUrl$path"
+          $request=[System.Net.Http.HttpRequestMessage]::new($method,$url)
+          if($body -ne $null){
+            $json=$body|ConvertTo-Json -Depth 8
+            $request.Content=[System.Net.Http.StringContent]::new($json,[Text.Encoding]::UTF8,'application/json')
+          }
+          $response=$httpClient.SendAsync($request).GetAwaiter().GetResult()
+          $text=$response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if($response.IsSuccessStatusCode){return $text}
+          if([int]$response.StatusCode -ge 500){ throw "HTTP $($response.StatusCode): $text"}
+          throw "API $method $path failed ($($response.StatusCode)): $text"
+        }
+
+        function Get-ProjectsByName([string]$projectName) {
+          $results=@(); $page=1
+          while ($true) {
+            $pageArray = @()
+            try { $pageArray = (Invoke-DtApi -method GET -path "/v1/project?name=$([uri]::EscapeDataString($projectName))&pageSize=$pageSize&page=$page") | ConvertFrom-Json } catch { $pageArray=@() }
+            if (-not $pageArray -or $pageArray.Count -eq 0) { break }
+            $results += $pageArray
+            if ($pageArray.Count -lt $pageSize) { break }
+            $page++
+          }
+          return $results
+        }
+
+        function Get-ProjectSiblings([string]$projectName, [string]$parentProjectName) {
+          if ($parentProjectName -and $parentProjectName.Trim()) {
+            $candidates = Get-ProjectsByName -projectName $projectName | Where-Object { $_.parent -and $_.parent.name -eq $parentProjectName }
+            if ($candidates -and $candidates.Count -gt 0) { return $candidates }
+          }
+          return Get-ProjectsByName -projectName $projectName
+        }
+
+        function Deactivate-NonLatest([string]$projectName, [string]$parentProjectName) {
+          $siblingProjects = Get-ProjectSiblings -projectName $projectName -parentProjectName $parentProjectName
+          $targetVersions = $siblingProjects | Where-Object { $isActive = ($_.PSObject.Properties.Name -contains 'active') ? ($_.active -ne $false) : $true; $isActive -and ($_.isLatest -ne $true) }
+          $candidateCount = ($targetVersions | Measure-Object).Count
+          Write-Host "Found $candidateCount non-latest active version(s) for project name '$projectName'."
+          $deactivatedCount=0; $failedCount=0
+          foreach ($versionItem in $targetVersions) {
+            try { [void](Invoke-DtApi -method PATCH -path "/v1/project/$($versionItem.uuid)" -body @{ active = $false }); $deactivatedCount++ }
+            catch {
+              $failedCount++
+              $errorMessage = $_.Exception.Message
+              if ($errorMessage -match '(?i)forbidden|403') { Write-Warning "Deactivate failed (Forbidden). Ensure DT_API_KEY has permission and PAC allows access. UUID=$($versionItem.uuid)" }
+              else { Write-Warning "Deactivate failed for UUID=$($versionItem.uuid): $errorMessage" }
+            }
+          }
+          return @{ ok = $deactivatedCount; fail = $failedCount; total = $candidateCount }
+        }
+
+        $projectNameList = $env:PROJECT_NAMES_CSV -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $parentScopeName = $env:PARENT_PROJECT_NAME
+        if ($parentScopeName -and $parentScopeName.Trim()) { Write-Host "Scoping deactivation to parent project: '$parentScopeName'" } else { Write-Host "No parent project scope provided; deactivation will consider all siblings by name." }
+
+        $totalDeactivated=0; $totalFailed=0; $totalCandidates=0
+        foreach ($projectName in $projectNameList) { $result = Deactivate-NonLatest -projectName $projectName -parentProjectName $parentScopeName; $totalDeactivated += [int]$result.ok; $totalFailed += [int]$result.fail; $totalCandidates += [int]$result.total }
+        Write-Host "##[section]Deactivation summary → candidates=$totalCandidates, deactivated=$totalDeactivated, failed=$totalFailed"
+        if ($totalFailed -gt 0) { Write-Warning "Some deactivations failed. If failures show 'Forbidden', grant DT_API_KEY appropriate permissions and ensure PAC/tag access." }

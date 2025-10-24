@@ -1,3 +1,4 @@
+# **## DEPRECATED ##**
 # Azure DevOps SBOM & Vulnerability Analysis Pipeline Templates
 
 This directory provides a set of reusable YAML templates that integrate SBOM (Software Bill of Materials) generation and vulnerability analysis into Azure DevOps pipelines. The templates enable:
