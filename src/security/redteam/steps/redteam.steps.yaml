@@ -95,37 +95,14 @@ steps:
       script: |
         mkdir -p "${{parameters.workingDirectory}}/${{parameters.resultsDirectory}}"
 
-  # Normalize single string vs array into one comma-separated variable for looping
-  - ${{ if eq(typeof(parameters.config), 'Array') }}:
-    - ${{ each c in parameters.config }}:
-      - ${{ if ne(c, '') }}:
-        - task: Bash@3
-          displayName: 'Execute red team evaluation: ${{ c }}'
-          inputs:
-            workingDirectory: ${{ parameters.workingDirectory }}
-            targetType: 'inline'
-            script: |
-              CONFIG_PATH='${{ c }}'
-              CONFIG_FILE="$(basename "$CONFIG_PATH")"
-              CONFIG_NAME="${CONFIG_FILE%.*}"
-              python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
-          env:
-            PYTHONPATH: $(System.DefaultWorkingDirectory)
-            API_URL: ${{ parameters.apiUrl }}
-            AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
-            AUTH_CLIENT_ID: ${{ parameters.authClientId }}
-            AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
-            AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
-            CHOSEN_MODEL: ${{ parameters.chosenModel }}
-
-  - ${{ if eq(typeof(parameters.config), 'String') }}:
+  - ${{ each cfg in parameters.config }}:
     - task: Bash@3
-      displayName: 'Execute red team evaluation: ${{ parameters.config }}'
+      displayName: 'Execute red team evaluation: ${{ cfg }}'
       inputs:
         workingDirectory: ${{ parameters.workingDirectory }}
         targetType: 'inline'
         script: |
-          CONFIG_PATH='${{ parameters.config }}'
+          CONFIG_PATH='${{ cfg }}'
           CONFIG_FILE="$(basename "$CONFIG_PATH")"
           CONFIG_NAME="${CONFIG_FILE%.*}"
           python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
