@@ -57,6 +57,7 @@ steps:
     displayName: 'Verify promptfoo installation'
     inputs:
       targetType: 'inline'
+      workingDirectory: ${{ parameters.workingDirectory }}
       script: |
         npx promptfoo --version
 
@@ -96,7 +97,7 @@ steps:
       workingDirectory: ${{parameters.workingDirectory}}
       targetType: 'inline'
       script: |
-        mkdir -p "${{parameters.workingDirectory}}/${{parameters.resultsDirectory}}"
+        mkdir -p "${{parameters.resultsDirectory}}"
 
   - ${{ each cfg in parameters.config }}:
     - task: Bash@3
