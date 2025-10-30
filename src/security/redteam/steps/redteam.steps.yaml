@@ -1,11 +1,19 @@
 parameters:
-  # Path in the calling repo to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured.
-  - name: configPath
+  # Working directory for the step. Defaults to the root of the repo.
+  - name: workingDirectory
     type: string
+    default: ''
 
-  # Path in the calling repo to where your package-lock.json lives (e.g. llm_eval), npm commands run there and promptfoo is installed.
-  - name: npmWorkingDirectory
-    type: string
+  # Path or array of paths in the calling repo to your red team config file(s) (e.g. `llm_eval/ai_red_teaming/redteam.yaml`).
+  # Accepts either:
+  #   config: 'path/to/redteam.yaml'
+  # or
+  #   config:
+  #     - 'path/to/first.yaml'
+  #     - 'path/to/second.yaml'
+  # Type set to object so Azure DevOps will accept a single string or an array of strings.
+  - name: config
+    type: object
 
   # The API url for the target LLM (e.g. https://ai-app.audacia.systems/api).
   - name: apiUrl
@@ -27,10 +35,13 @@ parameters:
   - name: authClientScope
     type: string
 
+  - name: resultsDirectory
+    type: string
+    default: 'results'
+
   # Model of LLM for test, usually stored as an enum in the app. Defaults to '100'.
   - name: chosenModel
     type: string
-    default: '100'
 
 steps:
   - checkout: self
@@ -42,14 +53,17 @@ steps:
     inputs:
       versionSpec: '20.x'
 
-  # npm install
-  - script: |
-      set -euo pipefail
-      npm ci
-      npm install -g promptfoo
-      promptfoo --version
-    workingDirectory: ${{ parameters.npmWorkingDirectory }}
-    displayName: 'Install dependencies and Promptfoo'
+  - task: Npm@1
+    displayName: 'NPM Install'
+    inputs:
+      workingDir: ${{ parameters.workingDirectory }}
+      command: 'ci'
+
+  - task: Bash@3
+    displayName: 'Verify promptfoo installation'
+    inputs:
+      targetType: 'inline'
+      script: promptfoo --version
 
   # Python for target script resolution
   - task: UsePythonVersion@0
@@ -58,50 +72,76 @@ steps:
       versionSpec: '3.12'
       addToPath: true
 
-  - script: |
-      set -euo pipefail
-      python --version
-      python -m pip install --upgrade pip
-      python -m pip install oauthlib pydantic python-dotenv requests requests-oauthlib
-    displayName: 'Install Python dependencies'
+  - task: Bash@3
+    displayName: 'Install python dependencies'
+    inputs:
+      workingDirectory: ${{ parameters.workingDirectory }}
+      targetType: 'inline'
+      script: uv sync
 
-  # Run Promptfoo Red Team
-  - script: |
-      set -euo pipefail
-      RESULTS_DIR="$(System.DefaultWorkingDirectory)/results"
-      mkdir -p "$RESULTS_DIR"
+  - task: Bash@3
+    displayName: 'Activate python environment'
+    inputs:
+      workingDirectory: ${{ parameters.workingDirectory }}
+      targetType: 'inline'
+      script: |
+        source .venv/bin/activate
 
-      CONFIG_PATH="${{ parameters.configPath }}"
-      CONFIG_DIR="$(dirname "$CONFIG_PATH")"
-      CONFIG_FILE="$(basename "$CONFIG_PATH")"
+  - task: Bash@3
+    displayName: 'Create results directory'
+    inputs:
+      workingDirectory: ${{parameters.workingDirectory}}
+      targetType: 'inline'
+      script: |
+        mkdir -p "${{parameters.workingDirectory}}/${{parameters.resultsDirectory}}"
 
-      echo "Running Promptfoo red team:"
-      echo "  Config dir:  $CONFIG_DIR"
-      echo "  Config file: $CONFIG_FILE"
-      echo "  Results dir: $RESULTS_DIR"
+  # Normalize single string vs array into one comma-separated variable for looping
+  - ${{ if eq(typeof(parameters.config), 'Array') }}:
+    - ${{ each c in parameters.config }}:
+      - ${{ if ne(c, '') }}:
+        - task: Bash@3
+          displayName: 'Execute red team evaluation: ${{ c }}'
+          inputs:
+            workingDirectory: ${{ parameters.workingDirectory }}
+            targetType: 'inline'
+            script: |
+              CONFIG_PATH='${{ c }}'
+              CONFIG_FILE="$(basename "$CONFIG_PATH")"
+              CONFIG_NAME="${CONFIG_FILE%.*}"
+              python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
+          env:
+            PYTHONPATH: $(System.DefaultWorkingDirectory)
+            API_URL: ${{ parameters.apiUrl }}
+            AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
+            AUTH_CLIENT_ID: ${{ parameters.authClientId }}
+            AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
+            AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
+            CHOSEN_MODEL: ${{ parameters.chosenModel }}
 
-      pushd "$CONFIG_DIR" >/dev/null
-
-      npx promptfoo redteam eval \
-        --config "$CONFIG_FILE" \
-        --output "$RESULTS_DIR/results.json" \
-        --output "$RESULTS_DIR/report.html"
-
-      popd >/dev/null
-    displayName: 'Run Promptfoo Red Team'
-    env:
-      PYTHONPATH: $(System.DefaultWorkingDirectory)
-      API_URL: ${{ parameters.apiUrl }}
-      AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
-      AUTH_CLIENT_ID: ${{ parameters.authClientId }}
-      AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
-      AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
-      CHOSEN_MODEL: ${{ parameters.chosenModel }}
+  - ${{ if eq(typeof(parameters.config), 'String') }}:
+    - task: Bash@3
+      displayName: 'Execute red team evaluation: ${{ parameters.config }}'
+      inputs:
+        workingDirectory: ${{ parameters.workingDirectory }}
+        targetType: 'inline'
+        script: |
+          CONFIG_PATH='${{ parameters.config }}'
+          CONFIG_FILE="$(basename "$CONFIG_PATH")"
+          CONFIG_NAME="${CONFIG_FILE%.*}"
+          python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
+      env:
+        PYTHONPATH: $(System.DefaultWorkingDirectory)
+        API_URL: ${{ parameters.apiUrl }}
+        AUTH_TOKEN_URL: ${{ parameters.authTokenUrl }}
+        AUTH_CLIENT_ID: ${{ parameters.authClientId }}
+        AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
+        AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
+        CHOSEN_MODEL: ${{ parameters.chosenModel }}
 
   # Publish JSON/HTML artifacts
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Red Team Results'
     inputs:
-      pathtoPublish: '$(System.DefaultWorkingDirectory)/results'
+      pathToPublish: '$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}'
       artifactName: 'promptfoo-redteam-results'
     condition: succeededOrFailed()

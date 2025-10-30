@@ -4,9 +4,10 @@
 
 This template runs a **Promptfoo red team evaluation** against an app’s target LLM, captures results, and publishes them as a build artifact. The template:
 
-1. Installs Node.js and Promptfoo.
+1. Installs Node.js and installs npm dependencies.
+1. Verifies promptfoo is installed.
 2. Installs required Python dependencies.
-3. Executes `npx promptfoo redteam eval` using the promptfoo config file in the app's repo.
+3. Executes `promptfoo` via Audacia's LLM Eval package using the promptfoo config file(s) in the app's repo.
 4. Publishes the results (JSON + HTML) as a build artifact.
 
 > The template changes the working directory to the **folder containing your `redteam.yaml`** before running Promptfoo so that `file://…` targets (e.g., `file://inference_ai_app.py`) resolve correctly.
@@ -18,16 +19,15 @@ This template runs a **Promptfoo red team evaluation** against an app’s target
 
   - `NodeTool@0` → Node 20
   - `npm ci` (in `npmWorkingDirectory`)
-  - `npm install -g promptfoo`
 
 - **Python setup:**
 
   - `UsePythonVersion@0` → Python 3.12 (latest "security" status version)
-  - `pip install oauthlib pydantic python-dotenv requests requests-oauthlib`
+  - `uv sync` → installs dependencies from `PyProject.toml` in the working directory
 
 - **Red team run:**
 
-  - `npx promptfoo redteam eval --config <file> --output <results.json> --output <report.html>`
+  - `python -m llm_eval.red_teaming.promptfoo_evaluate <config_file> --output <results.json> --output <report.html>`
 
 - **Publishing:**
 
@@ -58,8 +58,8 @@ stages:
         steps:
           - template: /src/security/redteam/steps/redteam.steps.yaml@templates
             parameters:
-              configPath: 'llm_eval/ai_red_teaming/redteam.yaml'
-              npmWorkingDirectory: 'llm_eval'
+              workingDirectory: 'llm_eval' # optional, defaults to repo root
+              config: 'ai_red_teaming/redteam.yaml'
               apiUrl: $(ApiUrl)
               authTokenUrl: $(AuthTokenUrl)
               authClientId: $(AuthClientId)
@@ -77,8 +77,8 @@ stages:
 
 | Name                  | Required | Description                                                                                                                                                                                               |
 | --------------------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `configPath`          |      Yes | Path (in the **calling repo**) to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured. |
-| `npmWorkingDirectory` |      Yes | Path (in the **calling repo**) to where your `package-lock.json` lives (e.g. `llm_eval`), npm commands run there and promptfoo is installed.                                                              |
+| `config`          |      Yes | Path (in the **calling repo**) to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured. Can provide multiple paths as an array. |
+| `workingDirectory` |      Yes | Path (in the **calling repo**) to where all commands should be executed relative to. This should include the `package.json` referencing `promptfoo` |
 | `apiUrl`              |      Yes | The API url for the target LLM (e.g. https://ai-app.audacia.systems/api).                                                                                                                                 |
 | `authTokenUrl`        |      Yes | The url for authenticating with Entra Id in order to test the LLM (e.g. https://login.microsoftonline.com/{{TenantId}}/oauth2/v2.0/token). TenantId can be found in the App Registration in Azure.        |
 | `authClientId`        |      Yes | The Entra Id Client Id for the App Registration, in order to be authenticated to test the LLM. Client Id can be found in the App Registration in Azure.                                                   |
