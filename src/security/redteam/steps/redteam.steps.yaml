@@ -4,14 +4,8 @@ parameters:
     type: string
     default: ''
 
-  # Path or array of paths in the calling repo to your red team config file(s) (e.g. `llm_eval/ai_red_teaming/redteam.yaml`).
-  # Accepts either:
-  #   config: 'path/to/redteam.yaml'
-  # or
-  #   config:
-  #     - 'path/to/first.yaml'
-  #     - 'path/to/second.yaml'
-  # Type set to object so Azure DevOps will accept a single string or an array of strings.
+  # Array of paths in the calling repo to your red team config file(s) (e.g. `llm_eval/ai_red_teaming/redteam.yaml`).
+  # Type set to object so Azure DevOps will accept multiple configs
   - name: config
     type: object
 
@@ -63,7 +57,8 @@ steps:
     displayName: 'Verify promptfoo installation'
     inputs:
       targetType: 'inline'
-      script: promptfoo --version
+      script: |
+        npx promptfoo --version
 
   # Python for target script resolution
   - task: UsePythonVersion@0
