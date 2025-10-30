@@ -68,6 +68,14 @@ steps:
       addToPath: true
 
   - task: Bash@3
+    displayName: 'Install uv tool'
+    inputs:
+      workingDirectory: ${{ parameters.workingDirectory }}
+      targetType: 'inline'
+      script: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+
+  - task: Bash@3
     displayName: 'Install python dependencies'
     inputs:
       workingDirectory: ${{ parameters.workingDirectory }}
