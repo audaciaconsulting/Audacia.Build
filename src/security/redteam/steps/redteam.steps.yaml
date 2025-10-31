@@ -37,6 +37,18 @@ parameters:
   - name: chosenModel
     type: string
 
+  # The API key for the Azure OpenAI resource used by promptfoo.
+  - name: promptfooAzureApiKey
+    type: string
+
+  # The URL for the Azure OpenAI resource used by promptfoo.
+  - name: promptfooAzureApiHost
+    type: string
+
+  # The deployment for the Azure OpenAI resource used by promptfoo.
+  - name: promptfooAzureDeployment
+    type: string
+
 steps:
   - checkout: self
     clean: true
@@ -123,6 +135,9 @@ steps:
         AUTH_CLIENT_SECRET: ${{ parameters.authClientSecret }}
         AUTH_CLIENT_SCOPE: ${{ parameters.authClientScope }}
         CHOSEN_MODEL: ${{ parameters.chosenModel }}
+        PROMPTFOO_AZURE_API_KEY: ${{ parameters.promptfooAzureApiKey }}
+        PROMPTFOO_AZURE_API_HOST: ${{ parameters.promptfooAzureApiHost }}
+        PROMPTFOO_AZURE_DEPLOYMENT: ${{ parameters.promptfooAzureDeployment }}
 
   # Publish JSON/HTML artifacts
   - task: PublishBuildArtifacts@1
