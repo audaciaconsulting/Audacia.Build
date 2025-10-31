@@ -127,7 +127,7 @@ steps:
           CONFIG_FILE="$(basename "$CONFIG_PATH")"
           CONFIG_NAME="${CONFIG_FILE%.*}"
           echo "Running red team evaluation for config: $CONFIG_PATH"
-          uv run python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.resultsDirectory }}/$CONFIG_NAME.json""
+          uv run python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.resultsDirectory }}/$CONFIG_NAME.json"
       env:
         PYTHONPATH: $(System.DefaultWorkingDirectory)
         API_URL: ${{ parameters.apiUrl }}
