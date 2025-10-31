@@ -97,38 +97,6 @@ steps:
       script: uv sync
 
   - task: Bash@3
-    displayName: 'Verify uv installation'
-    inputs:
-      workingDirectory: ${{ parameters.workingDirectory }}
-      targetType: 'inline'
-      script: |
-        echo "uv .venv:"
-        ls .venv
-        echo ".venv bin:"
-        ls .venv/bin
-
-  - task: Bash@3
-    displayName: 'Activate python environment'
-    inputs:
-      workingDirectory: ${{ parameters.workingDirectory }}
-      targetType: 'inline'
-      script: |
-        source .venv/bin/activate
-
-  - task: Bash@3
-    displayName: 'Verify python installation'
-    inputs:
-      workingDirectory: ${{ parameters.workingDirectory }}
-      targetType: 'inline'
-      script: |
-        echo "Python installation:"
-        which python
-        echo "Python version:"
-        python --version
-        echo "Installed llm-eval package details:"
-        pip show llm-eval
-
-  - task: Bash@3
     displayName: 'Create results directory'
     inputs:
       workingDirectory: ${{parameters.workingDirectory}}
@@ -146,7 +114,7 @@ steps:
           CONFIG_PATH='${{ cfg }}'
           CONFIG_FILE="$(basename "$CONFIG_PATH")"
           CONFIG_NAME="${CONFIG_FILE%.*}"
-          python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
+          uv run python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
       env:
         PYTHONPATH: $(System.DefaultWorkingDirectory)
         API_URL: ${{ parameters.apiUrl }}
