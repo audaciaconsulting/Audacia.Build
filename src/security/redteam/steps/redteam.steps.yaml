@@ -126,6 +126,7 @@ steps:
           CONFIG_PATH='${{ cfg }}'
           CONFIG_FILE="$(basename "$CONFIG_PATH")"
           CONFIG_NAME="${CONFIG_FILE%.*}"
+          echo "Running red team evaluation for config: $CONFIG_PATH"
           uv run python -m llm_eval.red_teaming.promptfoo_evaluate "$CONFIG_PATH" --output "${{ parameters.workingDirectory }}/${{ parameters.resultsDirectory }}/$CONFIG_NAME"
       env:
         PYTHONPATH: $(System.DefaultWorkingDirectory)
