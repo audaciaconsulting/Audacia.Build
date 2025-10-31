@@ -77,24 +77,26 @@ stages:
 
 | Name                  | Required | Description                                                                                                                                                                                               |
 | --------------------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config`          |      Yes | Path (in the **calling repo**) to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured. Can provide multiple paths as an array. |
 | `workingDirectory` |      Yes | Path (in the **calling repo**) to where all commands should be executed relative to. This should include the `package.json` referencing `promptfoo` |
+| `config`          |      Yes | Path (in the **calling repo**) to your red team config (e.g. `llm_eval/ai_red_teaming/redteam.yaml`). This is where the python script that runs the tests is called from, and any plugins are configured. Can provide multiple paths as an array. This needs to be relative to the working directory. |
 | `apiUrl`              |      Yes | The API url for the target LLM (e.g. https://ai-app.audacia.systems/api).                                                                                                                                 |
 | `authTokenUrl`        |      Yes | The url for authenticating with Entra Id in order to test the LLM (e.g. https://login.microsoftonline.com/{{TenantId}}/oauth2/v2.0/token). TenantId can be found in the App Registration in Azure.        |
 | `authClientId`        |      Yes | The Entra Id Client Id for the App Registration, in order to be authenticated to test the LLM. Client Id can be found in the App Registration in Azure.                                                   |
 | `authClientSecret`    |      Yes | The Entra Id Client Secret for the App Registration, in order to be authenticated to test the LLM. Client Secret can be created in the App Registration in Azure, and should be stored in Keeper.         |
 | `authClientScope`     |      Yes | The Entra Id Client Scope for the App Registration, in order to be authenticated to test the LLM (e.g. api://{{ClientId}}/.default).                                                                      |
-| `chosenModel`         |       No | Model of LLM for test, usually stored as an enum in the app. Defaults to '100'.                                                                                                                           |
+| `chosenModel`         |       Yes | Model of LLM for test, usually stored as an enum in the app.                                                                                                                           |
+| `promptfooAzureApiKey` |      Yes  | The API key for Azure OpenAI, used by Promptfoo to authenticate requests.                                                                                                        |
+| `promptfooAzureApiHost` |     Yes  | The API host for Azure OpenAI, used by Promptfoo to send requests (e.g. `https://your-resource-name.openai.azure.com/`).                                                        |
+| `promptfooAzureDeployment` |  Yes  | The deployment name for the Azure OpenAI model, used by Promptfoo.                                                                                                  |
 
 ## Prerequisites & Assumptions
 
 - The calling repo contains:
-
-  - A valid `redteam.yaml` (pointed to by `configPath`).
+  - A valid `redteam.yaml` (pointed to by `config`).
   - The Python target referenced by `redteam.yaml` (e.g., `file://inference_ai_app.py`) and any local modules it imports.
-
+  - A valid `pyproject.toml` in the `workingDirectory` with `llm_eval` as a dependency.
 - Your app can authenticate via the provided environment variables.
-- Your app has a `package-lock.json` in your `npmWorkingDirectory`.
+- Your app has a `package-lock.json` in your `workingDirectory`.
 
 ## Security
 
