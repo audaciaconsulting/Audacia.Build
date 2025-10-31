@@ -41,6 +41,19 @@ steps:
   - checkout: self
     clean: true
 
+  - task: Bash@3
+    displayName: 'Verify Running on Linux'
+    inputs:
+      targetType: 'inline'
+      script: |
+        if [[ "$(uname -s)" != "Linux" ]]; then
+          echo "❌ Not running on Linux — aborting."
+          exit 1
+        fi
+
+        echo "✅ Running on Linux."
+
+
   # Node for Promptfoo
   - task: NodeTool@0
     displayName: 'Install Node.js 20'
@@ -90,6 +103,16 @@ steps:
       targetType: 'inline'
       script: |
         source .venv/bin/activate
+
+  - task: Bash@3
+    displayName: 'Verify python installation'
+    inputs:
+      workingDirectory: ${{ parameters.workingDirectory }}
+      targetType: 'inline'
+      script: |
+        which python
+        python --version
+        pip show llm-eval
 
   - task: Bash@3
     displayName: 'Create results directory'
