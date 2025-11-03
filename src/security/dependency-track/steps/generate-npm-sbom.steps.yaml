@@ -1,4 +1,7 @@
 # Template: generate npm SBOMs using cyclonedx-npm
+# Behaviour:
+# - If npmrcPaths (multiline) is provided, authenticate EACH .npmrc in place via npmAuthenticate@0.
+# - No aggregation or shared combined .npmrc file is used.
 
 parameters:
   # One or more directories that contain a package.json. Accepts a single string or a multiline string.
@@ -28,6 +31,10 @@ parameters:
     default: 'sbom-files'
 
   # Optional: one or more .npmrc paths as a multiline string (consistent with npmRoots).
+  # Example:
+  #   npmrcPaths: |
+  #     $(System.DefaultWorkingDirectory)/src/app-one/.npmrc
+  #     $(System.DefaultWorkingDirectory)/src/app-two/.npmrc
   - name: npmrcPaths
     type: string
     default: ''
@@ -39,25 +46,21 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
 
-  # Resolve .npmrc paths (from multiline string), validate existence, and build a temporary combined .npmrc
+  # Resolve .npmrc paths (from multiline string) and expose up to 6 indexed variables.
+  # Increase MAX_SLOTS if you ever need more.
   - task: PowerShell@2
     name: resolveNpmrcPaths
-    displayName: "Resolve .npmrc paths (from multiline) and create combined .npmrc"
+    displayName: "Resolve .npmrc paths (from multiline)"
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+        $MAX_SLOTS = 6
 
         $npmrcMultilineLiteral = @'
         ${{ parameters.npmrcPaths }}
         '@
-
-        # Parse entries (trim, drop blanks)
-        $inputEntries = @()
-        if (-not [string]::IsNullOrWhiteSpace($npmrcMultilineLiteral)) {
-          $inputEntries = $npmrcMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
-        }
 
         $workspaceRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY
         if (-not $workspaceRoot -or [string]::IsNullOrWhiteSpace($workspaceRoot)) {
@@ -73,52 +76,74 @@ steps:
           return [IO.Path]::GetFullPath((Join-Path $baseRoot $p))
         }
 
+        $entries = @()
+        if (-not [string]::IsNullOrWhiteSpace($npmrcMultilineLiteral)) {
+          $entries = $npmrcMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+        }
+
         $resolvedExisting = New-Object System.Collections.Generic.List[string]
-        foreach ($entry in $inputEntries) {
+        foreach ($entry in $entries) {
           $full = Normalize-Path $entry $workspaceRootFull
-          if ([string]::IsNullOrWhiteSpace($full)) { continue }
-          if (-not (Test-Path -LiteralPath $full)) {
+          if (-not $full) { continue }
+          if (Test-Path -LiteralPath $full) {
+            if (-not ($resolvedExisting -contains $full)) { $resolvedExisting.Add($full) }
+          } else {
             Write-Warning "Provided .npmrc path not found: $entry → $full"
-            continue
           }
-          if (-not ($resolvedExisting -contains $full)) { $resolvedExisting.Add($full) }
         }
 
-        if ($resolvedExisting.Count -eq 0) {
-          Write-Host "No valid .npmrc files provided (or parameter empty). Authentication will be skipped."
-          Write-Host "##vso[task.setvariable variable=combinedNpmrc;isOutput=true]"
-          Write-Host "##vso[task.setvariable variable=npmrcListJson;isOutput=true][]"
-          return
+        $count = [Math]::Min($resolvedExisting.Count, $MAX_SLOTS)
+        Write-Host "Resolved $($resolvedExisting.Count) valid .npmrc file(s); exposing up to $count slot(s)."
+
+        # Clear all slots first
+        for ($i=1; $i -le $MAX_SLOTS; $i++) {
+          Write-Host "##vso[task.setvariable variable=npmrcPath_$i;isOutput=true]"
         }
 
-        $combinedPath = Join-Path $env:AGENT_TEMPDIRECTORY 'combined.npmrc'
-        # Build combined .npmrc by concatenating inputs with separators (non-destructive)
-        "# Combined at $(Get-Date -AsUTC) from the following files:" | Set-Content -LiteralPath $combinedPath -Encoding UTF8
-        $resolvedExisting | ForEach-Object { "## SOURCE: $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8 }
-        "## ----------------------------" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
-
-        foreach ($src in $resolvedExisting) {
-          "## BEGIN $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
-          Get-Content -Raw -LiteralPath $src | Add-Content -LiteralPath $combinedPath -Encoding UTF8
-          if (-not (Get-Content -LiteralPath $combinedPath -Tail 1)) {
-            "" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
-          }
-          "## END $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
-          "## ----------------------------" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+        for ($i=1; $i -le $count; $i++) {
+          $val = $resolvedExisting[$i-1]
+          Write-Host "Slot $i -> $val"
+          Write-Host "##vso[task.setvariable variable=npmrcPath_$i;isOutput=true]$val"
         }
 
-        Write-Host "Combined .npmrc created at: $combinedPath"
-        Write-Host "##vso[task.setvariable variable=combinedNpmrc;isOutput=true]$combinedPath"
+        Write-Host "##vso[task.setvariable variable=npmrcCount;isOutput=true]$count"
 
-        $json = ($resolvedExisting.ToArray() | ConvertTo-Json -Compress)
-        Write-Host "##vso[task.setvariable variable=npmrcListJson;isOutput=true]$json"
-
-  # If we have a combined .npmrc, authenticate it so Azure DevOps injects credentials for all registries inside.
+  # Authenticate each .npmrc individually (no combined file)
   - task: npmAuthenticate@0
-    displayName: "Authenticate npm via combined .npmrc"
-    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.combinedNpmrc'], ''))
+    displayName: "Authenticate npm via .npmrc #1"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_1'], ''))
     inputs:
-      workingFile: "$(resolveNpmrcPaths.combinedNpmrc)"
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_1)"
+
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via .npmrc #2"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_2'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_2)"
+
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via .npmrc #3"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_3'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_3)"
+
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via .npmrc #4"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_4'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_4)"
+
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via .npmrc #5"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_5'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_5)"
+
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via .npmrc #6"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.npmrcPath_6'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.npmrcPath_6)"
 
   - task: PowerShell@2
     displayName: "Setup Node.js tooling and expose paths"
@@ -243,9 +268,6 @@ steps:
 
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
-    env:
-      # Make npm use the combined (authenticated) .npmrc if present
-      NPM_CONFIG_USERCONFIG: $(resolveNpmrcPaths.combinedNpmrc)
     inputs:
       pwsh: true
       targetType: inline
