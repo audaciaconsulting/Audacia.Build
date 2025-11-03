@@ -27,8 +27,8 @@ parameters:
     type: string
     default: 'sbom-files'
 
-  # Optional: path to an .npmrc file (repo-relative or absolute). When provided, credentials are injected via npmAuthenticate@0.
-  - name: npmrcPath
+  # Optional: one or more .npmrc paths as a multiline string (consistent with npmRoots).
+  - name: npmrcPaths
     type: string
     default: ''
 
@@ -39,12 +39,86 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
 
-  # If an .npmrc is provided, ALWAYS authenticate using npmAuthenticate@0 (simplified flow).
-  - ${{ if ne(parameters.npmrcPath, '') }}:
-      - task: npmAuthenticate@0
-        displayName: "Authenticate npm via .npmrc"
-        inputs:
-          workingFile: ${{ parameters.npmrcPath }}
+  # Resolve .npmrc paths (from multiline string), validate existence, and build a temporary combined .npmrc
+  - task: PowerShell@2
+    name: resolveNpmrcPaths
+    displayName: "Resolve .npmrc paths (from multiline) and create combined .npmrc"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        $npmrcMultilineLiteral = @'
+        ${{ parameters.npmrcPaths }}
+        '@
+
+        # Parse entries (trim, drop blanks)
+        $inputEntries = @()
+        if (-not [string]::IsNullOrWhiteSpace($npmrcMultilineLiteral)) {
+          $inputEntries = $npmrcMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+        }
+
+        $workspaceRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY
+        if (-not $workspaceRoot -or [string]::IsNullOrWhiteSpace($workspaceRoot)) {
+          $workspaceRoot = $env:BUILD_SOURCESDIRECTORY
+        }
+        $workspaceRootFull = [IO.Path]::GetFullPath($workspaceRoot)
+
+        function Normalize-Path([string]$pathText, [string]$baseRoot) {
+          if (-not $pathText) { return $null }
+          $p = ($pathText -replace '/', '\').Trim().Trim('"')
+          $p = $p -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $baseRoot
+          if ([IO.Path]::IsPathRooted($p)) { return [IO.Path]::GetFullPath($p) }
+          return [IO.Path]::GetFullPath((Join-Path $baseRoot $p))
+        }
+
+        $resolvedExisting = New-Object System.Collections.Generic.List[string]
+        foreach ($entry in $inputEntries) {
+          $full = Normalize-Path $entry $workspaceRootFull
+          if ([string]::IsNullOrWhiteSpace($full)) { continue }
+          if (-not (Test-Path -LiteralPath $full)) {
+            Write-Warning "Provided .npmrc path not found: $entry → $full"
+            continue
+          }
+          if (-not ($resolvedExisting -contains $full)) { $resolvedExisting.Add($full) }
+        }
+
+        if ($resolvedExisting.Count -eq 0) {
+          Write-Host "No valid .npmrc files provided (or parameter empty). Authentication will be skipped."
+          Write-Host "##vso[task.setvariable variable=combinedNpmrc;isOutput=true]"
+          Write-Host "##vso[task.setvariable variable=npmrcListJson;isOutput=true][]"
+          return
+        }
+
+        $combinedPath = Join-Path $env:AGENT_TEMPDIRECTORY 'combined.npmrc'
+        # Build combined .npmrc by concatenating inputs with separators (non-destructive)
+        "# Combined at $(Get-Date -AsUTC) from the following files:" | Set-Content -LiteralPath $combinedPath -Encoding UTF8
+        $resolvedExisting | ForEach-Object { "## SOURCE: $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8 }
+        "## ----------------------------" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+
+        foreach ($src in $resolvedExisting) {
+          "## BEGIN $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+          Get-Content -Raw -LiteralPath $src | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+          if (-not (Get-Content -LiteralPath $combinedPath -Tail 1)) {
+            "" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+          }
+          "## END $_" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+          "## ----------------------------" | Add-Content -LiteralPath $combinedPath -Encoding UTF8
+        }
+
+        Write-Host "Combined .npmrc created at: $combinedPath"
+        Write-Host "##vso[task.setvariable variable=combinedNpmrc;isOutput=true]$combinedPath"
+
+        $json = ($resolvedExisting.ToArray() | ConvertTo-Json -Compress)
+        Write-Host "##vso[task.setvariable variable=npmrcListJson;isOutput=true]$json"
+
+  # If we have a combined .npmrc, authenticate it so Azure DevOps injects credentials for all registries inside.
+  - task: npmAuthenticate@0
+    displayName: "Authenticate npm via combined .npmrc"
+    condition: and(succeeded(), ne(variables['resolveNpmrcPaths.combinedNpmrc'], ''))
+    inputs:
+      workingFile: "$(resolveNpmrcPaths.combinedNpmrc)"
 
   - task: PowerShell@2
     displayName: "Setup Node.js tooling and expose paths"
@@ -130,7 +204,7 @@ steps:
           if ([string]::IsNullOrWhiteSpace($rootEntry)) { continue }
           $normalizedEntry = ($rootEntry -replace '/', '\').Trim().Trim('"').Trim()
 
-        $normalizedEntry = $normalizedEntry -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $workspaceRootFull
+          $normalizedEntry = $normalizedEntry -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $workspaceRootFull
           try { $relativePath = Convert-ToRelativeIfUnderRoot -pathEntry $normalizedEntry -rootPath $workspaceRootFull } catch { $relativePath = $normalizedEntry }
 
           $relativeOrDot = if ([string]::IsNullOrWhiteSpace($relativePath)) { '.' } else { $relativePath }
@@ -169,6 +243,9 @@ steps:
 
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
+    env:
+      # Make npm use the combined (authenticated) .npmrc if present
+      NPM_CONFIG_USERCONFIG: $(resolveNpmrcPaths.combinedNpmrc)
     inputs:
       pwsh: true
       targetType: inline
@@ -231,7 +308,6 @@ steps:
             if ($includeLicenseTexts) { $cyclonedxArgs += @('--gather-license-texts') }
             if (-not $includeLicenseTexts -and $hasPackageLock) { $cyclonedxArgs += @('--package-lock-only') }
 
-            # Authentication-only focus: do not alter error behaviour (no --ignore-npm-errors here).
             npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs
             if (Test-Path $outputFile) { $successCount++ } else { $failureCount++ }
           } catch {
