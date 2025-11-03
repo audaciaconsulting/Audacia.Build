@@ -39,13 +39,16 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
 
-  # Authenticate each .npmrc dynamically (no combined file)
-  - ${{ if gt(length(parameters.npmrcPaths), 0) }}:
-      - ${{ each npmrcPath in parameters.npmrcPaths }}:
-          - task: npmAuthenticate@0
-            displayName: "Authenticate npm via .npmrc → ${{ npmrcPath }}"
-            inputs:
-              workingFile: ${{ npmrcPath }}
+  # Handle npmrc authentication dynamically with a friendly log if none provided
+  - ${{ if eq(length(parameters.npmrcPaths), 0) }}:
+      - script: echo "No npmrcPaths provided — skipping npm authentication."
+        displayName: "Skip npm authentication"
+
+  - ${{ each npmrcPath in parameters.npmrcPaths }}:
+      - task: npmAuthenticate@0
+        displayName: "Authenticate npm via .npmrc → ${{ npmrcPath }}"
+        inputs:
+          workingFile: ${{ npmrcPath }}
 
   - task: PowerShell@2
     displayName: "Setup Node.js tooling and expose paths"
