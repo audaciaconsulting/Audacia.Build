@@ -27,12 +27,24 @@ parameters:
     type: string
     default: 'sbom-files'
 
+  # Optional: path to an .npmrc file (repo-relative or absolute). When provided, credentials are injected via npmAuthenticate@0.
+  - name: npmrcPath
+    type: string
+    default: ''
+
 steps:
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
+
+  # If an .npmrc is provided, ALWAYS authenticate using npmAuthenticate@0 (simplified flow).
+  - ${{ if ne(parameters.npmrcPath, '') }}:
+      - task: npmAuthenticate@0
+        displayName: "Authenticate npm via .npmrc"
+        inputs:
+          workingFile: ${{ parameters.npmrcPath }}
 
   - task: PowerShell@2
     displayName: "Setup Node.js tooling and expose paths"
@@ -118,7 +130,7 @@ steps:
           if ([string]::IsNullOrWhiteSpace($rootEntry)) { continue }
           $normalizedEntry = ($rootEntry -replace '/', '\').Trim().Trim('"').Trim()
 
-          $normalizedEntry = $normalizedEntry -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $workspaceRootFull
+        $normalizedEntry = $normalizedEntry -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $workspaceRootFull
           try { $relativePath = Convert-ToRelativeIfUnderRoot -pathEntry $normalizedEntry -rootPath $workspaceRootFull } catch { $relativePath = $normalizedEntry }
 
           $relativeOrDot = if ([string]::IsNullOrWhiteSpace($relativePath)) { '.' } else { $relativePath }
@@ -219,6 +231,7 @@ steps:
             if ($includeLicenseTexts) { $cyclonedxArgs += @('--gather-license-texts') }
             if (-not $includeLicenseTexts -and $hasPackageLock) { $cyclonedxArgs += @('--package-lock-only') }
 
+            # Authentication-only focus: do not alter error behaviour (no --ignore-npm-errors here).
             npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs
             if (Test-Path $outputFile) { $successCount++ } else { $failureCount++ }
           } catch {
