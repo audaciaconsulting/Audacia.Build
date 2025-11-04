@@ -49,6 +49,7 @@ parameters:
     default: ''
 
   # Version label sent with each upload. Typical values include branch name, build number, or semantic version.
+  # If empty, we will try to infer from the SBOM metadata.component.version.
   - name: version
     type: string
     default: ''
@@ -141,6 +142,9 @@ steps:
         function Get-ProjectNameFromSbom([string]$sbomPath) {
           try { (Get-Content -Raw -LiteralPath $sbomPath | ConvertFrom-Json -ea Stop).metadata.component.name } catch { $null }
         }
+        function Get-ProjectVersionFromSbom([string]$sbomPath) {
+          try { (Get-Content -Raw -LiteralPath $sbomPath | ConvertFrom-Json -ea Stop).metadata.component.version } catch { $null }
+        }
         function Get-FallbackProjectName([string]$sbomPath) {
           try {
             $parentDir = Split-Path (Split-Path $sbomPath -Parent) -Leaf
@@ -151,7 +155,7 @@ steps:
 
         $uploadMatrix = New-Object System.Collections.Generic.List[object]
         $invalidCount = 0
-        $version = $env:VERSION_IN
+        $paramVersion = $env:VERSION_IN  # may be empty; if so, we will use SBOM version
 
         foreach ($sbomFile in $sbomFiles) {
           if ($sbomFile.Length -eq 0) { Write-Warning "Empty SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
@@ -161,16 +165,22 @@ steps:
           if ([string]::IsNullOrWhiteSpace($projectName)) { $projectName = Get-FallbackProjectName $sbomFile.FullName }
           if ([string]::IsNullOrWhiteSpace($projectName)) { Write-Warning "Unable to determine project name for SBOM: $($sbomFile.FullName)"; $invalidCount++; continue }
 
-          $projectVersion = $version
+          # Version precedence: parameter > SBOM metadata > Empty String
+          $projectVersion = $paramVersion
           if ([string]::IsNullOrWhiteSpace($projectVersion)) {
-            $projectVersion = 'unknown'
-            Write-Warning "version parameter is empty; using placeholder 'unknown' for: $projectName"
+            $sbomVersion = Get-ProjectVersionFromSbom $sbomFile.FullName
+            if (-not [string]::IsNullOrWhiteSpace($sbomVersion)) {
+              $projectVersion = $sbomVersion
+            } else {
+              $projectVersion = ''
+              Write-Warning "No version parameter supplied and SBOM has no metadata.component.version → using an empty string for: $projectName"
+            }
           }
 
           $uploadMatrix.Add([pscustomobject]@{
-            FilePath      = $sbomFile.FullName
-            ProjectName   = $projectName
-            ProjectVersion= $projectVersion
+            FilePath       = $sbomFile.FullName
+            ProjectName    = $projectName
+            ProjectVersion = $projectVersion
           })
         }
 
@@ -225,7 +235,7 @@ steps:
 
         Add-Type -AssemblyName System.Net.Http
         $httpClient = [System.Net.Http.HttpClient]::new()
-        $httpClient.Timeout = [TimeSpan]::FromMinutes(10)
+        $httpClient.Timeout = [System.TimeSpan]::FromMinutes(10)
         $httpClient.DefaultRequestHeaders.Add('X-Api-Key', $env:DT_API_KEY)
 
         function Wait-BomProcessed([string]$token, [int]$timeoutSec = 120) {
