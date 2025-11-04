@@ -218,7 +218,7 @@ steps:
 
           $locationLabel = $absoluteProjectPath
           if ($projectRoot -eq '.') { $locationLabel = "$absoluteProjectPath (repo root)" }
-          Write-Host "##[group]JS SBOM → $locationLabel"
+          Write-Host "##[group]npm SBOM → $locationLabel"
           Push-Location $absoluteProjectPath
           try {
             $hasPackageLock = Test-Path -LiteralPath $packageLockPath
@@ -246,10 +246,10 @@ steps:
               $args1 = $cyclonedxArgs + @('--ignore-npm-errors')
               npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args1 2>&1 | Tee-Object -Variable cmdOutput | Out-Default
               if (Test-Path $outputFile) { $exitOk = $true }
-              
+        
               # Check if output contains tree issues even though command succeeded
               $outputText = ($cmdOutput | Out-String)
-              if ($outputText -match 'ELSPROBLEMS|ERESOLVE|npm error code ELS|missing:.*required by|invalid:.*node_modules') {
+              if ($outputText -match 'ELSPROBLEMS|ERESOLVE|missing:.*required by|invalid:.*node_modules') {
                 $treeIssuesThisProject = $true
                 $anyTreeIssuesOverall = $true
                 Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE) - SBOM generated with --ignore-npm-errors"
@@ -259,10 +259,10 @@ steps:
               $errorMessage = $_.Exception.Message
               $errorOutput = $_ | Out-String
               $fullOutput = (($cmdOutput | Out-String) + "`n" + $errorOutput + "`n" + $errorMessage)
-              
+        
               # Check if this is specifically an npm dependency tree issue (ELSPROBLEMS, ERESOLVE, peer deps)
-              $isTreeIssue = $fullOutput -match 'ELSPROBLEMS|ERESOLVE|peer dep|missing.*peer|conflicting peer|dependency conflict|npm error code ELS'
-              
+              $isTreeIssue = $fullOutput -match 'ELSPROBLEMS|ERESOLVE|peer dep|missing.*peer|conflicting peer|dependency conflict'
+        
               if ($isTreeIssue) {
                 # This is a tolerable npm tree issue - retry and warn
                 $treeIssuesThisProject = $true
