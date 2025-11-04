@@ -255,7 +255,7 @@ steps:
             if ($resolvedVersion) { Write-Host "Resolved version for SBOM metadata: $resolvedVersion" } else { Write-Host "No version resolved; CycloneDX will fall back to defaults." }
 
             $args = @("$fullProjectPath", "-o", "$sbomOutputDirectory", "-F", "Json", "-fn", "$outputFileName")
-            if ($resolvedVersion) { $args += @("-Version", $resolvedVersion) }
+            if ($resolvedVersion) { $args += @("--set-version", $resolvedVersion) }
 
             dotnet CycloneDX @args
             if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
