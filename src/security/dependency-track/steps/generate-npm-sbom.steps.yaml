@@ -40,7 +40,6 @@ steps:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
 
-  # Handle npmrc authentication dynamically with a friendly log if none provided
   - ${{ if eq(length(parameters.npmrcPaths), 0) }}:
       - script: echo "No npmrcPaths provided — skipping npm authentication."
         displayName: "Skip npm authentication"
