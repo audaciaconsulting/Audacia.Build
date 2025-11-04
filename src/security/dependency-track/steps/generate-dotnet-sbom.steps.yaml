@@ -29,6 +29,21 @@ parameters:
     type: string
     default: 'sbom-files'
 
+  # Build settings used to help CycloneDX resolve the evaluated version and metadata.
+  # The build is guarded so SBOM generation still runs even if the build fails.
+  - name: buildBeforeSbom
+    type: boolean
+    default: true
+  - name: buildConfiguration
+    type: string
+    default: 'Release'
+  - name: buildContinueOnError
+    type: boolean
+    default: true
+  - name: buildAdditionalArgs
+    type: string
+    default: ''
+
 steps:
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
@@ -110,6 +125,20 @@ steps:
     inputs:
       command: restore
       projects: "$(normalizeDotnet.projectsMultiline)"
+      ${{ if ne(parameters.nugetConfigPath, '') }}:
+        nugetConfigPath: ${{ parameters.nugetConfigPath }}
+      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+        vstsFeed: ${{ parameters.vstsFeed }}
+
+  # Guarded build to help CycloneDX resolve evaluated version and other metadata
+  - task: DotNetCoreCLI@2
+    displayName: "Build .NET projects (guarded, ${{ parameters.buildConfiguration }})"
+    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalizeDotnet.projectsMultiline'], ''))
+    continueOnError: ${{ parameters.buildContinueOnError }}
+    inputs:
+      command: build
+      projects: "$(normalizeDotnet.projectsMultiline)"
+      arguments: "-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}"
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
