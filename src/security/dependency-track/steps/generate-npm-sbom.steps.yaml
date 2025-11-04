@@ -27,7 +27,8 @@ parameters:
     type: string
     default: 'sbom-files'
 
-  # Optional: zero or more .npmrc paths as an array. Each will be authenticated separately.
+  # Optional: Zero or more .npmrc paths as an array. Each will be authenticated separately.
+  # Uses a string array (not multiline string) so we can loop through actual .npmrc paths without fixed line limits.
   - name: npmrcPaths
     type: object
     default: []
