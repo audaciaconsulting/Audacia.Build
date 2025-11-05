@@ -192,9 +192,9 @@ steps:
 
         function Get-XmlValueFirstNonEmpty {
           param([xml]$xml, [string[]]$xpathCandidates)
-          foreach ($xp in $xpathCandidates) {
+          foreach ($xpath in $xpathCandidates) {
             try {
-              $node = $xml.SelectSingleNode($xp)
+              $node = $xml.SelectSingleNode($xpath)
               if ($node -and -not [string]::IsNullOrWhiteSpace($node.InnerText)) { return $node.InnerText.Trim() }
             } catch {}
           }
@@ -205,11 +205,11 @@ steps:
           param([string]$csprojPath)
           try {
             [xml]$xml = Get-Content -Raw -LiteralPath $csprojPath
-            $ver = Get-XmlValueFirstNonEmpty -xml $xml -xpathCandidates @(
+            $projectVersion = Get-XmlValueFirstNonEmpty -xml $xml -xpathCandidates @(
               '/Project/PropertyGroup/PackageVersion',
               '/Project/PropertyGroup/Version'
             )
-            return $ver
+            return $projectVersion
           } catch { return $null }
         }
 
@@ -217,15 +217,15 @@ steps:
           param([string]$csprojPath)
           try {
             $projectDir = Split-Path -Parent $csprojPath
-            $projBase = [IO.Path]::GetFileNameWithoutExtension($csprojPath)
+            $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($csprojPath)
             $binDir = Join-Path $projectDir 'bin'
             if (-not (Test-Path -LiteralPath $binDir)) { return $null }
-            $dlls = Get-ChildItem -Path $binDir -Recurse -Filter "$projBase*.dll" -File -EA SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending
-            $candidate = $dlls | Select-Object -First 1
-            if (-not $candidate) { return $null }
-            $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($candidate.FullName)
-            if ($fvi -and $fvi.ProductVersion -and $fvi.ProductVersion.Trim().Length -gt 0) { return $fvi.ProductVersion.Trim() }
-            if ($fvi -and $fvi.FileVersion -and $fvi.FileVersion.Trim().Length -gt 0) { return $fvi.FileVersion.Trim() }
+            $candidateDlls = Get-ChildItem -Path $binDir -Recurse -Filter "$projectBaseName*.dll" -File -EA SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending
+            $newestDll = $candidateDlls | Select-Object -First 1
+            if (-not $newestDll) { return $null }
+            $fileVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName)
+            if ($fileVersionInfo -and $fileVersionInfo.ProductVersion -and $fileVersionInfo.ProductVersion.Trim().Length -gt 0) { return $fileVersionInfo.ProductVersion.Trim() }
+            if ($fileVersionInfo -and $fileVersionInfo.FileVersion -and $fileVersionInfo.FileVersion.Trim().Length -gt 0) { return $fileVersionInfo.FileVersion.Trim() }
             return $null
           } catch { return $null }
         }
@@ -233,8 +233,8 @@ steps:
         function Resolve-VersionForProject {
           param([string]$csprojPath)
           if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
-          $v = Get-ProjectVersionFromCsproj -csprojPath $csprojPath
-          if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+          $resolvedProjectVersion = Get-ProjectVersionFromCsproj -csprojPath $csprojPath
+          if (-not [string]::IsNullOrWhiteSpace($resolvedProjectVersion)) { return $resolvedProjectVersion }
           return Get-AssemblyVersionFromBin -csprojPath $csprojPath
         }
 

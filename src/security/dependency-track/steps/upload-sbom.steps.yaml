@@ -243,16 +243,16 @@ steps:
           $deadline = (Get-Date).AddSeconds($timeoutSec)
           while ((Get-Date) -lt $deadline) {
             try {
-              $resp = $httpClient.GetAsync("$apiBaseUrl/v1/bom/token/$token").GetAwaiter().GetResult()
-              $txt  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-              if ($resp.IsSuccessStatusCode) {
-                $obj = $txt | ConvertFrom-Json
-                if ($null -ne $obj.processing) {
-                  Write-Host "BOM token $token status: " + ($(if($obj.processing){'PROCESSING'}else{'DONE'}))
-                  if (-not $obj.processing) { return $true }
+              $response = $httpClient.GetAsync("$apiBaseUrl/v1/bom/token/$token").GetAwaiter().GetResult()
+              $responseText  = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($response.IsSuccessStatusCode) {
+                $statusObject = $responseText | ConvertFrom-Json
+                if ($null -ne $statusObject.processing) {
+                  Write-Host "BOM token $token status: " + ($(if($statusObject.processing){'PROCESSING'}else{'DONE'}))
+                  if (-not $statusObject.processing) { return $true }
                   Start-Sleep -Seconds 2; continue
                 }
-              } elseif ([int]$resp.StatusCode -eq 404) {
+              } elseif ([int]$response.StatusCode -eq 404) {
                 Write-Host "BOM token $token status: DONE (token not found)"; return $true
               }
             } catch {}
