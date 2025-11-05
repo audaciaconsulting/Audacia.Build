@@ -27,12 +27,28 @@ parameters:
     type: string
     default: 'sbom-files'
 
+  # Optional: Zero or more .npmrc paths as an array. Each will be authenticated separately.
+  # Uses a string array (not multiline string) so we can loop through actual .npmrc paths without fixed line limits.
+  - name: npmrcPaths
+    type: object
+    default: []
+
 steps:
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
       versionSpec: ${{ parameters.nodeVersion }}
       checkLatest: false
+
+  - ${{ if eq(length(parameters.npmrcPaths), 0) }}:
+      - script: echo "No npmrcPaths provided — skipping npm authentication."
+        displayName: "Skip npm authentication"
+
+  - ${{ each npmrcPath in parameters.npmrcPaths }}:
+      - task: npmAuthenticate@0
+        displayName: "Authenticate npm via .npmrc → ${{ npmrcPath }}"
+        inputs:
+          workingFile: ${{ npmrcPath }}
 
   - task: PowerShell@2
     displayName: "Setup Node.js tooling and expose paths"
@@ -182,6 +198,7 @@ steps:
         $outputExtension = 'json'
         $successCount = 0
         $failureCount = 0
+        $anyTreeIssuesOverall = $false   # Track whether any project had npm tree issues (ELSPROBLEMS etc.)
 
         foreach ($projectRoot in $npmProjectRootList) {
           $absoluteProjectPath = if ([System.IO.Path]::IsPathRooted($projectRoot)) { $projectRoot } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $projectRoot }
@@ -201,7 +218,7 @@ steps:
 
           $locationLabel = $absoluteProjectPath
           if ($projectRoot -eq '.') { $locationLabel = "$absoluteProjectPath (repo root)" }
-          Write-Host "##[group]JS SBOM → $locationLabel"
+          Write-Host "##[group]npm SBOM → $locationLabel"
           Push-Location $absoluteProjectPath
           try {
             $hasPackageLock = Test-Path -LiteralPath $packageLockPath
@@ -215,14 +232,65 @@ steps:
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
 
+            # Build args and attempt tolerant run
             $cyclonedxArgs = @('--output-format', $outputFormat, '--output-file', $outputFile)
             if ($includeLicenseTexts) { $cyclonedxArgs += @('--gather-license-texts') }
             if (-not $includeLicenseTexts -and $hasPackageLock) { $cyclonedxArgs += @('--package-lock-only') }
 
-            npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs
-            if (Test-Path $outputFile) { $successCount++ } else { $failureCount++ }
-          } catch {
-            Write-Warning "cyclonedx-npm failed: $($_.Exception.Message)"; $failureCount++
+            $exitOk = $false
+            $treeIssuesThisProject = $false
+            $cmdOutput = @()
+
+            # First try (best-effort) with --ignore-npm-errors (present on newer cyclonedx-npm versions)
+            try {
+              $args1 = $cyclonedxArgs + @('--ignore-npm-errors')
+              npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args1 2>&1 | Tee-Object -Variable cmdOutput | Out-Default
+              if (Test-Path $outputFile) { $exitOk = $true }
+        
+              # Check if output contains tree issues even though command succeeded
+              $outputText = ($cmdOutput | Out-String)
+              if ($outputText -match 'ELSPROBLEMS|ERESOLVE|missing:.*required by|invalid:.*node_modules') {
+                $treeIssuesThisProject = $true
+                $anyTreeIssuesOverall = $true
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE) - SBOM generated with --ignore-npm-errors"
+              }
+            } catch {
+              # Capture error details - check both exception and command output for tree issues
+              $errorMessage = $_.Exception.Message
+              $errorOutput = $_ | Out-String
+              $fullOutput = (($cmdOutput | Out-String) + "`n" + $errorOutput + "`n" + $errorMessage)
+        
+              # Check if this is specifically an npm dependency tree issue (ELSPROBLEMS, ERESOLVE, peer deps)
+              $isTreeIssue = $fullOutput -match 'ELSPROBLEMS|ERESOLVE|peer dep|missing.*peer|conflicting peer|dependency conflict'
+        
+              if ($isTreeIssue) {
+                # This is a tolerable npm tree issue - retry and warn
+                $treeIssuesThisProject = $true
+                $anyTreeIssuesOverall = $true
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE). Retrying SBOM generation…"
+                try {
+                  npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs 2>&1 | Out-Default
+                  if (Test-Path $outputFile) { $exitOk = $true }
+                } catch {
+                  Write-Warning "cyclonedx-npm (fallback) failed: $($_.Exception.Message)"
+                }
+              } else {
+                # This is a different error type - don't tolerate it, fail the task
+                Write-Host "##vso[task.logissue type=error]cyclonedx-npm failed with non-tree error at $locationLabel"
+                Write-Host "Error details:"
+                Write-Host $fullOutput
+                throw $_
+              }
+            }
+
+            if ($exitOk) {
+              $successCount++
+              if ($treeIssuesThisProject) {
+                Write-Host "##vso[task.logissue type=warning]SBOM generated for $locationLabel, but dependency tree has issues (ELSPROBLEMS)."
+              }
+            } else {
+              $failureCount++
+            }
           } finally {
             Pop-Location | Out-Null
             Write-Host "Output: $outputFile"
@@ -231,7 +299,20 @@ steps:
         }
 
         Write-Host "##[section]npm summary → ok=$successCount, failed=$failureCount"
-        if ($failureCount -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed"; exit 1 }
+
+        if ($failureCount -gt 0) {
+          Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed"
+          exit 1
+        }
+
+        # Mark the task as 'Succeeded with issues' when any tree issues were detected,
+        # but all SBOMs that we attempted were still produced.
+        if ($anyTreeIssuesOverall) {
+          Write-Host "##[warning]Dependency tree issues detected - marking task as SucceededWithIssues"
+          Write-Host "##vso[task.logissue type=warning]One or more projects had npm ELSPROBLEMS. SBOMs were generated; please fix dependency hygiene."
+          Write-Host "##vso[task.complete result=SucceededWithIssues;]Generated SBOMs with warnings"
+          exit 0
+        }
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1

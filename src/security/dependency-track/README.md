@@ -66,11 +66,15 @@ Examples might include:
 - `$(System.DefaultWorkingDirectory)/playwright`
 - `$(System.DefaultWorkingDirectory)/performance`
 
+Optional `.npmrc` paths can also be provided for authentication against private feeds.  
+Each `.npmrc` will be authenticated separately using `npmAuthenticate@0` before SBOM generation.
+
 The templates will:
 
 - Generate .NET SBOMs via `dotnet CycloneDX` for each listed `.csproj`.
 - Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).
   If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
+  When license text inclusion is enabled, `npm ci` is used for full dependency restoration.
 
 > The template automatically installs the necessary tools (`CycloneDX` and `@cyclonedx/cyclonedx-npm`) if not already available.
 
@@ -116,6 +120,14 @@ Use the convention `"<Client> - <System>"` for all parent project names to keep 
 After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.
 This keeps the UI focused on the active release while preserving historical versions for audit.
 
+## npm Dependency Tree Warnings
+
+If `npm ls` detects issues such as missing dependencies, invalid versions, or peer conflicts,  
+the SBOM generation step logs a warning (for example `npm error code ELSPROBLEMS`).  
+This does **not** block SBOM generation or upload. The task completes as “Succeeded with issues”,  
+and Dependency-Track still receives the SBOM. Developers should resolve dependency tree issues  
+to maintain accurate evidence and reproducibility.
+
 ## Azure DevOps Output
 
 - Generate → SBOM file list and counts
@@ -124,19 +136,20 @@ This keeps the UI focused on the active release while preserving historical vers
 
 ## Troubleshooting
 
-| Symptom                      | Likely cause                     | Fix                                                                   |
-| ---------------------------- | -------------------------------- | --------------------------------------------------------------------- |
-| `401 Unauthorized` on upload | API key invalid or expired       | Regenerate in Dependency-Track and update the variable group          |
-| SBOM not linked to parent    | Name or version mismatch         | Ensure exact parent match exists in Dependency-Track                  |
-| “No SBOM files to upload”    | Wrong paths or missing lockfiles | Check `.csproj` and SPA root paths; ensure `package-lock.json` exists |
-| Deactivate skipped           | SBOM artifact missing            | Keep `tryDownloadArtifact: true`                                      |
+| Symptom                                  | Likely cause                                             | Fix                                                                                       |
+| ---------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `401 Unauthorized` on upload             | API key invalid or expired                                | Regenerate in Dependency-Track and update the variable group                              |
+| SBOM not linked to parent                | Name or version mismatch                                  | Ensure exact parent match exists in Dependency-Track                                      |
+| “No SBOM files to upload”                | Wrong paths or missing lockfiles                          | Check `.csproj` and SPA root paths; ensure `package-lock.json` exists                     |
+| Deactivate skipped                       | SBOM artifact missing                                     | Keep `tryDownloadArtifact: true`                                                          |
+| `ELSPROBLEMS` warning during npm SBOM    | Dependency tree inconsistencies detected by `npm ls`       | SBOMs still upload successfully; align dependency versions to remove warnings             |
 
 ## Verification Checklist
 
 - [ ] Variable group with `DT_API_KEY`
 - [ ] Variable group linked to Key Vault (if applicable)
-- [ ] Correct `.csproj` and `package.json` names
-- [ ] Accurate project paths in pipeline
+- [ ] Correct `.csproj`, and `package.json` names
+- [ ] Accurate project paths, and `.npmrc` paths (if using) in pipeline
 - [ ] Parent project created in Dependency-Track
 - [ ] Parent project variables set (`"<Organisation> - <System>"`)
 - [ ] Pipeline variables defined: `envName`, `version`, `deactivateOld`, `additionalTags` (optional)
