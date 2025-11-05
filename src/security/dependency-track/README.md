@@ -149,7 +149,7 @@ to maintain accurate evidence and reproducibility.
 - [ ] Variable group with `DT_API_KEY`
 - [ ] Variable group linked to Key Vault (if applicable)
 - [ ] Correct `.csproj`, and `package.json` names
-- [ ] Accurate project paths, and npmrc paths (if using) in pipeline
+- [ ] Accurate project paths, and `npmrc` paths (if using) in pipeline
 - [ ] Parent project created in Dependency-Track
 - [ ] Parent project variables set (`"<Organisation> - <System>"`)
 - [ ] Pipeline variables defined: `envName`, `version`, `deactivateOld`, `additionalTags` (optional)
