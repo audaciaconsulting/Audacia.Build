@@ -29,7 +29,7 @@ parameters:
     type: string
     default: 'sbom-files'
 
-  # Build settings used to help CycloneDX resolve evaluated metadata.
+  # Build settings used to help CycloneDX resolve evaluated metadata (e.g the Version).
   # The build is guarded so SBOM generation still runs even if the build fails.
   - name: buildBeforeSbom
     type: boolean
@@ -44,9 +44,7 @@ parameters:
     type: string
     default: ''
 
-  # Version inference behavior for the top-level component.
   # When enabled, the script tries PackageVersion, then Version from the .csproj.
-  # If neither is present, it falls back to DLL ProductVersion under bin/.
   - name: inferVersionFromProject
     type: boolean
     default: true
@@ -107,6 +105,8 @@ steps:
               }
             }
         
+            # Dedupe only truly identical project files to avoid generating the same SBOM twice.
+            # This does not hide real duplicate applications or identical Dependency-Track project names.
             if (-not [string]::IsNullOrWhiteSpace($chosenPath) -and -not ($normalizedProjectPaths -contains $chosenPath)) {
               $normalizedProjectPaths.Add($chosenPath)
             }
