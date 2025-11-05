@@ -31,15 +31,23 @@ parameters:
 
   # Build settings used to help CycloneDX resolve evaluated metadata (e.g the Version).
   # The build is guarded so SBOM generation still runs even if the build fails.
+
+  # Whether to build projects before SBOM generation to help CycloneDX resolve evaluated metadata (e.g. Version).
   - name: buildBeforeSbom
     type: boolean
     default: true
+
+  # Configuration to use for the guarded build step (e.g. Release, Debug).
   - name: buildConfiguration
     type: string
     default: 'Release'
+
+  # Continue the build step even if errors occur, so SBOM generation still runs.
   - name: buildContinueOnError
     type: boolean
     default: true
+
+  # Additional arguments to pass to the build command (e.g. custom MSBuild properties).
   - name: buildAdditionalArgs
     type: string
     default: ''
