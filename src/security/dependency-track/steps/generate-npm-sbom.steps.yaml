@@ -237,15 +237,15 @@ steps:
             if ($includeLicenseTexts) { $cyclonedxArgs += @('--gather-license-texts') }
             if (-not $includeLicenseTexts -and $hasPackageLock) { $cyclonedxArgs += @('--package-lock-only') }
 
-            $exitOk = $false
+            $sbomWritten = $false
             $treeIssuesThisProject = $false
             $cmdOutput = @()
 
             # First try (best-effort) with --ignore-npm-errors (present on newer cyclonedx-npm versions)
             try {
-              $args1 = $cyclonedxArgs + @('--ignore-npm-errors')
-              npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args1 2>&1 | Tee-Object -Variable cmdOutput | Out-Default
-              if (Test-Path $outputFile) { $exitOk = $true }
+              $cyclonedxArgsWithIgnore = $cyclonedxArgs + @('--ignore-npm-errors')
+              npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgsWithIgnore 2>&1 | Tee-Object -Variable cmdOutput | Out-Default
+              if (Test-Path $outputFile) { $sbomWritten = $true }
         
               # Check if output contains tree issues even though command succeeded
               $outputText = ($cmdOutput | Out-String)
@@ -270,7 +270,7 @@ steps:
                 Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE). Retrying SBOM generation…"
                 try {
                   npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs 2>&1 | Out-Default
-                  if (Test-Path $outputFile) { $exitOk = $true }
+                  if (Test-Path $outputFile) { $sbomWritten = $true }
                 } catch {
                   Write-Warning "cyclonedx-npm (fallback) failed: $($_.Exception.Message)"
                 }
@@ -283,7 +283,7 @@ steps:
               }
             }
 
-            if ($exitOk) {
+            if ($sbomWritten) {
               $successCount++
               if ($treeIssuesThisProject) {
                 Write-Host "##vso[task.logissue type=warning]SBOM generated for $locationLabel, but dependency tree has issues (ELSPROBLEMS)."

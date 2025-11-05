@@ -29,6 +29,34 @@ parameters:
     type: string
     default: 'sbom-files'
 
+  # Build settings used to help CycloneDX resolve evaluated metadata (e.g the Version).
+  # The build is guarded so SBOM generation still runs even if the build fails.
+
+  # Whether to build projects before SBOM generation to help CycloneDX resolve evaluated metadata (e.g. Version).
+  - name: buildBeforeSbom
+    type: boolean
+    default: true
+
+  # Configuration to use for the guarded build step (e.g. Release, Debug).
+  - name: buildConfiguration
+    type: string
+    default: 'Release'
+
+  # Continue the build step even if errors occur, so SBOM generation still runs.
+  - name: buildContinueOnError
+    type: boolean
+    default: true
+
+  # Additional arguments to pass to the build command (e.g. custom MSBuild properties).
+  - name: buildAdditionalArgs
+    type: string
+    default: ''
+
+  # When enabled, the script tries PackageVersion, then Version from the .csproj.
+  - name: inferVersionFromProject
+    type: boolean
+    default: true
+
 steps:
   - task: NuGetAuthenticate@1
     displayName: "Authenticate to Azure Artifacts"
@@ -115,6 +143,20 @@ steps:
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
 
+  # Guarded build to help CycloneDX resolve evaluated metadata
+  - task: DotNetCoreCLI@2
+    displayName: "Build .NET projects (guarded, ${{ parameters.buildConfiguration }})"
+    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalizeDotnet.projectsMultiline'], ''))
+    continueOnError: ${{ parameters.buildContinueOnError }}
+    inputs:
+      command: build
+      projects: "$(normalizeDotnet.projectsMultiline)"
+      arguments: "-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}"
+      ${{ if ne(parameters.nugetConfigPath, '') }}:
+        nugetConfigPath: ${{ parameters.nugetConfigPath }}
+      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+        vstsFeed: ${{ parameters.vstsFeed }}
+
   - task: PowerShell@2
     displayName: "Install CycloneDX .NET tool"
     inputs:
@@ -156,8 +198,57 @@ steps:
           exit 0
         }
 
+        function Get-XmlValueFirstNonEmpty {
+          param([xml]$xml, [string[]]$xpathCandidates)
+          foreach ($xpath in $xpathCandidates) {
+            try {
+              $node = $xml.SelectSingleNode($xpath)
+              if ($node -and -not [string]::IsNullOrWhiteSpace($node.InnerText)) { return $node.InnerText.Trim() }
+            } catch {}
+          }
+          return $null
+        }
+
+        function Get-ProjectVersionFromCsproj {
+          param([string]$csprojPath)
+          try {
+            [xml]$xml = Get-Content -Raw -LiteralPath $csprojPath
+            $projectVersion = Get-XmlValueFirstNonEmpty -xml $xml -xpathCandidates @(
+              '/Project/PropertyGroup/PackageVersion',
+              '/Project/PropertyGroup/Version'
+            )
+            return $projectVersion
+          } catch { return $null }
+        }
+
+        function Get-AssemblyVersionFromBin {
+          param([string]$csprojPath)
+          try {
+            $projectDir = Split-Path -Parent $csprojPath
+            $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($csprojPath)
+            $binDir = Join-Path $projectDir 'bin'
+            if (-not (Test-Path -LiteralPath $binDir)) { return $null }
+            $candidateDlls = Get-ChildItem -Path $binDir -Recurse -Filter "$projectBaseName*.dll" -File -EA SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending
+            $newestDll = $candidateDlls | Select-Object -First 1
+            if (-not $newestDll) { return $null }
+            $fileVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName)
+            if ($fileVersionInfo -and $fileVersionInfo.ProductVersion -and $fileVersionInfo.ProductVersion.Trim().Length -gt 0) { return $fileVersionInfo.ProductVersion.Trim() }
+            if ($fileVersionInfo -and $fileVersionInfo.FileVersion -and $fileVersionInfo.FileVersion.Trim().Length -gt 0) { return $fileVersionInfo.FileVersion.Trim() }
+            return $null
+          } catch { return $null }
+        }
+
+        function Resolve-VersionForProject {
+          param([string]$csprojPath)
+          if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
+          $resolvedProjectVersion = Get-ProjectVersionFromCsproj -csprojPath $csprojPath
+          if (-not [string]::IsNullOrWhiteSpace($resolvedProjectVersion)) { return $resolvedProjectVersion }
+          return Get-AssemblyVersionFromBin -csprojPath $csprojPath
+        }
+
         $successCount = 0
         $failureCount = 0
+
         foreach ($projectPath in $normalizedProjects) {
           $fullProjectPath = $projectPath
           if (-not [System.IO.Path]::IsPathRooted($fullProjectPath)) {
@@ -165,13 +256,22 @@ steps:
           }
           $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($fullProjectPath)
           $outputFileName = "$projectBaseName-sbom.json"
+
           Write-Host "##[group].NET → $fullProjectPath"
           try {
-            dotnet CycloneDX "$fullProjectPath" -o "$sbomOutputDirectory" -F Json -fn "$outputFileName"
+            $resolvedVersion = Resolve-VersionForProject -csprojPath $fullProjectPath
+            if ($resolvedVersion) { Write-Host "Resolved version for SBOM metadata: $resolvedVersion" } else { Write-Host "No version resolved; CycloneDX will fall back to defaults." }
+
+            $args = @("$fullProjectPath", "-o", "$sbomOutputDirectory", "-F", "Json", "-fn", "$outputFileName")
+            if ($resolvedVersion) { $args += @("--set-version", $resolvedVersion) }
+
+            dotnet CycloneDX @args
             if ($LASTEXITCODE -ne 0) { throw "CycloneDX exit code: $LASTEXITCODE" }
+
             if (Test-Path (Join-Path $sbomOutputDirectory $outputFileName)) { $successCount++ } else { $failureCount++ }
           } catch {
-            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"; $failureCount++
+            Write-Warning "CycloneDX .NET failed: $($_.Exception.Message)"
+            $failureCount++
           } finally {
             Write-Host "Output: $(Join-Path $sbomOutputDirectory $outputFileName)"
             Write-Host "##[endgroup]"
@@ -179,7 +279,10 @@ steps:
         }
 
         Write-Host "##[section].NET summary → ok=$successCount, failed=$failureCount"
-        if ($failureCount -gt 0) { Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed"; exit 1 }
+        if ($failureCount -gt 0) {
+          Write-Host "##vso[task.logissue type=warning]Some .NET SBOMs failed"
+          exit 1
+        }
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
