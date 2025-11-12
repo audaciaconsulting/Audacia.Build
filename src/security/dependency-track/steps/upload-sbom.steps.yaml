@@ -11,12 +11,6 @@ parameters:
     type: boolean
     default: true
 
-  # Require at least one project tag to be built (e.g., from envName/additionalTags).
-  # Useful for enforcing Portfolio Access Control or tagging policies.
-  - name: requireProjectTags
-    type: boolean
-    default: true
-
   # Validate inputs and discover SBOMs without calling the API. Useful for dry runs or PR checks.
   - name: validationOnly
     type: boolean
@@ -105,11 +99,6 @@ steps:
           $tagsCsv = $deduped -join ','
         }
 
-        if ("${{ parameters.requireProjectTags }}" -eq "True" -and [string]::IsNullOrWhiteSpace($tagsCsv)) {
-          throw "No project tags produced."
-        } elseif ([string]::IsNullOrWhiteSpace($tagsCsv)) {
-          Write-Warning "No project tags produced (requireProjectTags=false)."
-        }
 
         Write-Host "Final projectTags CSV: '$tagsCsv'"
         Write-Host "##vso[task.setvariable variable=projectTagsCsv;isOutput=true]$tagsCsv"
