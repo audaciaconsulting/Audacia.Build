@@ -36,6 +36,7 @@ steps:
       curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "${{ parameters.syftInstallDir }}"
     displayName: 'Install Syft (SBOM Generator)'
 
+  # Generate SBOM for .deps.json files
   - task: PowerShell@2
     displayName: 'Generate SBOM for Dependency Lock Files'
     inputs:
@@ -43,28 +44,42 @@ steps:
       script: |
         $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
         if (-Not (Test-Path $dependencyLockDir)) {
-          # If the parameter isn’t set, assume the default download path.
           $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
         }
-        Write-Host "Generating SBOM for files in artifact directory: $dependencyLockDir"
         $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
         if (-Not (Test-Path $sbomOutputDir)) {
             New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
         }
-        # Find every .json file in the directory and generate an SBOM for it in order to build a complete dependency picture for the project.
-        $files = Get-ChildItem -Path $dependencyLockDir -Filter "*.json"
-        foreach ($file in $files) {
-            if ($file.Name -eq "package-lock.json") {
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath "npm-sbom.json"
+        $depsFiles = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "*.deps.json"
+        foreach ($file in $depsFiles) {
+            $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
+            $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
+            Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
+            $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
+            if ("${{ parameters.syftConfigFile }}") {
+                $syftArgs += @("-c", "${{ parameters.syftConfigFile }}")
             }
-            elseif ($file.Name -like "*.deps.json") {
-                # Remove the '.deps' segment and append -sbom.json.
-                $nameWithoutDeps = $file.BaseName -replace '\.deps$', ''
-                $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$nameWithoutDeps-sbom.json")
-            }
-            else {
-                continue
-            }
+            & "${{ parameters.syftInstallDir }}\syft.exe" @syftArgs
+        }
+
+  # Generate SBOM for package-lock.json files
+  - task: PowerShell@2
+    displayName: 'Generate SBOM for package-lock.json files'
+    inputs:
+      targetType: 'inline'
+      script: |
+        $dependencyLockDir = "${{ parameters.dependencyLockArtifactDirectory }}"
+        if (-Not (Test-Path $dependencyLockDir)) {
+          $dependencyLockDir = "$(Agent.TempDirectory)/lock-deps"
+        }
+        $sbomOutputDir = "${{ parameters.sbomOutputDir }}"
+        if (-Not (Test-Path $sbomOutputDir)) {
+            New-Item -ItemType Directory -Path $sbomOutputDir | Out-Null
+        }
+        $lockFiles = Get-ChildItem -Path $dependencyLockDir -Recurse -Filter "package-lock.json"
+        foreach ($file in $lockFiles) {
+            $uiName = Split-Path $file.Directory.Name -Leaf
+            $outputFile = Join-Path -Path $sbomOutputDir -ChildPath ("$uiName-npm-sbom.json")
             Write-Host "Generating SBOM for $($file.FullName) -> $outputFile"
             $syftArgs = @("-o", "${{ parameters.outputFormat }}=$outputFile", "$($file.FullName)")
             if ("${{ parameters.syftConfigFile }}") {
