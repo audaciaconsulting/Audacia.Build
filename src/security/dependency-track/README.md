@@ -7,23 +7,39 @@ These Azure Pipelines templates automate SBOM generation, upload to OWASP Depend
 [OWASP Dependency-Track](https://dependencytrack.org/) stores and analyses CycloneDX SBOMs for your applications, identifying vulnerabilities, license issues, and policy violations across your portfolio.
 Each upload creates or updates a project and version in Dependency-Track, which the platform monitors continuously.
 
-## Two Ways to Run
+## How to Run
 
-| Approach         | When to use                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| Modular / Staged | You want Generate, Upload, and Deactivate as separate stages for control and visibility.          |
-| End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
+The templates are designed to be used in a multi-stage pipeline with three separate stages:
 
-> **Implementation note:**
-> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml` and `generate-npm-sbom.steps.yaml`), the `publishArtifact` variable controls whether each generator publishes its output as a pipeline artifact.
->
-> - **If you are running only one generator** (for example, just the .NET or npm template), set `publishArtifact: true` to publish its SBOMs directly.
-> - **If you are running multiple generators** (for example, both .NET and npm), set `publishArtifact: false` on each generator and add a single `PublishPipelineArtifact@1` step afterwards. This publishes a single combined artifact (e.g. `sbom-files`) containing all SBOM outputs.
->
-> This approach ensures:
-> - A single, consolidated SBOM artifact for multi-ecosystem projects
-> - No duplicate or conflicting artifact names
-> - Consistent behavior between modular (staged) and end-to-end pipeline designs
+1. **Generate Stage** - Generate CycloneDx SBOMs for all your deployable projects (e.g .NET and/or npm projects).
+2. **Upload Stage** - Upload the CycloneDx SBOMs to Dependency-Track
+3. **Deactivate Stage** - (Optional) Deactivate non-latest project versions
+
+### Stage 1: Generate SBOMs
+
+Reference the SBOM generation templates for your project type(s):
+- `generate-dotnet-sbom.steps.yaml` for .NET projects
+- `generate-npm-sbom.steps.yaml` for npm/Node.js projects
+
+When using the SBOM generator templates, the `publishArtifact` parameter controls whether each generator publishes its output as a pipeline artifact:
+- **Single generator**: Set `publishArtifact: true` to publish SBOMs directly
+- **Multiple generators**: Set `publishArtifact: false` on each generator, then add a single `PublishPipelineArtifact@1` task at the end to publish all SBOMs as one combined artifact (e.g., `sbom-files`)
+
+This approach ensures a single consolidated SBOM artifact for multi-ecosystem projects without duplicate or conflicting artifact names.
+
+### Stage 2: Upload SBOMs
+
+Reference the `upload-sbom.steps.yaml` template to upload all generated SBOMs to your Dependency-Track instance. The template will:
+- Download the SBOM artifact from the previous stage
+- Upload each SBOM to Dependency-Track
+- Create or update projects and versions automatically
+- Link to parent projects if configured
+
+### Stage 3: Deactivate Old Versions (Optional)
+
+Reference the `deactivate-nonlatest.steps.yaml` template to mark older project versions as inactive. This keeps your Dependency-Track UI focused on current releases while preserving historical data for audit purposes.
+
+Set the `deactivateOld` variable to control whether this stage runs.
 
 ## Prerequisites
 
@@ -146,10 +162,10 @@ to maintain accurate evidence and reproducibility.
 
 ## Verification Checklist
 
-- [ ] Variable group with `DT_API_KEY`
-- [ ] Variable group linked to Key Vault (if applicable)
-- [ ] Correct `.csproj`, and `package.json` names
-- [ ] Accurate project paths, and `.npmrc` paths (if using) in pipeline
-- [ ] Parent project created in Dependency-Track
-- [ ] Parent project variables set (`"<Organisation> - <System>"`)
+- [ ] Dependency-Track API key configured and accessible to pipeline
+- [ ] Secret management configured (e.g., variable group linked to Key Vault)
+- [ ] Correct `.csproj` and `package.json` names
+- [ ] Accurate project paths and `.npmrc` paths (if using) in pipeline
+- [ ] Parent project created in Dependency-Track (if using parent linking)
+- [ ] Parent project variables configured in pipeline (if applicable)
 - [ ] Pipeline variables defined: `envName`, `version`, `deactivateOld`, `additionalTags` (optional)
