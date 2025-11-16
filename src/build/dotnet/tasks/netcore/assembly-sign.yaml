@@ -1,39 +1,55 @@
 # Task to sign a .NET Core Project with the Audacia Code Signing certificate
 parameters:
-  - name: projects
-    default: '**/*.csproj'
+  - name: trustedSigningEndpoint
+    type: string
+  - name: trustedSigningAccount
+    type: string
+  - name: trustedSigningCertificateProfile
+    type: string
+  - name: directory
+    type: string
+  - name: fileToSignPattern
+    type: string
+  - name: serviceConnection
+    type: string
 
 steps:
-  - task: DownloadSecureFile@1
-    displayName: Get Code Sign Certificate
-    name: CodeSignCertificate
+  - task: AzureCLI@2
+    displayName: 'Add Service Connection to Environment'
     inputs:
-      secureFile: 'audacia.codesign.pfx'
+      azureSubscription: '${{ parameters.serviceConnection }}'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
+        echo "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$idToken"
+        echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$tenantId"
+      addSpnToEnvironment: true
 
-  - task: PowerShell@2
-    displayName: Sign Assemblies
-    condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
+  - bash: |
+      az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
+    displayName: 'Azure Login'
+
+  - task: TrustedSigning@0
+    displayName: 'Sign with Trusted Signing'
     inputs:
-      targetType: inline
-      pwsh: true
-      script: |
-        $project = "${{parameters.projects}}";
-        $folderPath = [System.IO.Directory]::GetParent($project)
-        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project)
-        $files = Get-ChildItem -Path $folderPath -Filter "$projectName.dll" -Recurse
-        $securePassword = ConvertTo-SecureString $(CertificatePassword) -AsPlainText -Force
-        $certificate = Get-PfxCertificate -FilePath $(CodeSignCertificate.secureFilePath) -NoPromptForPassword -Password $securePassword
-
-        foreach($file in $files) {
-
-          try {
-            Write-Host "Setting Authenticode Signature for $file"
-            $result = Set-AuthenticodeSignature -FilePath $file -Certificate $certificate -Force -HashAlgorithm SHA256 -IncludeChain All -TimestampServer "http://timestamp.digicert.com"
-            if ($result.Status.ToString().Contains("Error")) { Write-Error $result.StatusMessage }
-            else {
-              Write-Host $result.Status.ToString()
-              Write-Host $result.StatusMessage.ToString()
-            }
-          }
-          catch { Write-Warning $_ }
-        }
+      Endpoint: '${{ parameters.trustedSigningEndpoint }}'
+      TrustedSigningAccountName: '${{ parameters.trustedSigningAccount }}'
+      CertificateProfileName: '${{ parameters.trustedSigningCertificateProfile }}'
+      FilesFolder: '$(Build.SourcesDirectory)/MauiApp1/MauiApp1/bin/Release/net8.0-windows10.0.19041.0/win10-x64/AppPackages/'
+      FilesFolderFilter: 'msix'
+      FilesFolderRecurse: true
+      FilesFolderDepth: 1
+      FileDigest: 'SHA256'
+      TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
+      TimestampDigest: 'SHA256'
+      ExcludeEnvironmentCredential: true
+      ExcludeWorkloadIdentityCredential: true
+      ExcludeManagedIdentityCredential: true
+      ExcludeSharedTokenCacheCredential: true
+      ExcludeVisualStudioCredential: true
+      ExcludeVisualStudioCodeCredential: true
+      ExcludeAzureCliCredential: false
+      ExcludeAzurePowershellCredential: true
+      ExcludeAzureDeveloperCliCredential: true
+      ExcludeInteractiveBrowserCredential: true

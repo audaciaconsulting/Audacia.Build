@@ -22,9 +22,24 @@ parameters:
     default: true
   - name: applyVersioning
     default: true
+  - name: trustedSigningEndpoint
+    type: string
+  - name: trustedSigningAccount
+    type: string
+  - name: trustedSigningCertificateProfile
+    type: string
+  - name: directory
+    type: string
+  - name: fileToSignPattern
+    type: string
+  - name: serviceConnection
+    type: string
 
 jobs:
   - job: Job_Build
+    # Code signing using Trusted Signing only works on Windows
+    pool:
+      vmImage: windows-latest
     displayName: ${{parameters.displayName}}
     variables:
       - group: Code Signing
