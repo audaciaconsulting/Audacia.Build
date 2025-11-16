@@ -107,18 +107,6 @@ jobs:
           includesymbols: false
           packagesToPack: ${{parameters.projects}}
 
-      - task: NuGetToolInstaller@1
-        displayName: Get Nuget
-        inputs:
-          versionSpec: '4.9.3'
-
-      - task: NuGetCommand@2
-        displayName: NuGet Sign
-        condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
-        inputs:
-          command: 'custom'
-          arguments: sign "$(build.ArtifactStagingDirectory)\*.nupkg" -CertificatePath "$(CodeSignCertificate.secureFilePath)" -CertificatePassword "$(CertificatePassword)" -Timestamper "http://timestamp.digicert.com"
-
       - template: /src/build/common/tasks/publish.yaml
         parameters:
           path: ''
