@@ -36,10 +36,9 @@ steps:
       Endpoint: '${{ parameters.trustedSigningEndpoint }}'
       TrustedSigningAccountName: '${{ parameters.trustedSigningAccount }}'
       CertificateProfileName: '${{ parameters.trustedSigningCertificateProfile }}'
-      FilesFolder: '$(Build.SourcesDirectory)/MauiApp1/MauiApp1/bin/Release/net8.0-windows10.0.19041.0/win10-x64/AppPackages/'
-      FilesFolderFilter: 'msix'
+      FilesFolder: '${{ parameters.directory }}'
+      FilesFolderFilter: '${{ parameters.fileToSignPattern }}'
       FilesFolderRecurse: true
-      FilesFolderDepth: 1
       FileDigest: 'SHA256'
       TimestampRfc3161: 'http://timestamp.acs.microsoft.com'
       TimestampDigest: 'SHA256'
