@@ -92,7 +92,12 @@ jobs:
 
       - template: /src/build/dotnet/tasks/netcore/assembly-sign.yaml
         parameters:
-          projects: ${{parameters.projects}}
+          trustedSigningEndpoint: ${{ parameters. trustedSigningEndpoint }}
+          trustedSigningAccount: ${{ parameters.trustedSigningAccount }}
+          trustedSigningCertificateProfile: ${{ parameters.trustedSigningCertificateProfile }}
+          directory: ${{ parameters.directory }}
+          fileToSignPattern: ${{ parameters.fileToSignPattern }}
+          serviceConnection: ${{ parameters.serviceConnection }}
 
       - task: DotNetCoreCLI@2
         displayName: .NET Pack
