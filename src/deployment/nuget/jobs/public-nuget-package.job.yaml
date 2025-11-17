@@ -6,6 +6,8 @@ parameters:
     type: string
   - name: trustedSigningCertificateProfile
     type: string
+  - name: serviceConnection
+    type: string
 
 jobs:
   - job: Job_Sign
@@ -13,12 +15,13 @@ jobs:
     pool:
       vmImage: windows-latest
     steps:
-      - task: PowerShell@2
+      - task: AzureCLI@2
         displayName: NuGet Sign
         inputs:
-          targetType: inline
-          pwsh: true
-          script: |
+          azureSubscription: ${{ parameters.serviceConnection }}
+          scriptLocation: inlineScript
+          scriptType: ps
+          inlineScript: |
             dotnet tool install Knapcode.CertificateExtractor --global
             dotnet tool install sign --global --prerelease
             $packagesToSign = Get-ChildItem -Path "$(Pipeline.Workspace)" -Filter "*.nupkg" -Recurse

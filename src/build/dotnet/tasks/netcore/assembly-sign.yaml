@@ -21,15 +21,16 @@ steps:
       scriptType: 'ps'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
-        # echo "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$idToken"
-        # echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$tenantId"
-        az login
+        echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
+        echo "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$idToken"
+        echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$tenantId"
       addSpnToEnvironment: true
 
-  # - bash: |
-  #     az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
-  #   displayName: 'Azure Login'
+  - task: PowerShell@2
+    displayName: 'Azure Login'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
 
   - task: TrustedSigning@0
     displayName: 'Sign with Trusted Signing'
