@@ -8,6 +8,8 @@ parameters:
     type: string
   - name: serviceConnection
     type: string
+  - name: artifactName
+    default: '$(Build.DefinitionName)'
 
 jobs:
   - job: Job_Sign
@@ -15,6 +17,11 @@ jobs:
     pool:
       vmImage: windows-latest
     steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifactName: '${{ parameters.artifactName }}'
+          targetPath: '$(Pipeline.Workspace)'
+      
       - task: AzureCLI@2
         displayName: NuGet Sign
         inputs:
