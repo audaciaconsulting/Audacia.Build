@@ -39,6 +39,7 @@ jobs:
 
   - job: Job_Pause
     displayName: Wait for NuGet Certificate Upload
+    dependsOn: Job_Sign
     pool: server
     steps:
       - task: ManualValidation@1
@@ -50,6 +51,7 @@ jobs:
 
   - deployment: Job_Deploy
     displayName: Deploy to NuGet (Public)
+    dependsOn: Job_Pause
     environment: NuGet Public
     strategy:
       runOnce:
