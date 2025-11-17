@@ -18,17 +18,18 @@ steps:
     displayName: 'Add Service Connection to Environment'
     inputs:
       azureSubscription: '${{ parameters.serviceConnection }}'
-      scriptType: 'bash'
+      scriptType: 'ps'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
-        echo "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$idToken"
-        echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$tenantId"
+        # echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
+        # echo "##vso[task.setvariable variable=ARM_ID_TOKEN;issecret=true]$idToken"
+        # echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$tenantId"
+        az login
       addSpnToEnvironment: true
 
-  - bash: |
-      az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
-    displayName: 'Azure Login'
+  # - bash: |
+  #     az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
+  #   displayName: 'Azure Login'
 
   - task: TrustedSigning@0
     displayName: 'Sign with Trusted Signing'
