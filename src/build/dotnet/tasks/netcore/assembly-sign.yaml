@@ -28,8 +28,8 @@ steps:
 
   - task: PowerShell@2
     displayName: 'Azure Login'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
+    targetType: inline
+    script: |
       az login --service-principal -u $(ARM_CLIENT_ID) --tenant $(ARM_TENANT_ID) --allow-no-subscriptions --federated-token $(ARM_ID_TOKEN)
 
   - task: TrustedSigning@0
