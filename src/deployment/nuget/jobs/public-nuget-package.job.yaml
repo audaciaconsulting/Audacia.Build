@@ -22,19 +22,24 @@ jobs:
           scriptLocation: inlineScript
           scriptType: ps
           inlineScript: |
+            Write-Host "Installing signing tools"
             dotnet tool install Knapcode.CertificateExtractor --global
             dotnet tool install sign --global --prerelease
-            $packagesToSign = Get-ChildItem -Path "$(Pipeline.Workspace)" -Filter "*.nupkg" -Recurse
+
+            Write-Host "Getting packages to sign"
+            $packagesToSign = Get-ChildItem -Path "$env:PIPELINE_WORKSPACE" -Filter "*.nupkg" -Recurse
             foreach ($package in $packagesToSign) {
+                Write-Host "Signing package $package"
                 $path = $package.FullName
                 sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
             }
             # All packages will be signed with the same certificate, so only need to extract one
-            nuget-cert-extractor --file "$path" --output "$(Build.ArtifactsStagingDirectory)" --code-signing --author --leaf
+            Write-Host "Extracting package signing certificate"
+            nuget-cert-extractor --file "$path" --output "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" --code-signing --author --leaf
 
       - task: PublishPipelineArtifact@1
         inputs:
-          targetPath: $(Build.ArtifactsStagingDirectory)/*.cer
+          targetPath: $(Build.ArtifactStagingDirectory)/*.cer
           artifactName: PackageSigningCertificate
 
   - job: Job_Pause
