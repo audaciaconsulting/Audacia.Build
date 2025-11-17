@@ -8,42 +8,50 @@ parameters:
     type: string
 
 jobs:
+  - job: Job_Sign
+    displayName: Sign NuGet Package
+    pool:
+      vmImage: windows-latest
+    steps:
+      - task: PowerShell@2
+        displayName: NuGet Sign
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            dotnet tool install Knapcode.CertificateExtractor --global
+            dotnet tool install sign --global --prerelease
+            $packagesToSign = Get-ChildItem -Path "$(Pipeline.Workspace)" -Filter "*.nupkg" -Recurse
+            foreach ($package in $packagesToSign) {
+                $path = $package.FullName
+                sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
+            }
+            # All packages will be signed with the same certificate, so only need to extract one
+            nuget-cert-extractor --file "$path" --output "$(Build.ArtifactsStagingDirectory)" --code-signing --author --leaf
+
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: $(Build.ArtifactsStagingDirectory)/*.cer
+          artifactName: PackageSigningCertificate
+
+  - job: Job_Pause
+    displayName: Wait for NuGet Certificate Upload
+    pool: server
+    steps:
+      - task: ManualValidation@1
+        inputs:
+          notifyUsers: 'richard.brown@audacia.co.uk'
+          instructions: 'Upload the certificate published as an artifact in the previous step to the Audacia organization on nuget.org'
+          timeoutInMinutes: 2880 # 2 day timeout, as certificates expire
+          onTimeout: reject
+
   - deployment: Job_Deploy
     displayName: Deploy to NuGet (Public)
     environment: NuGet Public
-    pool:
-      vmImage: windows-latest
     strategy:
       runOnce:
         deploy:
           steps:
-            - task: PowerShell@2
-              displayName: NuGet Sign
-              inputs:
-                targetType: inline
-                pwsh: true
-                script: |
-                  dotnet tool install Knapcode.CertificateExtractor --global
-                  dotnet tool install sign --global --prerelease
-                  $packagesToSign = Get-ChildItem -Path "$(Pipeline.Workspace)" -Filter "*.nupkg" -Recurse
-                  foreach ($package in $packagesToSign) {
-                      $path = $package.FullName
-                      sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
-                  }
-                  # All packages will be signed with the same certificate, so only need to extract one
-                  nuget-cert-extractor --file "$path" --output "$(Build.ArtifactsStagingDirectory)" --code-signing --author --leaf
-
-            - task: PublishPipelineArtifact@1
-              inputs:
-                targetPath: $(Build.ArtifactsStagingDirectory)/*.cer
-                artifactName: PackageSigningCertificate
-
-            - task: ManualValidation@0
-              inputs:
-                instructions: 'Upload the certificate published as an artifact in the previous step to the Audacia organization on nuget.org'
-                timeoutInMinutes: 2880 # 2 day timeout, as certificates expire
-                onTimeout: reject
-
             - task: NuGetToolInstaller@1
               displayName: Use NuGet
 
