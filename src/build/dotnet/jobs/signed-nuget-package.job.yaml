@@ -107,6 +107,33 @@ jobs:
           includesymbols: false
           packagesToPack: ${{parameters.projects}}
 
+      - task: AzureCLI@2
+        displayName: NuGet Sign
+        inputs:
+          azureSubscription: ${{ parameters.serviceConnection }}
+          scriptLocation: inlineScript
+          scriptType: ps
+          inlineScript: |
+            Write-Host "Installing signing tools"
+            dotnet tool install Knapcode.CertificateExtractor --global
+            dotnet tool install sign --global --prerelease
+
+            Write-Host "Getting packages to sign"
+            $packagesToSign = Get-ChildItem -Path "$env:PIPELINE_WORKSPACE" -Recurse
+            foreach ($package in $packagesToSign) {
+                Write-Host "Found file $package"
+                # $path = $package.FullName
+                # sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
+            }
+            # All packages will be signed with the same certificate, so only need to extract one
+            Write-Host "Extracting package signing certificate"
+            # nuget-cert-extractor --file "$path" --output "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" --code-signing --author --leaf
+
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: $(Build.ArtifactStagingDirectory)/*.cer
+          artifactName: PackageSigningCertificate
+
       - template: /src/build/common/tasks/publish.yaml
         parameters:
           path: ''

@@ -1,57 +1,7 @@
 # Job to deploy a NuGet Package to the Public NuGet Feed
-parameters:
-  - name: trustedSigningEndpoint
-    type: string
-  - name: trustedSigningAccount
-    type: string
-  - name: trustedSigningCertificateProfile
-    type: string
-  - name: serviceConnection
-    type: string
-  - name: artifactName
-    default: '$(Build.DefinitionName)'
-
 jobs:
-  - job: Job_Sign
-    displayName: Sign NuGet Package
-    pool:
-      vmImage: windows-latest
-    steps:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifactName: '${{ parameters.artifactName }}'
-          targetPath: '$(Pipeline.Workspace)'
-      
-      - task: AzureCLI@2
-        displayName: NuGet Sign
-        inputs:
-          azureSubscription: ${{ parameters.serviceConnection }}
-          scriptLocation: inlineScript
-          scriptType: ps
-          inlineScript: |
-            Write-Host "Installing signing tools"
-            dotnet tool install Knapcode.CertificateExtractor --global
-            dotnet tool install sign --global --prerelease
-
-            Write-Host "Getting packages to sign"
-            $packagesToSign = Get-ChildItem -Path "$env:PIPELINE_WORKSPACE" -Recurse
-            foreach ($package in $packagesToSign) {
-                Write-Host "Found file $package"
-                # $path = $package.FullName
-                # sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
-            }
-            # All packages will be signed with the same certificate, so only need to extract one
-            Write-Host "Extracting package signing certificate"
-            # nuget-cert-extractor --file "$path" --output "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" --code-signing --author --leaf
-
-      - task: PublishPipelineArtifact@1
-        inputs:
-          targetPath: $(Build.ArtifactStagingDirectory)/*.cer
-          artifactName: PackageSigningCertificate
-
   - job: Job_Pause
     displayName: Wait for NuGet Certificate Upload
-    dependsOn: Job_Sign
     pool: server
     steps:
       - task: ManualValidation@1
