@@ -123,7 +123,7 @@ jobs:
             foreach ($package in $packagesToSign) {
                 Write-Host "Found file $package"
                 $path = $package.FullName
-                sign code trusted-signing "$path" -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
+                sign code trusted-signing "$path" -act azure-cli -tse "${{ parameters.trustedSigningEndpoint }}" -tsa "${{ parameters.trustedSigningAccount }}" -tscp "${{ parameters.trustedSigningCertificateProfile }}"
             }
             # All packages will be signed with the same certificate, so only need to extract one
             Write-Host "Extracting package signing certificate"
