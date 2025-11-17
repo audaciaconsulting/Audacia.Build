@@ -18,7 +18,7 @@ steps:
     displayName: 'Add Service Connection to Environment'
     inputs:
       azureSubscription: '${{ parameters.serviceConnection }}'
-      scriptType: 'ps'
+      scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
         echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$servicePrincipalId" 
