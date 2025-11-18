@@ -69,6 +69,7 @@ jobs:
         inputs:
           command: restore
           projects: ${{parameters.projects}}
+          vstsFeed: 'Audacia.Public/AudaciaPublic'
 
       - task: DownloadSecureFile@1
         displayName: Get Strong Naming Certificate
