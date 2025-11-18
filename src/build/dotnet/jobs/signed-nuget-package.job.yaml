@@ -43,6 +43,10 @@ jobs:
     displayName: ${{parameters.displayName}}
     
     steps:
+      - task: UseDotNet@2
+        inputs:
+          version: '10.x'
+      
       - ${{ if eq(parameters.skipDependencyChecks, false) }}:
         - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
           parameters:
