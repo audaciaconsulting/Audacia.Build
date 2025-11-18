@@ -22,6 +22,8 @@ parameters:
     default: true
   - name: applyVersioning
     default: true
+  - name: dotNetVersion
+    default: ''
   - name: trustedSigningEndpoint
     type: string
   - name: trustedSigningAccount
@@ -43,9 +45,10 @@ jobs:
     displayName: ${{parameters.displayName}}
     
     steps:
-      - task: UseDotNet@2
-        inputs:
-          version: '10.x'
+      - ${{ if neq(parameters.dotNetVersion, '') }}:
+        - task: UseDotNet@2
+          inputs:
+            version: '${{ parameters.dotNetVersion }}'
       
       - ${{ if eq(parameters.skipDependencyChecks, false) }}:
         - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml

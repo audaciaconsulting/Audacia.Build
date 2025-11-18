@@ -9,6 +9,12 @@ parameters:
     type: string
 
 steps:
+  # CertificateExtractor tool needs x64 version of .NET 8
+  - task: UseDotNet@2
+    displayName: 'Use .NET 8'
+    inputs:
+      version: '8.x'
+  
   - task: AzureCLI@2
     displayName: NuGet Package Signing
     inputs:
