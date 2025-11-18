@@ -4,10 +4,11 @@ jobs:
     displayName: Wait for NuGet Certificate Upload
     pool: server
     steps:
+      # Need to pause as trusted signing certificates are rotated every few days, so we need to ensure the signing certificate has been uploaded to nuget.org
       - task: ManualValidation@1
         inputs:
-          notifyUsers: 'richard.brown@audacia.co.uk'
-          instructions: 'Upload the certificate published as an artifact in the previous step to the Audacia organization on nuget.org'
+          notifyUsers: ''
+          instructions: 'Ensure the signing certificate published as an artifact in the previous stage has been uploaded to nuget.org'
           timeoutInMinutes: 2880 # 2 day timeout, as certificates expire
           onTimeout: reject
 

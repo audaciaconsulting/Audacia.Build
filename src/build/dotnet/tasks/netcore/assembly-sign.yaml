@@ -31,7 +31,7 @@ steps:
     displayName: 'Azure Login'
 
   - task: TrustedSigning@0
-    displayName: 'Sign with Trusted Signing'
+    displayName: 'Assembly Signing'
     inputs:
       Endpoint: '${{ parameters.trustedSigningEndpoint }}'
       TrustedSigningAccountName: '${{ parameters.trustedSigningAccount }}'

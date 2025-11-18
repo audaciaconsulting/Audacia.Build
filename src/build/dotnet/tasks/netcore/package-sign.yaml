@@ -1,0 +1,42 @@
+parameters:
+  - name: trustedSigningEndpoint
+    type: string
+  - name: trustedSigningAccount
+    type: string
+  - name: trustedSigningCertificateProfile
+    type: string
+  - name: serviceConnection
+    type: string
+
+steps:
+  - task: AzureCLI@2
+    displayName: NuGet Package Signing
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptLocation: inlineScript
+      scriptType: ps
+      inlineScript: |
+        Write-Host "Installing signing tools"
+        dotnet tool install Knapcode.CertificateExtractor --global
+        dotnet tool install sign --global --prerelease
+
+        Write-Host "Getting packages to sign"
+        $packagesToSign = Get-ChildItem -Path "$env:PIPELINE_WORKSPACE" -Filter "*.nupkg" -Recurse
+
+        if ($packagesToSign -eq $null) {
+          Write-Warning "No NuGet packages found to sign."
+          Exit 1
+        }
+
+        foreach ($package in $packagesToSign) {
+            Write-Host "Signing package $package"
+            $path = $package.FullName
+            sign code trusted-signing "$path" `
+              --azure-credential-type azure-cli `
+              --trusted-signing-endpoint "${{ parameters.trustedSigningEndpoint }}" `
+              --trusted-signing-account "${{ parameters.trustedSigningAccount }}" `
+              --trusted-signing-certificate-profile "${{ parameters.trustedSigningCertificateProfile }}"
+        }
+        # All packages will be signed with the same certificate, so only need to extract once
+        Write-Host "Extracting package signing certificate"
+        nuget-cert-extractor --file "$path" --output "$env:BUILD_ARTIFACTSTAGINGDIRECTORY\signing-certificate" --code-signing --author --leaf
