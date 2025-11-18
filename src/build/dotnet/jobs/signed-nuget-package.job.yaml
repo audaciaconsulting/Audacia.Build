@@ -45,7 +45,7 @@ jobs:
     displayName: ${{parameters.displayName}}
     
     steps:
-      - ${{ if neq(parameters.dotNetVersion, '') }}:
+      - ${{ if ne(parameters.dotNetVersion, '') }}:
         - task: UseDotNet@2
           inputs:
             version: '${{ parameters.dotNetVersion }}'
