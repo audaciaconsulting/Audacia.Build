@@ -86,17 +86,18 @@ steps:
         function Convert-ToRelativeIfUnderRoot([string]$fullPath, [string]$rootPath) {
           $resolvedFullPath = [IO.Path]::GetFullPath($fullPath)
           if ($resolvedFullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $relative = $resolvedFullPath.Substring($rootPath.Length).TrimStart('\')
+            $relative = $resolvedFullPath.Substring($rootPath.Length).TrimStart('\\')
             return $relative
           }
           return $resolvedFullPath
         }
 
         $normalizedProjectPaths = New-Object System.Collections.Generic.List[string]
+        $skippedEntries = New-Object System.Collections.Generic.List[string]
         
         foreach ($projectEntry in $inputProjectEntries) {
           if (-not [string]::IsNullOrWhiteSpace($projectEntry)) {
-            $candidatePath = ($projectEntry -replace '/', '\').Trim().Trim('"').Trim()
+            $candidatePath = ($projectEntry -replace '/', '\\').Trim().Trim('"').Trim()
 
             $candidatePath = $candidatePath -replace '\$\((?i:Build\.SourcesDirectory)\)', $repoRoot
             $candidatePath = $candidatePath -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $repoRoot
@@ -109,7 +110,9 @@ steps:
               if (Test-Path -LiteralPath $candidatePath) {
                 $chosenPath = [IO.Path]::GetFullPath($candidatePath)
               } else {
+                $skippedEntries.Add("$projectEntry → $relativeUnderRoot") | Out-Null
                 Write-Warning "Project path could not be verified: '$projectEntry' → '$relativeUnderRoot'. Ensure the file exists."
+                $chosenPath = $null
               }
             }
         
@@ -121,16 +124,24 @@ steps:
           }
         }
 
-        if ($normalizedProjectPaths.Count -eq 0) {
-          Write-Host "##[section].NET summary → ok=0, failed=0"
-          Write-Warning "No .NET projects provided after normalization; DotNet restore will be skipped."
-        }
-
         $normalizedMultiline = ($normalizedProjectPaths -join "`n")
         Write-Host "##[group]Normalized .NET project paths"
-        $normalizedProjectPaths | ForEach-Object { Write-Host $_ }
+        if ($normalizedProjectPaths.Count -gt 0) { $normalizedProjectPaths | ForEach-Object { Write-Host $_ } } else { Write-Host "(none)" }
         Write-Host "##[endgroup]"
+
+        if ($skippedEntries.Count -gt 0) {
+          Write-Host "##[group]Skipped .NET project entries (not found)"
+          $skippedEntries | ForEach-Object { Write-Host $_ }
+          Write-Host "##[endgroup]"
+        }
+
+        Write-Host "Resolved .NET projects count: $($normalizedProjectPaths.Count)"
         Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$normalizedMultiline"
+
+        if ($normalizedProjectPaths.Count -eq 0) {
+          Write-Host "##[section].NET summary → ok=0, failed=0"
+          Write-Error "No .NET project paths resolved after normalization. Verify pipeline variables and repository structure."
+        }
 
   - task: DotNetCoreCLI@2
     displayName: "Restore .NET projects"
@@ -191,6 +202,8 @@ steps:
         $normalizedProjectsRaw = '$(normalizeDotnet.projectsMultiline)'
         $normalizedProjects = @()
         if ($normalizedProjectsRaw) { $normalizedProjects = $normalizedProjectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } }
+
+        Write-Host "Projects to process: $($normalizedProjects.Count)"
 
         if (-not $normalizedProjects -or $normalizedProjects.Count -eq 0) {
           Write-Host "##[section].NET summary → ok=0, failed=0"
