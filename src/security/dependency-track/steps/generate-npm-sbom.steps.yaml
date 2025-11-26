@@ -195,6 +195,8 @@ steps:
           $npmProjectRootList = @() 
         }
 
+        Write-Host "Projects to process: $($npmProjectRootList.Count)"
+
         if (-not $npmProjectRootList -or $npmProjectRootList.Count -eq 0) {
           throw "No npm project roots available after validation. This step requires explicit directories containing package.json."
         }
@@ -206,6 +208,36 @@ steps:
         $failureCount = 0
         $anyTreeIssuesOverall = $false   # Track whether any project had npm tree issues (ELSPROBLEMS etc.)
 
+        # Track used output folder names to avoid collisions when multiple roots have identical leaf names (e.g., both end with 'Client').
+        $usedOutputNames = [System.Collections.Generic.HashSet[string]]::new()
+
+        function Get-UniqueOutputName([string]$absoluteProjectPath) {
+          $leaf = Split-Path $absoluteProjectPath -Leaf
+          if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = 'app' }
+          $safeLeaf = ($leaf -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
+          $candidate = $safeLeaf
+          if (-not $usedOutputNames.Contains($candidate)) {
+            $usedOutputNames.Add($candidate) | Out-Null
+            return $candidate
+          }
+          # Collision: incorporate parent folder name
+          $parent = Split-Path (Split-Path $absoluteProjectPath -Parent) -Leaf
+          if ([string]::IsNullOrWhiteSpace($parent)) { $parent = 'root' }
+          $parentSafe = ($parent -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
+          $candidate = "$parentSafe-$safeLeaf"
+          if (-not $usedOutputNames.Contains($candidate)) {
+            $usedOutputNames.Add($candidate) | Out-Null
+            return $candidate
+          }
+          # Final fallback: append short hash of full path
+            $hasher = [System.Security.Cryptography.SHA1]::Create()
+            $hashBytes = $hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($absoluteProjectPath))
+            $shortHash = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').Substring(0,8).ToLowerInvariant()
+            $candidate = "$parentSafe-$safeLeaf-$shortHash"
+            $usedOutputNames.Add($candidate) | Out-Null
+            return $candidate
+        }
+
         foreach ($projectRoot in $npmProjectRootList) {
           $absoluteProjectPath = if ([System.IO.Path]::IsPathRooted($projectRoot)) { $projectRoot } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $projectRoot }
           $packageJsonPath  = Join-Path $absoluteProjectPath 'package.json'
@@ -215,16 +247,15 @@ steps:
             throw "package.json is required but was not found at: $packageJsonPath"
           }
 
-          $folderName = Split-Path $absoluteProjectPath -Leaf
-          if ([string]::IsNullOrWhiteSpace($folderName)) { $folderName = 'app' }
-          $safeFolderName = ($folderName -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
-          $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $safeFolderName
+          $outputFolderName = Get-UniqueOutputName -absoluteProjectPath $absoluteProjectPath
+          $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $outputFolderName
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-          $outputFile = Join-Path $outputDir "$safeFolderName-sbom.$outputExtension"
+          $outputFile = Join-Path $outputDir "$outputFolderName-sbom.$outputExtension"
 
           $locationLabel = $absoluteProjectPath
           if ($projectRoot -eq '.') { $locationLabel = "$absoluteProjectPath (repo root)" }
           Write-Host "##[group]npm SBOM → $locationLabel"
+          Write-Host "Output folder name (unique): $outputFolderName"
           Push-Location $absoluteProjectPath
           try {
             $hasPackageLock = Test-Path -LiteralPath $packageLockPath
