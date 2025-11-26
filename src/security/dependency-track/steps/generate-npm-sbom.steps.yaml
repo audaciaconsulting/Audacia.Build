@@ -165,7 +165,7 @@ steps:
           if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $workspaceRootFull $_ }
         }
 
-        $rootsJson = ($rootsArray | ConvertTo-Json -Compress)
+        $rootsJson = ($rootsArray | ConvertTo-Json -Compress -AsArray)
         Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$rootsJson"
         Write-Host "Resolved npm roots JSON: $rootsJson"
         Write-Host "Resolved absolute path(s):"
@@ -187,7 +187,13 @@ steps:
 
         $validatedRootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $npmProjectRootList = @()
-        try { $npmProjectRootList = $validatedRootsJson | ConvertFrom-Json } catch { $npmProjectRootList=@() }
+        try { 
+          $deserialized = $validatedRootsJson | ConvertFrom-Json
+          # Ensure we have an array even if JSON contained a single string
+          $npmProjectRootList = @($deserialized)
+        } catch { 
+          $npmProjectRootList = @() 
+        }
 
         if (-not $npmProjectRootList -or $npmProjectRootList.Count -eq 0) {
           throw "No npm project roots available after validation. This step requires explicit directories containing package.json."
