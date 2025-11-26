@@ -190,7 +190,7 @@ steps:
 
         $normalizedProjectsRaw = '$(normalizeDotnet.projectsMultiline)'
         $normalizedProjects = @()
-        if ($normalizedProjectsRaw) { $normalizedProjects = $normalizedProjectsRaw -split "(\r?\n)" | Where-Object { $_ -and $_ -notmatch "^\r?$" } }
+        if ($normalizedProjectsRaw) { $normalizedProjects = $normalizedProjectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } }
 
         if (-not $normalizedProjects -or $normalizedProjects.Count -eq 0) {
           Write-Host "##[section].NET summary → ok=0, failed=0"
