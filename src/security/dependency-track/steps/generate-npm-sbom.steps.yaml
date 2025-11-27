@@ -165,7 +165,7 @@ steps:
           if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $workspaceRootFull $_ }
         }
 
-        $rootsJson = ($rootsArray | ConvertTo-Json -Compress -AsArray)
+        $rootsJson = ($rootsArray | ConvertTo-Json -Compress -AsArray) # -AsArray ensures single item serializes as ["value"]
         Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$rootsJson"
         Write-Host "Resolved npm roots JSON: $rootsJson"
         Write-Host "Resolved absolute path(s):"
@@ -187,13 +187,7 @@ steps:
 
         $validatedRootsJson = '$(resolveNpmRoots.npmRootsJson)'
         $npmProjectRootList = @()
-        try { 
-          $deserialized = $validatedRootsJson | ConvertFrom-Json
-          # Ensure we have an array even if JSON contained a single string
-          $npmProjectRootList = @($deserialized)
-        } catch { 
-          $npmProjectRootList = @() 
-        }
+        try { $deserialized = $validatedRootsJson | ConvertFrom-Json; $npmProjectRootList = @($deserialized) } catch { $npmProjectRootList = @() } # @() forces array even when JSON was a single string
 
         Write-Host "Projects to process: $($npmProjectRootList.Count)"
 
@@ -208,29 +202,21 @@ steps:
         $failureCount = 0
         $anyTreeIssuesOverall = $false   # Track whether any project had npm tree issues (ELSPROBLEMS etc.)
 
-        # Track used output folder names to avoid collisions when multiple roots have identical leaf names (e.g., both end with 'Client').
-        $usedOutputNames = [System.Collections.Generic.HashSet[string]]::new()
-
-        function Get-UniqueOutputName([string]$absoluteProjectPath) {
+        # Track generated names to avoid collisions; use simple numeric suffix if needed
+        $usedNames = @{}
+        function Get-OutputBaseName([string]$absoluteProjectPath) {
           $leaf = Split-Path $absoluteProjectPath -Leaf
           if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = 'app' }
           $parent = Split-Path (Split-Path $absoluteProjectPath -Parent) -Leaf
-          $parent = if ([string]::IsNullOrWhiteSpace($parent)) { 'root' } else { $parent }
-          $safeLeaf = ($leaf -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
-          $safeParent = ($parent -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
-          $baseName = "$safeParent-$safeLeaf"  # Always include parent for consistency
-          $candidate = $baseName
-          if (-not $usedOutputNames.Contains($candidate)) {
-            $usedOutputNames.Add($candidate) | Out-Null
-            return $candidate
+          if ([string]::IsNullOrWhiteSpace($parent)) { $parent = 'root' }
+          $base = "$parent-$leaf" -replace '[<>:"/\\|?*]', '-'
+          if ($usedNames.ContainsKey($base)) {
+            $usedNames[$base]++
+            return "$base-$($usedNames[$base])"
+          } else {
+            $usedNames[$base]=0
+            return $base
           }
-          # Fallback: append short hash if collision still occurs
-          $hasher = [System.Security.Cryptography.SHA1]::Create()
-          $hashBytes = $hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($absoluteProjectPath))
-          $shortHash = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').Substring(0,8).ToLowerInvariant()
-          $candidate = "$baseName-$shortHash"
-          $usedOutputNames.Add($candidate) | Out-Null
-          return $candidate
         }
 
         foreach ($projectRoot in $npmProjectRootList) {
@@ -242,7 +228,7 @@ steps:
             throw "package.json is required but was not found at: $packageJsonPath"
           }
 
-          $outputFolderName = Get-UniqueOutputName -absoluteProjectPath $absoluteProjectPath
+          $outputFolderName = Get-OutputBaseName -absoluteProjectPath $absoluteProjectPath
           $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $outputFolderName
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
           $outputFile = Join-Path $outputDir "$outputFolderName-sbom.$outputExtension"
@@ -250,7 +236,7 @@ steps:
           $locationLabel = $absoluteProjectPath
           if ($projectRoot -eq '.') { $locationLabel = "$absoluteProjectPath (repo root)" }
           Write-Host "##[group]npm SBOM → $locationLabel"
-          Write-Host "Output folder name (unique): $outputFolderName"
+          Write-Host "Output folder name: $outputFolderName"
           Push-Location $absoluteProjectPath
           try {
             $hasPackageLock = Test-Path -LiteralPath $packageLockPath
@@ -284,7 +270,7 @@ steps:
               if ($outputText -match 'ELSPROBLEMS|ERESOLVE|missing:.*required by|invalid:.*node_modules') {
                 $treeIssuesThisProject = $true
                 $anyTreeIssuesOverall = $true
-                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE) - SBOM generated with --ignore-npm-errors"
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues at $locationLabel (ELSPROBLEMS/ERESOLVE)"
               }
             } catch {
               # Capture error details - check both exception and command output for tree issues
@@ -299,7 +285,7 @@ steps:
                 # This is a tolerable npm tree issue - retry and warn
                 $treeIssuesThisProject = $true
                 $anyTreeIssuesOverall = $true
-                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE). Retrying SBOM generation…"
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues at $locationLabel. Retrying…"
                 try {
                   npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs 2>&1 | Out-Default
                   if (Test-Path $outputFile) { $sbomWritten = $true }
@@ -308,7 +294,7 @@ steps:
                 }
               } else {
                 # This is a different error type - don't tolerate it, fail the task
-                Write-Host "##vso[task.logissue type=error]cyclonedx-npm failed with non-tree error at $locationLabel"
+                Write-Host "##vso[task.logissue type=error]cyclonedx-npm failed at $locationLabel"
                 Write-Host "Error details:"
                 Write-Host $fullOutput
                 throw $_
@@ -318,7 +304,7 @@ steps:
             if ($sbomWritten) {
               $successCount++
               if ($treeIssuesThisProject) {
-                Write-Host "##vso[task.logissue type=warning]SBOM generated for $locationLabel, but dependency tree has issues (ELSPROBLEMS)."
+                Write-Host "##vso[task.logissue type=warning]SBOM generated for $locationLabel with dependency tree issues."
               }
             } else {
               $failureCount++
@@ -341,7 +327,7 @@ steps:
         # but all SBOMs that we attempted were still produced.
         if ($anyTreeIssuesOverall) {
           Write-Host "##[warning]Dependency tree issues detected - marking task as SucceededWithIssues"
-          Write-Host "##vso[task.logissue type=warning]One or more projects had npm ELSPROBLEMS. SBOMs were generated; please fix dependency hygiene."
+          Write-Host "##vso[task.logissue type=warning]One or more projects had npm ELSPROBLEMS. SBOMs were generated."
           Write-Host "##vso[task.complete result=SucceededWithIssues;]Generated SBOMs with warnings"
           exit 0
         }
