@@ -149,8 +149,7 @@ steps:
             if ($includeLicenseTexts) { $args += @('--gather-license-texts'); npm ci --ignore-scripts --no-audit --no-fund --no-progress }
             if (-not $includeLicenseTexts -and $hasPackageLock) { $args += @('--package-lock-only') }
 
-            # Use npx with -p (compatible with older npx versions) and proper array expansion
-            npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm $args
+            npx --yes @cyclonedx/cyclonedx-npm@4 @args
             if ($LASTEXITCODE -ne 0) { throw "cyclonedx-npm failed (exit $LASTEXITCODE)" }
 
             if (Test-Path $outputFile) { $successCount++ } else { $failureCount++; Write-Warning "Missing expected output: $outputFile" }
