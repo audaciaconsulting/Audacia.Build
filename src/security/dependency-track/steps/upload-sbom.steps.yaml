@@ -255,7 +255,7 @@ steps:
         try {
           foreach ($uploadItem in $uploadMatrix) {
             $bomFile = Get-Item -LiteralPath $uploadItem.FilePath
-            Write-Host "Uploading SBOM -> $($uploadItem.ProjectName) @ $($uploadItem.ProjectVersion)"
+            Write-Host "##[group]Uploading SBOM -> $($uploadItem.ProjectName) @ $($uploadItem.ProjectVersion)"
             try {
               $multipartForm = [System.Net.Http.MultipartFormDataContent]::new()
               $multipartForm.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
@@ -301,6 +301,8 @@ steps:
             } catch {
               Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
               throw
+            } finally {
+              Write-Host "##[endgroup]"
             }
           }
 
@@ -328,13 +330,14 @@ steps:
           try { $uploadedRows = Get-Content -Raw -LiteralPath $uploadedRowsPath | ConvertFrom-Json } catch { $uploadedRows=@() }
         }
         if ($null -eq $uploadedRows) { $uploadedRows=@() } elseif ($uploadedRows -isnot [System.Collections.IEnumerable]) { $uploadedRows=@($uploadedRows) }
-        Write-Host "Dependency-Track Upload Summary (console)"
+        Write-Host "##[group]Dependency-Track Upload Summary (console)"
         Write-Host ("Total Projects: {0}" -f $uploadedRows.Count)
         if ($uploadedRows.Count -gt 0) {
           "{0,-50} {1,-30}" -f "Project","Version" | Write-Host
           "{0,-50} {1,-30}" -f "-------","-------" | Write-Host
           foreach ($row in $uploadedRows) { "{0,-50} {1,-30}" -f ([string]$row.Project), ([string]$row.Version) | Write-Host }
         } else { Write-Host "_No projects to list._" }
+        Write-Host "##[endgroup]"
 
   - task: PowerShell@2
     displayName: "Verify Dependency-Track project state (post-upload)"
@@ -381,7 +384,7 @@ steps:
           } catch { $verificationRows.Add([pscustomobject]@{ Project=$projectName; Version=$projectVersion; Exists='UNKNOWN'; IsLatest='UNKNOWN'; Note="Lookup error" }) }
         }
 
-        Write-Host "Dependency-Track verification details (console)"
+        Write-Host "##[group]Dependency-Track verification details (console)"
         Write-Host ("Checked items: {0}" -f $verificationRows.Count)
         $missingCount = ($verificationRows | Where-Object { $_.Exists -ne 'YES' }).Count
         $notLatestCount = ($verificationRows | Where-Object { $_.IsLatest -eq 'NO' }).Count
@@ -389,4 +392,4 @@ steps:
         "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "Project","Version","Exists","IsLatest","Note" | Write-Host
         "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "-------","-------","------","--------","----" | Write-Host
         foreach ($row in $verificationRows) { "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $row.Project, $row.Version, $row.Exists, $row.IsLatest, ($row.Note -replace '\r?\n',' ') | Write-Host }
-        
+        Write-Host "##[endgroup]"
