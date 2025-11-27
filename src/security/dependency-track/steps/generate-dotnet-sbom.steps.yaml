@@ -74,7 +74,7 @@ steps:
         '@
         $inputProjectEntries = @()
         if (-not [string]::IsNullOrWhiteSpace($projectsMultilineLiteral)) {
-          # Use simple newline split and trim; discard empty lines (fixes earlier regex capture issue)
+          # Simple newline split + trim; discard empties (fixes previous regex capture issue)
           $inputProjectEntries = $projectsMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         }
         $repoRoot = $env:BUILD_SOURCESDIRECTORY
@@ -83,62 +83,87 @@ steps:
         function Convert-ToRelativeIfUnderRoot([string]$fullPath, [string]$rootPath) {
           $resolvedFullPath = [IO.Path]::GetFullPath($fullPath)
           if ($resolvedFullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $resolvedFullPath.Substring($rootPath.Length).TrimStart('\\')
+            $relative = $resolvedFullPath.Substring($rootPath.Length).TrimStart('\\')
+            return $relative
           }
           return $resolvedFullPath
         }
         $normalizedProjectPaths = New-Object System.Collections.Generic.List[string]
         foreach ($projectEntry in $inputProjectEntries) {
-          if ([string]::IsNullOrWhiteSpace($projectEntry)) { continue }
-          $candidatePath = ($projectEntry -replace '/', '\\').Trim().Trim('"').Trim()
-          $candidatePath = $candidatePath -replace '\$\((?i:Build\.SourcesDirectory)\)', $repoRoot
-          $candidatePath = $candidatePath -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $repoRoot
-          try { $relativeUnderRoot = Convert-ToRelativeIfUnderRoot -fullPath $candidatePath -rootPath $repoRoot } catch { $relativeUnderRoot = $candidatePath }
-          $chosenPath = $relativeUnderRoot
-          if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $relativeUnderRoot))) {
-            if (Test-Path -LiteralPath $candidatePath) {
-              $chosenPath = [IO.Path]::GetFullPath($candidatePath)
-            } else {
-              Write-Warning "Project path could not be verified: '$projectEntry' → '$relativeUnderRoot'. Ensure the file exists."
-              $chosenPath = $null
+          if (-not [string]::IsNullOrWhiteSpace($projectEntry)) {
+            $candidatePath = ($projectEntry -replace '/', '\\').Trim().Trim('"').Trim()
+            $candidatePath = $candidatePath -replace '\$\((?i:Build\.SourcesDirectory)\)', $repoRoot
+            $candidatePath = $candidatePath -replace '\$\((?i:System\.DefaultWorkingDirectory)\)', $repoRoot
+            try { $relativeUnderRoot = Convert-ToRelativeIfUnderRoot -fullPath $candidatePath -rootPath $repoRoot } catch { $relativeUnderRoot = $candidatePath }
+            $chosenPath = $relativeUnderRoot
+            if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $relativeUnderRoot))) {
+              if (Test-Path -LiteralPath $candidatePath) {
+                $chosenPath = [IO.Path]::GetFullPath($candidatePath)
+              } else {
+                Write-Warning "Project path could not be verified: '$projectEntry' → '$relativeUnderRoot'. Ensure the file exists."
+                $chosenPath = $null
+              }
             }
-          }
-          if (-not [string]::IsNullOrWhiteSpace($chosenPath) -and -not ($normalizedProjectPaths -contains $chosenPath)) {
-            $normalizedProjectPaths.Add($chosenPath)
+            if (-not [string]::IsNullOrWhiteSpace($chosenPath) -and -not ($normalizedProjectPaths -contains $chosenPath)) {
+              $normalizedProjectPaths.Add($chosenPath)
+            }
           }
         }
         $normalizedMultiline = ($normalizedProjectPaths -join "`n")
+        $normalizedJson = ($normalizedProjectPaths | ConvertTo-Json -Compress -AsArray)
         Write-Host "##[group]Normalized .NET project paths"
         if ($normalizedProjectPaths.Count -gt 0) { $normalizedProjectPaths | ForEach-Object { Write-Host $_ } } else { Write-Host "(none)" }
         Write-Host "##[endgroup]"
         Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$normalizedMultiline"
+        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$normalizedJson"
         if ($normalizedProjectPaths.Count -eq 0) {
-          Write-Warning "No .NET projects provided after normalization; restore/build will be skipped."
+          Write-Error "No .NET project paths resolved after normalization. Verify inputs."
         }
 
-  - task: DotNetCoreCLI@2
-    displayName: "Restore .NET projects"
-    condition: and(succeeded(), ne(variables['normalizeDotnet.projectsMultiline'], ''))
+  - task: PowerShell@2
+    displayName: "Restore .NET projects (per-project)"
+    condition: and(succeeded(), ne(variables['normalizeDotnet.projectsJson'], ''))
     inputs:
-      command: restore
-      projects: "$(normalizeDotnet.projectsMultiline)"
-      ${{ if ne(parameters.nugetConfigPath, '') }}:
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
-      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-        vstsFeed: ${{ parameters.vstsFeed }}
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        $projectsJson = '$(normalizeDotnet.projectsJson)'
+        $projects = @()
+        try { $projects = @($projectsJson | ConvertFrom-Json) } catch { $projects = @() }
+        if ($projects.Count -eq 0) { throw "No projects to restore." }
+        Write-Host "##[group]Restore .NET projects"
+        foreach ($p in $projects) {
+          $fullPath = $p
+          if (-not [System.IO.Path]::IsPathRooted($fullPath)) { $fullPath = Join-Path $env:BUILD_SOURCESDIRECTORY $p }
+          Write-Host "Restoring: $fullPath"
+          dotnet restore "$fullPath"
+          if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for $fullPath (exit $LASTEXITCODE)" }
+        }
+        Write-Host "##[endgroup]"
 
-  - task: DotNetCoreCLI@2
-    displayName: "Build .NET projects (guarded, ${{ parameters.buildConfiguration }})"
-    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalizeDotnet.projectsMultiline'], ''))
+  - task: PowerShell@2
+    displayName: "Build .NET projects (guarded per-project, ${{ parameters.buildConfiguration }})"
+    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalizeDotnet.projectsJson'], ''))
     continueOnError: ${{ parameters.buildContinueOnError }}
     inputs:
-      command: build
-      projects: "$(normalizeDotnet.projectsMultiline)"
-      arguments: "-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}"
-      ${{ if ne(parameters.nugetConfigPath, '') }}:
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
-      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-        vstsFeed: ${{ parameters.vstsFeed }}
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        $projectsJson = '$(normalizeDotnet.projectsJson)'
+        $projects = @()
+        try { $projects = @($projectsJson | ConvertFrom-Json) } catch { $projects = @() }
+        if ($projects.Count -eq 0) { Write-Host "No projects to build"; exit 0 }
+        Write-Host "##[group]Build .NET projects (${{ parameters.buildConfiguration }})"
+        foreach ($p in $projects) {
+          $fullPath = $p
+          if (-not [System.IO.Path]::IsPathRooted($fullPath)) { $fullPath = Join-Path $env:BUILD_SOURCESDIRECTORY $p }
+          Write-Host "Building: $fullPath"
+          dotnet build "$fullPath" -c "${{ parameters.buildConfiguration }}" ${{ parameters.buildAdditionalArgs }}
+          # Errors are tolerated per task's continueOnError
+        }
+        Write-Host "##[endgroup]"
 
   - task: PowerShell@2
     displayName: "Install CycloneDX .NET tool"
@@ -170,11 +195,15 @@ steps:
         $ErrorActionPreference = 'Stop'
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/dotnet" -Force | Out-Null
         $sbomOutputDirectory = "$(Agent.TempDirectory)/sbom/dotnet"
-        $normalizedProjectsRaw = '$(normalizeDotnet.projectsMultiline)'
+        # Prefer robust JSON variable; fall back to multiline if needed
         $normalizedProjects = @()
-        if (-not [string]::IsNullOrWhiteSpace($normalizedProjectsRaw)) {
-          # Correct splitting: simple newline, trim, discard empties
-          $normalizedProjects = $normalizedProjectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        $projectsJsonVar = '$(normalizeDotnet.projectsJson)'
+        if ($projectsJsonVar -and $projectsJsonVar.Trim().Length -gt 0) {
+          try { $normalizedProjects = @($projectsJsonVar | ConvertFrom-Json) } catch { $normalizedProjects = @() }
+        }
+        if (-not $normalizedProjects -or $normalizedProjects.Count -eq 0) {
+          $normalizedProjectsRaw = '$(normalizeDotnet.projectsMultiline)'
+          if ($normalizedProjectsRaw) { $normalizedProjects = $normalizedProjectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } }
         }
         Write-Host "Projects to process: $($normalizedProjects.Count)"
         if (-not $normalizedProjects -or $normalizedProjects.Count -eq 0) {
@@ -184,8 +213,8 @@ steps:
         }
         function Get-XmlValueFirstNonEmpty { param([xml]$xml, [string[]]$xpathCandidates) foreach ($xpath in $xpathCandidates) { try { $node = $xml.SelectSingleNode($xpath); if ($node -and -not [string]::IsNullOrWhiteSpace($node.InnerText)) { return $node.InnerText.Trim() } } catch {} } return $null }
         function Get-ProjectVersionFromCsproj { param([string]$csprojPath) try { [xml]$xml = Get-Content -Raw -LiteralPath $csprojPath; Get-XmlValueFirstNonEmpty -xml $xml -xpathCandidates @('/Project/PropertyGroup/PackageVersion','/Project/PropertyGroup/Version') } catch { $null } }
-        function Get-AssemblyVersionFromBin { param([string]$csprojPath) try { $projectDir = Split-Path -Parent $csprojPath; $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($csprojPath); $binDir = Join-Path $projectDir 'bin'; if (-not (Test-Path -LiteralPath $binDir)) { return $null }; $candidateDlls = Get-ChildItem -Path $binDir -Recurse -Filter "$projectBaseName*.dll" -File -EA SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending; $newestDll = $candidateDlls | Select-Object -First 1; if (-not $newestDll) { return $null }; $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName); if ($fvi -and $fvi.ProductVersion -and $fvi.ProductVersion.Trim()) { return $fvi.ProductVersion.Trim() }; if ($fvi -and $fvi.FileVersion -and $fvi.FileVersion.Trim()) { return $fvi.FileVersion.Trim() }; return $null } catch { $null } }
-        function Resolve-VersionForProject { param([string]$csprojPath) if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }; $v = Get-ProjectVersionFromCsproj -csprojPath $csprojPath; if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }; Get-AssemblyVersionFromBin -csprojPath $csprojPath }
+        function Get-AssemblyVersionFromBin { param([string]$csprojPath) try { $projectDir = Split-Path -Parent $csprojPath; $projectBaseName = [IO.Path]::GetFileNameWithoutExtension($csprojPath); $binDir = Join-Path $projectDir 'bin'; if (-not (Test-Path -LiteralPath $binDir)) { return $null }; $candidateDlls = Get-ChildItem -Path $binDir -Recurse -Filter "$projectBaseName*.dll" -File -EA SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending; $newestDll = $candidateDlls | Select-Object -First 1; if (-not $newestDll) { return $null }; $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName); if ($fvi -and $fvi.ProductVersion -and $fvi.ProductVersion.Trim()) { return $fvi.ProductVersion.Trim() } ; if ($fvi -and $fvi.FileVersion -and $fvi.FileVersion.Trim()) { return $fvi.FileVersion.Trim() } ; return $null } catch { $null } }
+        function Resolve-VersionForProject { param([string]$csprojPath) if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null } ; $v = Get-ProjectVersionFromCsproj -csprojPath $csprojPath; if (-not [string]::IsNullOrWhiteSpace($v)) { return $v } ; Get-AssemblyVersionFromBin -csprojPath $csprojPath }
         $successCount = 0; $failureCount = 0
         foreach ($projectPath in $normalizedProjects) {
           $fullProjectPath = $projectPath; if (-not [System.IO.Path]::IsPathRooted($fullProjectPath)) { $fullProjectPath = Join-Path $env:BUILD_SOURCESDIRECTORY $projectPath }
