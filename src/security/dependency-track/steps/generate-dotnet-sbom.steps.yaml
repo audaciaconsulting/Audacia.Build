@@ -92,11 +92,14 @@ steps:
         $multiline = ($validated -join "`n")
         Write-Host "##[group].NET projects"; $validated | ForEach-Object { Write-Host $_ }; Write-Host "##[endgroup]"
         Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+        # Also emit a JSON array to avoid multi-line truncation issues across tasks
+        $json = ($validated | ConvertTo-Json -Compress -AsArray)
+        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
   # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
   - task: DotNetCoreCLI@2
     displayName: 'Restore projects'
-    condition: and(succeeded(), ne(variables['normalize.projectsMultiline'], ''))
+    condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
     inputs:
       command: restore
       projects: '$(normalize.projectsMultiline)'
@@ -109,7 +112,7 @@ steps:
   - task: DotNetCoreCLI@2
     # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
     displayName: 'Build projects (non-blocking / guarded)'
-    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalize.projectsMultiline'], ''))
+    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
     continueOnError: ${{ parameters.buildContinueOnError }}
     inputs:
       command: build
@@ -142,14 +145,21 @@ steps:
   - task: PowerShell@2
     name: generate
     displayName: 'Generate SBOMs (CycloneDX JSON)'
-    condition: and(succeeded(), ne(variables['normalize.projectsMultiline'], ''))
+    condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
     inputs:
       pwsh: true
       targetType: inline
       script: |
         $ErrorActionPreference='Stop'
-        $projectsRaw = '$(normalize.projectsMultiline)'
-        $projects = $projectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        $projects = @()
+        $projectsJsonRaw = '$(normalize.projectsJson)'
+        if ($projectsJsonRaw -and $projectsJsonRaw.Trim().Length -gt 0) {
+          try { $projects = @($projectsJsonRaw | ConvertFrom-Json) } catch { $projects = @() }
+        }
+        if (-not $projects -or $projects.Count -eq 0) {
+          $projectsRaw = '$(normalize.projectsMultiline)'
+          $projects = $projectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        }
         if ($projects.Count -eq 0) { throw "No projects resolved for generation." }
 
         $outputRoot = "$(Agent.TempDirectory)/sbom/dotnet"
