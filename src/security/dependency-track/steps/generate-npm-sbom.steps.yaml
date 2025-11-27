@@ -1,4 +1,4 @@
-## Template: generate npm SBOMs using cyclonedx-npm
+# Template: generate npm SBOMs using cyclonedx-npm
 
 parameters:
   # One or more directories that contain a package.json. Accepts a single string or a multiline string.
@@ -50,7 +50,47 @@ steps:
         inputs:
           workingFile: ${{ npmrcPath }}
 
-  # UseNode@1 already sets up PATH; no extra tooling exposure needed.
+  - task: PowerShell@2
+    displayName: "Setup Node.js tooling and expose paths"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        function Get-NodeToolPaths {
+          param([string]$majorVersion)
+          $toolsRoot = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
+          if (-not (Test-Path $toolsRoot)) { throw "Node tools directory not found: $toolsRoot" }
+          $matchedVersion = Get-ChildItem $toolsRoot -Directory -Name | Where-Object { $_ -like "$majorVersion.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+          if (-not $matchedVersion) { throw "No Node $majorVersion.* found under $toolsRoot" }
+          $binDirectory = Join-Path (Join-Path $toolsRoot $matchedVersion) 'x64'
+          $nodeExe = Join-Path $binDirectory 'node.exe'
+          $npmCmd  = Join-Path $binDirectory 'npm.cmd'
+          $npxCmd  = Join-Path $binDirectory 'npx.cmd'
+          if (-not (Test-Path $nodeExe)) { throw "node.exe not found at $nodeExe" }
+          if (-not (Test-Path $npmCmd))  { throw "npm.cmd not found at $npmCmd" }
+          if (-not (Test-Path $npxCmd))  { throw "npx.cmd not found at $npxCmd" }
+          [pscustomobject]@{ Node=$nodeExe; Npm=$npmCmd; Npx=$npxCmd; Bin=$binDirectory; Version=$matchedVersion }
+        }
+
+        $requestedSpec='${{ parameters.nodeVersion }}'
+        $majorVersion = [regex]::Match($requestedSpec, '^\d+').Value
+        if (-not $majorVersion) { throw "Could not derive Node major version from spec: '$requestedSpec'." }
+        $nodeTooling = Get-NodeToolPaths -majorVersion $majorVersion
+
+        Write-Host "##[group]Node tooling (resolved)"
+        & $nodeTooling.Node --version
+        & $nodeTooling.Npm  --version
+        & $nodeTooling.Npx  --version
+        Write-Host "Resolved bin: $($nodeTooling.Bin)"
+        Write-Host "##[endgroup]"
+
+        Write-Host "##vso[task.prependpath]$($nodeTooling.Bin)"
+        $env:PATH = "$($nodeTooling.Bin);$env:PATH"
+        Write-Host "##vso[task.setvariable variable=SBOM_NODE_BIN]$($nodeTooling.Bin)"
+        Write-Host "##vso[task.setvariable variable=SBOM_NODE]$($nodeTooling.Node)"
+        Write-Host "##vso[task.setvariable variable=SBOM_NPM]$($nodeTooling.Npm)"
+        Write-Host "##vso[task.setvariable variable=SBOM_NPX]$($nodeTooling.Npx)"
 
   - task: PowerShell@2
     name: resolveNpmRoots
@@ -60,32 +100,76 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
-        $raw = @'
+
+        $rootsMultilineLiteral = @'
         ${{ parameters.npmRoots }}
         '@
-        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-        if ($lines.Count -eq 0) { throw "No npm roots supplied (npmRoots parameter)." }
 
-        $root = $env:BUILD_SOURCESDIRECTORY
-        if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
-        $root = [IO.Path]::GetFullPath($root)
-
-        $validated = New-Object System.Collections.Generic.List[string]
-        foreach ($p in $lines) {
-          $candidate = $p
-          if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
-          $pkg = Join-Path $candidate 'package.json'
-          if (-not (Test-Path -LiteralPath $pkg)) { throw "package.json not found at: $pkg" }
-          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
+        $inputRootEntries = @()
+        if (-not [string]::IsNullOrWhiteSpace($rootsMultilineLiteral)) {
+          $inputRootEntries = $rootsMultilineLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         }
 
-        # Log validated absolute roots
-        $validated | ForEach-Object { Write-Host $_ }
+        if ($inputRootEntries.Count -eq 0) {
+          throw "No package.json file-paths were provided. Provide one or more explicit directories that contain package.json."
+        }
 
-        $multiline = ($validated -join "`n")
-        $json = ($validated | ConvertTo-Json -Compress -AsArray)
-        Write-Host "##vso[task.setvariable variable=npmRootsMultiline;isOutput=true]$multiline"
-        Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$json"
+        $workspaceRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY
+        if (-not $workspaceRoot -or [string]::IsNullOrWhiteSpace($workspaceRoot)) {
+          $workspaceRoot = $env:BUILD_SOURCESDIRECTORY
+        }
+        $workspaceRootFull = [IO.Path]::GetFullPath($workspaceRoot)
+
+        function Convert-ToRelativeIfUnderRoot([string]$pathEntry, [string]$rootPath) {
+          $resolvedFullPath = [IO.Path]::GetFullPath($pathEntry)
+          if ($resolvedFullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $resolvedFullPath.Substring($rootPath.Length).TrimStart('\')
+          }
+          return $resolvedFullPath
+        }
+
+        $validatedRelativeRoots = New-Object System.Collections.Generic.List[string]
+
+        foreach ($rootEntry in $inputRootEntries) {
+          if ([string]::IsNullOrWhiteSpace($rootEntry)) { continue }
+          $normalizedEntry = ($rootEntry -replace '/', '\').Trim().Trim('"').Trim()
+
+          $normalizedEntry = $normalizedEntry -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $workspaceRootFull
+          try { $relativePath = Convert-ToRelativeIfUnderRoot -pathEntry $normalizedEntry -rootPath $workspaceRootFull } catch { $relativePath = $normalizedEntry }
+
+          $relativeOrDot = if ([string]::IsNullOrWhiteSpace($relativePath)) { '.' } else { $relativePath }
+          $absolutePath = if ([System.IO.Path]::IsPathRooted($relativePath)) { $relativePath } else { Join-Path $workspaceRootFull $relativePath }
+
+          $packageJsonPath = Join-Path $absolutePath 'package.json'
+          if (-not (Test-Path -LiteralPath $packageJsonPath)) {
+            throw "Invalid npm root: '$rootEntry' → '$relativePath'. Expected file not found: package.json"
+          }
+
+          if (-not ($validatedRelativeRoots -contains $relativeOrDot)) {
+            $validatedRelativeRoots.Add($relativeOrDot)
+          }
+        }
+
+        if ($validatedRelativeRoots.Count -eq 0) {
+          throw "Validation produced an empty list of npm roots. Ensure you pass directories that contain package.json."
+        }
+
+        Write-Host "##[group]Validated npm roots"
+        $validatedRelativeRoots | ForEach-Object { Write-Host $_ }
+        Write-Host "##[endgroup]"
+
+        $rootsArray = @()
+        $rootsArray += $validatedRelativeRoots.ToArray()
+
+        $absoluteRootsForLog = $rootsArray | ForEach-Object {
+          if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $workspaceRootFull $_ }
+        }
+
+        $rootsJson = ($rootsArray | ConvertTo-Json -Compress)
+        Write-Host "##vso[task.setvariable variable=npmRootsJson;isOutput=true]$rootsJson"
+        Write-Host "Resolved npm roots JSON: $rootsJson"
+        Write-Host "Resolved absolute path(s):"
+        $absoluteRootsForLog | ForEach-Object { Write-Host " - $_" }
 
   - task: PowerShell@2
     displayName: "Generate npm SBOMs (CycloneDX, JSON)"
@@ -94,48 +178,47 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom" -Force | Out-Null
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/npm" -Force | Out-Null
 
+        if ($env:SBOM_NODE_BIN) { $env:PATH = "$env:SBOM_NODE_BIN;$env:PATH" }
         npm config set cache "$(Pipeline.Workspace)/.npm" --global | Out-Null
 
-        # Prefer JSON list; fallback to multiline
-        $roots = @()
-        $rootsJson = '$(resolveNpmRoots.npmRootsJson)'
-        if ($rootsJson -and $rootsJson.Trim().Length -gt 0) { try { $roots = @($rootsJson | ConvertFrom-Json) } catch { $roots = @() } }
-        if (-not $roots -or $roots.Count -eq 0) {
-          $rootsMultiline = '$(resolveNpmRoots.npmRootsMultiline)'
-          if ($rootsMultiline) { $roots = $rootsMultiline -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
-        }
-        if ($roots.Count -eq 0) { throw "No npm roots resolved for generation." }
+        $validatedRootsJson = '$(resolveNpmRoots.npmRootsJson)'
+        $npmProjectRootList = @()
+        try { $npmProjectRootList = $validatedRootsJson | ConvertFrom-Json } catch { $npmProjectRootList=@() }
 
-        Write-Host ("npm projects to generate SBOMs for: {0}" -f $roots.Count)
-        foreach ($r in $roots) { Write-Host (" - {0}" -f $r) }
+        if (-not $npmProjectRootList -or $npmProjectRootList.Count -eq 0) {
+          throw "No npm project roots available after validation. This step requires explicit directories containing package.json."
+        }
 
         $includeLicenseTexts = "${{ parameters.includeLicenseTexts }}" -eq "True"
+        $outputFormat = 'json'
+        $outputExtension = 'json'
         $successCount = 0
         $failureCount = 0
+        $anyTreeIssuesOverall = $false   # Track whether any project had npm tree issues (ELSPROBLEMS etc.)
 
-        function Get-OutputBaseName([string]$absoluteProjectPath) {
-          $leaf = Split-Path $absoluteProjectPath -Leaf
-          if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = 'app' }
-          $parent = Split-Path (Split-Path $absoluteProjectPath -Parent) -Leaf
-          if ([string]::IsNullOrWhiteSpace($parent)) { $parent = 'root' }
-          return ("$parent-$leaf" -replace '[<>:"/\\|?*]', '-')
-        }
-
-        foreach ($projectRoot in $roots) {
-          $absoluteProjectPath = if ([System.IO.Path]::IsPathRooted($projectRoot)) { $projectRoot } else { Join-Path $env:BUILD_SOURCESDIRECTORY $projectRoot }
+        foreach ($projectRoot in $npmProjectRootList) {
+          $absoluteProjectPath = if ([System.IO.Path]::IsPathRooted($projectRoot)) { $projectRoot } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $projectRoot }
           $packageJsonPath  = Join-Path $absoluteProjectPath 'package.json'
           $packageLockPath = Join-Path $absoluteProjectPath 'package-lock.json'
-          if (-not (Test-Path -LiteralPath $packageJsonPath)) { throw "package.json is required but was not found at: $packageJsonPath" }
 
-          $outputFolderName = Get-OutputBaseName -absoluteProjectPath $absoluteProjectPath
-          $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $outputFolderName
+          if (-not (Test-Path -LiteralPath $packageJsonPath)) {
+            throw "package.json is required but was not found at: $packageJsonPath"
+          }
+
+          $folderName = Split-Path $absoluteProjectPath -Leaf
+          if ([string]::IsNullOrWhiteSpace($folderName)) { $folderName = 'app' }
+          $safeFolderName = ($folderName -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
+          $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $safeFolderName
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-          $outputFile = Join-Path $outputDir "$outputFolderName-sbom.json"
+          $outputFile = Join-Path $outputDir "$safeFolderName-sbom.$outputExtension"
 
-          Write-Host ("Generating npm SBOM for: {0}" -f $absoluteProjectPath)
+          $locationLabel = $absoluteProjectPath
+          if ($projectRoot -eq '.') { $locationLabel = "$absoluteProjectPath (repo root)" }
+          Write-Host "##[group]npm SBOM → $locationLabel"
           Push-Location $absoluteProjectPath
           try {
             $hasPackageLock = Test-Path -LiteralPath $packageLockPath
@@ -145,24 +228,91 @@ steps:
               if (-not $hasPackageLock) { throw "Failed to create package-lock.json in '$absoluteProjectPath'" }
             }
 
-            $args = @('--output-format','json','--output-file',$outputFile)
-            if ($includeLicenseTexts) { $args += @('--gather-license-texts'); npm ci --ignore-scripts --no-audit --no-fund --no-progress }
-            if (-not $includeLicenseTexts -and $hasPackageLock) { $args += @('--package-lock-only') }
+            if ($includeLicenseTexts) {
+              npm ci --ignore-scripts --no-audit --no-fund --no-progress
+            }
 
-            npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @args
-            if ($LASTEXITCODE -ne 0) { throw "cyclonedx-npm failed (exit $LASTEXITCODE)" }
+            # Build args and attempt tolerant run
+            $cyclonedxArgs = @('--output-format', $outputFormat, '--output-file', $outputFile)
+            if ($includeLicenseTexts) { $cyclonedxArgs += @('--gather-license-texts') }
+            if (-not $includeLicenseTexts -and $hasPackageLock) { $cyclonedxArgs += @('--package-lock-only') }
 
-            if (Test-Path $outputFile) { $successCount++ } else { $failureCount++; Write-Warning "Missing expected output: $outputFile" }
-          } catch {
-            Write-Warning "npm SBOM failed for '$absoluteProjectPath': $($_.Exception.Message)"; $failureCount++
+            $sbomWritten = $false
+            $treeIssuesThisProject = $false
+            $cmdOutput = @()
+
+            # First try (best-effort) with --ignore-npm-errors (present on newer cyclonedx-npm versions)
+            try {
+              $cyclonedxArgsWithIgnore = $cyclonedxArgs + @('--ignore-npm-errors')
+              npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgsWithIgnore 2>&1 | Tee-Object -Variable cmdOutput | Out-Default
+              if (Test-Path $outputFile) { $sbomWritten = $true }
+        
+              # Check if output contains tree issues even though command succeeded
+              $outputText = ($cmdOutput | Out-String)
+              if ($outputText -match 'ELSPROBLEMS|ERESOLVE|missing:.*required by|invalid:.*node_modules') {
+                $treeIssuesThisProject = $true
+                $anyTreeIssuesOverall = $true
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE) - SBOM generated with --ignore-npm-errors"
+              }
+            } catch {
+              # Capture error details - check both exception and command output for tree issues
+              $errorMessage = $_.Exception.Message
+              $errorOutput = $_ | Out-String
+              $fullOutput = (($cmdOutput | Out-String) + "`n" + $errorOutput + "`n" + $errorMessage)
+        
+              # Check if this is specifically an npm dependency tree issue (ELSPROBLEMS, ERESOLVE, peer deps)
+              $isTreeIssue = $fullOutput -match 'ELSPROBLEMS|ERESOLVE|peer dep|missing.*peer|conflicting peer|dependency conflict'
+        
+              if ($isTreeIssue) {
+                # This is a tolerable npm tree issue - retry and warn
+                $treeIssuesThisProject = $true
+                $anyTreeIssuesOverall = $true
+                Write-Host "##vso[task.logissue type=warning]npm dependency tree issues detected at $locationLabel (ELSPROBLEMS/ERESOLVE). Retrying SBOM generation…"
+                try {
+                  npx --yes -p @cyclonedx/cyclonedx-npm@4 cyclonedx-npm @cyclonedxArgs 2>&1 | Out-Default
+                  if (Test-Path $outputFile) { $sbomWritten = $true }
+                } catch {
+                  Write-Warning "cyclonedx-npm (fallback) failed: $($_.Exception.Message)"
+                }
+              } else {
+                # This is a different error type - don't tolerate it, fail the task
+                Write-Host "##vso[task.logissue type=error]cyclonedx-npm failed with non-tree error at $locationLabel"
+                Write-Host "Error details:"
+                Write-Host $fullOutput
+                throw $_
+              }
+            }
+
+            if ($sbomWritten) {
+              $successCount++
+              if ($treeIssuesThisProject) {
+                Write-Host "##vso[task.logissue type=warning]SBOM generated for $locationLabel, but dependency tree has issues (ELSPROBLEMS)."
+              }
+            } else {
+              $failureCount++
+            }
           } finally {
             Pop-Location | Out-Null
             Write-Host "Output: $outputFile"
+            Write-Host "##[endgroup]"
           }
         }
 
         Write-Host "##[section]npm summary → ok=$successCount, failed=$failureCount"
-        if ($failureCount -gt 0) { Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed"; exit 1 }
+
+        if ($failureCount -gt 0) {
+          Write-Host "##vso[task.logissue type=warning]Some JS SBOMs failed"
+          exit 1
+        }
+
+        # Mark the task as 'Succeeded with issues' when any tree issues were detected,
+        # but all SBOMs that we attempted were still produced.
+        if ($anyTreeIssuesOverall) {
+          Write-Host "##[warning]Dependency tree issues detected - marking task as SucceededWithIssues"
+          Write-Host "##vso[task.logissue type=warning]One or more projects had npm ELSPROBLEMS. SBOMs were generated; please fix dependency hygiene."
+          Write-Host "##vso[task.complete result=SucceededWithIssues;]Generated SBOMs with warnings"
+          exit 0
+        }
 
   - ${{ if eq(parameters.publishArtifact, true) }}:
       - task: PublishPipelineArtifact@1
