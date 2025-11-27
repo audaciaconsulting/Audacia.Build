@@ -90,7 +90,7 @@ steps:
         }
 
         $multiline = ($validated -join "`n")
-        Write-Host "##[group].NET projects"; $validated | ForEach-Object { Write-Host $_ }; Write-Host "##[endgroup]"
+        $validated | ForEach-Object { Write-Host $_ }
         Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
         # Also emit a JSON array to avoid multi-line truncation issues across tasks
         $json = ($validated | ConvertTo-Json -Compress -AsArray)
@@ -161,6 +161,8 @@ steps:
           $projects = $projectsRaw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
         }
         if ($projects.Count -eq 0) { throw "No projects resolved for generation." }
+        Write-Host ("Projects to generate SBOMs for: {0}" -f $projects.Count)
+        foreach ($p in $projects) { Write-Host (" - {0}" -f $p) }
 
         $outputRoot = "$(Agent.TempDirectory)/sbom/dotnet"
         New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
@@ -182,7 +184,7 @@ steps:
           $base = [IO.Path]::GetFileNameWithoutExtension($proj)
           $outFile = "$base-sbom.json"
           $version = Get-ProjectVersionOrNull $proj
-          Write-Host "##[group]SBOM → $proj"
+          Write-Host ("Generating SBOM for: {0}" -f $proj)
           if ($version) { Write-Host "Version inferred: $version" }
           $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile)
           if ($version) { $args += @('--set-version',$version) }
@@ -194,7 +196,6 @@ steps:
             if (Test-Path (Join-Path $outputRoot $outFile)) { $ok++ } else { $failed++; Write-Warning "Missing expected output: $outFile" }
           }
           Write-Host "Output: $(Join-Path $outputRoot $outFile)"
-          Write-Host "##[endgroup]"
         }
 
         Write-Host "##[section].NET summary → ok=$ok, failed=$failed"
