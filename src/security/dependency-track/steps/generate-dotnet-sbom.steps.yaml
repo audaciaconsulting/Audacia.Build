@@ -270,9 +270,9 @@ steps:
               Sort-Object LastWriteTimeUtc -Descending
             $newestDll = $candidateDlls | Select-Object -First 1
             if (-not $newestDll) { return $null }
-            $fvi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName)
-            if ($fvi -and $fvi.ProductVersion -and $fvi.ProductVersion.Trim()) { return $fvi.ProductVersion.Trim() }
-            if ($fvi -and $fvi.FileVersion -and $fvi.FileVersion.Trim())     { return $fvi.FileVersion.Trim() }
+            $fileVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($newestDll.FullName)
+            if ($fileVersionInfo -and $fileVersionInfo.ProductVersion -and $fileVersionInfo.ProductVersion.Trim()) { return $fileVersionInfo.ProductVersion.Trim() }
+            if ($fileVersionInfo -and $fileVersionInfo.FileVersion -and $fileVersionInfo.FileVersion.Trim())     { return $fileVersionInfo.FileVersion.Trim() }
             return $null
           } catch { return $null }
         }
@@ -282,8 +282,8 @@ steps:
             [string]$csprojPath
           )
           if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
-          $projVersion = Get-ProjectVersionFromCsproj -csprojPath $csprojPath
-          if (-not [string]::IsNullOrWhiteSpace($projVersion)) { return $projVersion }
+          $resolvedProjectVersion = Get-ProjectVersionFromCsproj -csprojPath $csprojPath
+          if (-not [string]::IsNullOrWhiteSpace($resolvedProjectVersion)) { return $resolvedProjectVersion }
           return Get-AssemblyVersionFromBin -csprojPath $csprojPath
         }
 
