@@ -107,7 +107,8 @@ steps:
 
   # 3. Optional guarded build (improves version resolution).
   - task: DotNetCoreCLI@2
-    displayName: 'Build projects (guarded)' 
+    # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
+    displayName: 'Build projects (non-blocking / guarded)'
     condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), ne(variables['normalize.projectsMultiline'], ''))
     continueOnError: ${{ parameters.buildContinueOnError }}
     inputs:
