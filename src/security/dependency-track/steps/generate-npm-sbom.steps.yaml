@@ -209,8 +209,19 @@ steps:
             throw "package.json is required but was not found at: $packageJsonPath"
           }
 
-          $folderName = Split-Path $absoluteProjectPath -Leaf
-          if ([string]::IsNullOrWhiteSpace($folderName)) { $folderName = 'app' }
+          # Get the last two folder names from the path to create a more unique identifier
+          $parentPath = Split-Path $absoluteProjectPath -Parent
+          $grandparentName = Split-Path $parentPath -Leaf
+          $immediateParentName = Split-Path $absoluteProjectPath -Leaf
+          
+          if ([string]::IsNullOrWhiteSpace($grandparentName)) {
+            # Fallback to single folder name if we can't get grandparent
+            $folderName = if ([string]::IsNullOrWhiteSpace($immediateParentName)) { 'app' } else { $immediateParentName }
+          } else {
+            # Combine grandparent and parent folder names
+            $folderName = "$grandparentName.$immediateParentName"
+          }
+          
           $safeFolderName = ($folderName -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.',' ')
           $outputDir = Join-Path "$(Agent.TempDirectory)/sbom/npm" $safeFolderName
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
