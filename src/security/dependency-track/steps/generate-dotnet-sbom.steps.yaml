@@ -19,6 +19,12 @@ parameters:
     type: string
     default: ''
 
+  # Optional url for a nuget package source
+  # Use for explicitly specifying a source for CycloneDX to download packages from.
+  - name: nugetSourceUrl
+    type: string
+    default: ''
+
   # Publish the SBOM output from this step. Set false when combining with npm to publish once later.
   - name: publishArtifact
     type: boolean
@@ -104,6 +110,7 @@ steps:
       command: restore
       projects: '$(normalize.projectsMultiline)'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
+        feedsToUse: 'config'
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
@@ -119,6 +126,7 @@ steps:
       projects: '$(normalize.projectsMultiline)'
       arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
+        feedsToUse: 'config'
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
@@ -188,7 +196,11 @@ steps:
           if ($version) { Write-Host "Version inferred: $version" }
           $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile)
           if ($version) { $args += @('--set-version',$version) }
-          dotnet CycloneDX @args
+          if ('${{ parameters.nugetSourceUrl }}' -ne '') {
+            dotnet CycloneDX @args -u '${{ parameters.nugetSourceUrl }}'
+          } else {
+            dotnet CycloneDX @args
+          }
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "CycloneDX failed (exit $LASTEXITCODE)"
             $failed++
