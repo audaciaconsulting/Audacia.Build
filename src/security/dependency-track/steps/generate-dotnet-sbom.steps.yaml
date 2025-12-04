@@ -197,7 +197,7 @@ steps:
           $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile)
           if ($version) { $args += @('--set-version',$version) }
           if ('${{ parameters.nugetSourceUrl }}' -ne '') {
-            dotnet CycloneDX @args -u '${{ parameters.nugetSourceUrl }}'
+            dotnet CycloneDX @args --package-source '${{ parameters.nugetSourceUrl }}'
           } else {
             dotnet CycloneDX @args
           }
