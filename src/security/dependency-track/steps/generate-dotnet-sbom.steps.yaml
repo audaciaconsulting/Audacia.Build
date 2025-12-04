@@ -19,12 +19,6 @@ parameters:
     type: string
     default: ''
 
-  # Optional url for a nuget package source
-  # Use for explicitly specifying a source for CycloneDX to download packages from.
-  - name: nugetSourceUrl
-    type: string
-    default: ''
-
   # Publish the SBOM output from this step. Set false when combining with npm to publish once later.
   - name: publishArtifact
     type: boolean
@@ -196,11 +190,7 @@ steps:
           if ($version) { Write-Host "Version inferred: $version" }
           $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile)
           if ($version) { $args += @('--set-version',$version) }
-          if ('${{ parameters.nugetSourceUrl }}' -ne '') {
-            dotnet CycloneDX @args --package-source '${{ parameters.nugetSourceUrl }}'
-          } else {
-            dotnet CycloneDX @args
-          }
+          dotnet CycloneDX @args
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "CycloneDX failed (exit $LASTEXITCODE)"
             $failed++
