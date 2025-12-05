@@ -188,7 +188,7 @@ steps:
           $version = Get-ProjectVersionOrNull $proj
           Write-Host ("Generating SBOM for: {0}" -f $proj)
           if ($version) { Write-Host "Version inferred: $version" }
-          $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile, '-u','https://pkgs.dev.azure.com/audacia/Audacia.Public/_packaging/AudaciaPublic/nuget/v3/index.json') 
+          $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile) 
           if ($version) { $args += @('--set-version',$version) }
           dotnet CycloneDX @args
           if ($LASTEXITCODE -ne 0) {
