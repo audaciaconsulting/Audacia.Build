@@ -100,7 +100,7 @@ jobs:
 
       - template: /src/build/dotnet/tasks/netcore/assembly-sign.yaml
         parameters:
-          trustedSigningEndpoint: ${{ parameters. trustedSigningEndpoint }}
+          trustedSigningEndpoint: ${{ parameters.trustedSigningEndpoint }}
           trustedSigningAccount: ${{ parameters.trustedSigningAccount }}
           trustedSigningCertificateProfile: ${{ parameters.trustedSigningCertificateProfile }}
           directory: ${{ parameters.directory }}
@@ -117,7 +117,7 @@ jobs:
 
       - template: /src/build/dotnet/tasks/netcore/package-sign.yaml
         parameters:
-          trustedSigningEndpoint: ${{ parameters. trustedSigningEndpoint }}
+          trustedSigningEndpoint: ${{ parameters.trustedSigningEndpoint }}
           trustedSigningAccount: ${{ parameters.trustedSigningAccount }}
           trustedSigningCertificateProfile: ${{ parameters.trustedSigningCertificateProfile }}
           serviceConnection: ${{ parameters.serviceConnection }}
