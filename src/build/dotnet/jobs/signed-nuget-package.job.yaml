@@ -22,14 +22,34 @@ parameters:
     default: true
   - name: applyVersioning
     default: true
+  - name: dotNetVersion
+    default: ''
+  - name: trustedSigningEndpoint
+    type: string
+  - name: trustedSigningAccount
+    type: string
+  - name: trustedSigningCertificateProfile
+    type: string
+  - name: directory
+    type: string
+  - name: fileToSignPattern
+    type: string
+  - name: serviceConnection
+    type: string
 
 jobs:
   - job: Job_Build
+    # Code signing using Trusted Signing only works on Windows
+    pool:
+      vmImage: windows-latest
     displayName: ${{parameters.displayName}}
-    variables:
-      - group: Code Signing
-
+    
     steps:
+      - ${{ if ne(parameters.dotNetVersion, '') }}:
+        - task: UseDotNet@2
+          inputs:
+            version: '${{ parameters.dotNetVersion }}'
+      
       - ${{ if eq(parameters.skipDependencyChecks, false) }}:
         - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
           parameters:
@@ -52,6 +72,7 @@ jobs:
         inputs:
           command: restore
           projects: ${{parameters.projects}}
+          vstsFeed: 'Audacia.Public/AudaciaPublic'
 
       - task: DownloadSecureFile@1
         displayName: Get Strong Naming Certificate
@@ -79,7 +100,12 @@ jobs:
 
       - template: /src/build/dotnet/tasks/netcore/assembly-sign.yaml
         parameters:
-          projects: ${{parameters.projects}}
+          trustedSigningEndpoint: ${{ parameters.trustedSigningEndpoint }}
+          trustedSigningAccount: ${{ parameters.trustedSigningAccount }}
+          trustedSigningCertificateProfile: ${{ parameters.trustedSigningCertificateProfile }}
+          directory: ${{ parameters.directory }}
+          fileToSignPattern: ${{ parameters.fileToSignPattern }}
+          serviceConnection: ${{ parameters.serviceConnection }}
 
       - task: DotNetCoreCLI@2
         displayName: .NET Pack
@@ -89,18 +115,13 @@ jobs:
           includesymbols: false
           packagesToPack: ${{parameters.projects}}
 
-      - task: NuGetToolInstaller@1
-        displayName: Get Nuget
-        inputs:
-          versionSpec: '4.9.3'
-
-      - task: NuGetCommand@2
-        displayName: NuGet Sign
-        condition: and(succeeded(), and(not(eq(variables['Build.Reason'], 'PullRequest')), not(eq(variables['Build.Reason'], 'Schedule'))))
-        inputs:
-          command: 'custom'
-          arguments: sign "$(build.ArtifactStagingDirectory)\*.nupkg" -CertificatePath "$(CodeSignCertificate.secureFilePath)" -CertificatePassword "$(CertificatePassword)" -Timestamper "http://timestamp.digicert.com"
-
+      - template: /src/build/dotnet/tasks/netcore/package-sign.yaml
+        parameters:
+          trustedSigningEndpoint: ${{ parameters.trustedSigningEndpoint }}
+          trustedSigningAccount: ${{ parameters.trustedSigningAccount }}
+          trustedSigningCertificateProfile: ${{ parameters.trustedSigningCertificateProfile }}
+          serviceConnection: ${{ parameters.serviceConnection }}
+      
       - template: /src/build/common/tasks/publish.yaml
         parameters:
           path: ''
