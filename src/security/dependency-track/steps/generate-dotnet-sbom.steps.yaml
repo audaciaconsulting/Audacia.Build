@@ -91,7 +91,7 @@ steps:
 
         $multiline = ($validated -join "%0A")
         $validated | ForEach-Object { Write-Host $_ }
-        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$encoded"
+        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
         # Also emit a JSON array to avoid multi-line truncation issues across tasks
         $json = ($validated | ConvertTo-Json -Compress -AsArray)
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
