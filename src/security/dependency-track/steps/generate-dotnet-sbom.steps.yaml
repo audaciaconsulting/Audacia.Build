@@ -86,7 +86,8 @@ steps:
           if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
           if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
           if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
-          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
+          # if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
+          $validated.Add($candidate)
         }
 
         $multiline = ($validated -join "`n")
@@ -99,10 +100,10 @@ steps:
   # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
   - task: DotNetCoreCLI@2
     displayName: 'Restore projects'
-    #condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+    condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
     inputs:
       command: restore
-      projects: ${{ parameters.dotnetProjects }}
+      projects: '$(normalize.projectsMultiline)'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         feedsToUse: 'config'
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
@@ -113,11 +114,11 @@ steps:
   - task: DotNetCoreCLI@2
     # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
     displayName: 'Build projects (non-blocking / guarded)'
-    #condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
     continueOnError: ${{ parameters.buildContinueOnError }}
     inputs:
       command: build
-      projects: ${{ parameters.dotnetProjects }}
+      projects: '$(normalize.projectsMultiline)'
       arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         feedsToUse: 'config'
