@@ -86,13 +86,12 @@ steps:
           if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
           if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
           if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
-          # if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
-          $validated.Add($candidate)
+          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
         }
 
-        $multiline = ($validated -join "`n")
+        $multiline = ($validated -join "%0A")
         $validated | ForEach-Object { Write-Host $_ }
-        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$encoded"
         # Also emit a JSON array to avoid multi-line truncation issues across tasks
         $json = ($validated | ConvertTo-Json -Compress -AsArray)
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
