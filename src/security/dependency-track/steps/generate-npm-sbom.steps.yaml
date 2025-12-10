@@ -7,6 +7,11 @@ parameters:
     type: string
     default: ''
 
+  # When set to true, allows legacy peer dependencies to be installed.
+  - name: allowNpmLegacyPeerDeps
+    type: boolean
+    default: false
+
   # Node.js version spec understood by UseNode (e.g., "22.x"). The major version is resolved on the hosted agent.
   - name: nodeVersion
     type: string
@@ -194,6 +199,7 @@ steps:
         }
 
         $includeLicenseTexts = "${{ parameters.includeLicenseTexts }}" -eq "True"
+        $allowLegacyPeersDeps = "${{ parameters.allowNpmLegacyPeerDeps }}" -eq "True"
         $outputFormat = 'json'
         $outputExtension = 'json'
         $successCount = 0
@@ -239,7 +245,9 @@ steps:
               if (-not $hasPackageLock) { throw "Failed to create package-lock.json in '$absoluteProjectPath'" }
             }
 
-            if ($includeLicenseTexts) {
+            if ($includeLicenseTexts -and $allowLegacyPeersDeps) {
+              npm ci --ignore-scripts --no-audit --no-fund --no-progress --legacy-peer-deps
+            } elseif ($includeLicenseTexts) {
               npm ci --ignore-scripts --no-audit --no-fund --no-progress
             }
 
