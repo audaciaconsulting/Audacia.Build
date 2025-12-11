@@ -75,7 +75,7 @@ steps:
         if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
         $root = [IO.Path]::GetFullPath($root)
 
-        $projectsJson = '${{ convertToJson(parameters.dotnetProjectsString) }}'
+        $projectsJson = '${{ convertToJson(parameters.dotnetProjects) }}'
         $projects = $projectsJson | ConvertFrom-Json
 
         $validated = New-Object System.Collections.Generic.List[string]
