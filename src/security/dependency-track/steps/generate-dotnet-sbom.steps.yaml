@@ -149,8 +149,8 @@ steps:
           vstsFeed: ${{ parameters.vstsFeed }}
 
     # 3. Build Projects
-    - task: VSBuild@1
-      name: VSBuild2
+    - task: MSBuild@1
+      name: MSBuild1
       displayName: Build Projects
       inputs:
         solution: ${{ parameters.dotnetProjects }}
