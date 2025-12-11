@@ -131,7 +131,7 @@ steps:
           nugetConfigPath: ${{ parameters.nugetConfigPath }}
         ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
           vstsFeed: ${{ parameters.vstsFeed }}
-          
+
   - ${{ else }}:
     # 2. Nuget Restore
     - task: NuGetToolInstaller@1
@@ -142,8 +142,11 @@ steps:
       displayName: NuGet restore
       inputs:
         solution: ${{ parameters.dotnetProjects }}
-        selectOrConfig: config
-        nugetConfigPath: .nuget/NuGet.Config
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          selectOrConfig: config
+          nugetConfigPath: .nuget/NuGet.Config
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
 
     # 3. Build Projects
     - task: VSBuild@1
