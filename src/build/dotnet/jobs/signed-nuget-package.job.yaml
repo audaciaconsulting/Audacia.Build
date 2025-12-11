@@ -88,6 +88,10 @@ jobs:
           configuration: ${{parameters.configuration}}
           msbuildArguments: /p:AssemblyOriginatorKeyFile=$(StrongNameCertificate.secureFilePath)
 
+      - template: /src/build/common/steps/nuget-license-check.steps.yaml
+        parameters:
+          projectPaths: ${{parameters.projects}}
+          
       - task: DotNetCoreCLI@2
         displayName: .NET Test
         condition: and(succeeded(), eq('${{parameters.runTests}}', true))
