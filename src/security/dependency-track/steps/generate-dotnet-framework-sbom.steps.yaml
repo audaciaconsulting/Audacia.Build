@@ -1,11 +1,10 @@
 ## Template: generate .NET SBOMs using CycloneDX (Simplified)
 
 parameters:
-  # One or more .csproj paths. Accepts a single string or a multiline string.
+  # One or more .csproj paths.
   # Paths may be repo-relative (preferred) or absolute. Mixed separators are normalized.
   - name: dotnetProjects
-    type: string
-    default: ''
+    type: object
 
   # Azure Artifacts feed to use for restore when no custom NuGet config is provided.
   # Example formats: "Org/FeedName" or a GUID feed id. Ignored if nugetConfigPath is set.
@@ -62,69 +61,65 @@ steps:
     displayName: 'Authenticate (Azure Artifacts)'
 
   # 1. Parse the multiline project list and validate.
-  - task: PowerShell@2
-    name: normalize
-    displayName: 'Validate & capture .csproj list'
+#  - task: PowerShell@2
+#    name: normalize
+#    displayName: 'Validate & capture .csproj list'
+#    inputs:
+#      pwsh: true
+#      targetType: inline
+#      script: |
+#        $ErrorActionPreference = 'Stop'
+#        $raw = @'
+#        ${{ parameters.dotnetProjects }}
+#        '@
+#        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+#        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
+#
+#        $root = $env:BUILD_SOURCESDIRECTORY
+#        if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
+#        $root = [IO.Path]::GetFullPath($root)
+#
+#        $validated = New-Object System.Collections.Generic.List[string]
+#        foreach ($p in $lines) {
+#          $candidate = $p
+#          if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
+#          if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
+#          if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
+#          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
+#        }
+#
+#        $multiline = ($validated -join "%0A")
+#        $validated | ForEach-Object { Write-Host $_ }
+#        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+#        # Also emit a JSON array to avoid multi-line truncation issues across tasks
+#        $json = ($validated | ConvertTo-Json -Compress -AsArray)
+#        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
+
+
+  # 2. Nuget Restore
+  - task: NuGetToolInstaller@1
+    displayName: 'Use NuGet'
+
+  - task: NuGetCommand@2
+    name: NuGetCommand1
+    displayName: NuGet restore
     inputs:
-      pwsh: true
-      targetType: inline
-      script: |
-        $ErrorActionPreference = 'Stop'
-        $raw = @'
-        ${{ parameters.dotnetProjects }}
-        '@
-        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
-
-        $root = $env:BUILD_SOURCESDIRECTORY
-        if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
-        $root = [IO.Path]::GetFullPath($root)
-
-        $validated = New-Object System.Collections.Generic.List[string]
-        foreach ($p in $lines) {
-          $candidate = $p
-          if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
-          if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
-          if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
-          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
-        }
-
-        $multiline = ($validated -join "%0A")
-        $validated | ForEach-Object { Write-Host $_ }
-        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
-        # Also emit a JSON array to avoid multi-line truncation issues across tasks
-        $json = ($validated | ConvertTo-Json -Compress -AsArray)
-        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
-
-
-  # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore projects'
-    condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-    inputs:
-      command: restore
-      projects: '$(normalize.projectsMultiline)'
+      solution: ${{ parameters.dotnetProjects }}
       ${{ if ne(parameters.nugetConfigPath, '') }}:
-        feedsToUse: 'config'
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
+        selectOrConfig: config
+        nugetConfigPath: .nuget/NuGet.Config
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
 
-  # 3. Optional guarded build (improves version resolution).
-  - task: DotNetCoreCLI@2
-    # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
-    displayName: 'Build projects (non-blocking / guarded)'
-    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-    continueOnError: ${{ parameters.buildContinueOnError }}
-    inputs:
-      command: build
-      projects: '$(normalize.projectsMultiline)'
-      arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
-      ${{ if ne(parameters.nugetConfigPath, '') }}:
-        feedsToUse: 'config'
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
-      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-        vstsFeed: ${{ parameters.vstsFeed }}
+  # 3. Build Projects
+  - ${{ each proj in parameters.dotnetProjects }}:
+    - task: VSBuild@1
+      displayName: 'Build ${{ proj }}'
+      inputs:
+        solution: ${{ proj }}
+        msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
+        platform: 'AnyCPU'
+        configuration: 'Release'
 
   # 4. Ensure CycloneDX tool available.
   - task: PowerShell@2
