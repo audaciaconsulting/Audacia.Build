@@ -7,6 +7,9 @@ parameters:
     type: object
     default: []
 
+  - name: dotnetProjectsString
+    type: string
+
   # Azure Artifacts feed to use for restore when no custom NuGet config is provided.
   # Example formats: "Org/FeedName" or a GUID feed id. Ignored if nugetConfigPath is set.
   - name: vstsFeed
@@ -70,13 +73,18 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
-        
+        $raw = @'
+        ${{ parameters.dotnetProjectsString }}
+        '@
+        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
+
         $root = $env:BUILD_SOURCESDIRECTORY
         if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
         $root = [IO.Path]::GetFullPath($root)
 
         $validated = New-Object System.Collections.Generic.List[string]
-        foreach ($p in ${{ parameters.dotnetProjects }}) {
+        foreach ($p in $lines) {
           $candidate = $p
           if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
           if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
