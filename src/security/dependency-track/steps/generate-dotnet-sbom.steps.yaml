@@ -141,7 +141,7 @@ steps:
       name: NuGetCommand1
       displayName: NuGet restore
       inputs:
-        solution: ${{ parameters.dotnetProjects }}
+        solution: '$(normalize.projectsMultiline)'
         ${{ if ne(parameters.nugetConfigPath, '') }}:
           selectOrConfig: config
           nugetConfigPath: .nuget/NuGet.Config
@@ -149,11 +149,11 @@ steps:
           vstsFeed: ${{ parameters.vstsFeed }}
 
     # 3. Build Projects
-    - ${{ each proj in parameters.dotnetProjects }}:
+    - ${{ each proj in split(variables['normalize.projectsMultiline'], '%0A') }}:
       - task: VSBuild@1
-        displayName: Build Project
+        displayName: 'Build ${{ proj }}'
         inputs:
-          solution: ${{ proj }}
+          solution: '${{ proj }}'
           msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
           platform: 'AnyCPU'
           configuration: 'Release'
