@@ -62,40 +62,41 @@ steps:
     displayName: 'Authenticate (Azure Artifacts)'
 
   # 1. Parse the multiline project list and validate.
-#  - task: PowerShell@2
-#    name: normalize
-#    displayName: 'Validate & capture .csproj list'
-#    inputs:
-#      pwsh: true
-#      targetType: inline
-#      script: |
-#        $ErrorActionPreference = 'Stop'
-#        $raw = @'
-#        ${{ parameters.dotnetProjects }}
-#        '@
-#        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-#        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
-#
-#        $root = $env:BUILD_SOURCESDIRECTORY
-#        if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
-#        $root = [IO.Path]::GetFullPath($root)
-#
-#        $validated = New-Object System.Collections.Generic.List[string]
-#        foreach ($p in $lines) {
-#          $candidate = $p
-#          if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
-#          if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
-#          if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
-#          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
-#        }
-#
-#        $multiline = ($validated -join "%0A")
-#        $validated | ForEach-Object { Write-Host $_ }
-#        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
-#        # Also emit a JSON array to avoid multi-line truncation issues across tasks
-#        $json = ($validated | ConvertTo-Json -Compress -AsArray)
-#        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
+  - task: PowerShell@2
+    name: normalize
+    displayName: 'Validate & capture .csproj list'
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        $raw = @(
+          ${{ each project in parameters.dotnetProjects }}:
+            '${{ project }}'
+          ${{ end }}
+        )
+        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
 
+        $root = $env:BUILD_SOURCESDIRECTORY
+        if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
+        $root = [IO.Path]::GetFullPath($root)
+
+        $validated = New-Object System.Collections.Generic.List[string]
+        foreach ($p in $lines) {
+          $candidate = $p
+          if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
+          if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
+          if ([IO.Path]::GetExtension($candidate) -ne '.csproj') { throw "Not a .csproj file: $candidate" }
+          if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
+        }
+
+        $multiline = ($validated -join "%0A")
+        $validated | ForEach-Object { Write-Host $_ }
+        Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
+        # Also emit a JSON array to avoid multi-line truncation issues across tasks
+        $json = ($validated | ConvertTo-Json -Compress -AsArray)
+        Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
   # 2. Nuget Restore
   - task: NuGetToolInstaller@1
