@@ -240,7 +240,7 @@ steps:
             }
 
             if ($includeLicenseTexts) {
-              npm ci --ignore-scripts --no-audit --no-fund --no-progress
+              npm ci --ignore-scripts --no-audit --no-fund --no-progress --legacy-peer-deps
             }
 
             # Build args and attempt tolerant run

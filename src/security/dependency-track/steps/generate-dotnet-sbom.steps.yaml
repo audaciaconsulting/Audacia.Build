@@ -89,7 +89,7 @@ steps:
           if (-not ($validated -contains $candidate)) { $validated.Add($candidate) }
         }
 
-        $multiline = ($validated -join "`n")
+        $multiline = ($validated -join "%0A")
         $validated | ForEach-Object { Write-Host $_ }
         Write-Host "##vso[task.setvariable variable=projectsMultiline;isOutput=true]$multiline"
         # Also emit a JSON array to avoid multi-line truncation issues across tasks
@@ -104,6 +104,7 @@ steps:
       command: restore
       projects: '$(normalize.projectsMultiline)'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
+        feedsToUse: 'config'
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
@@ -119,6 +120,7 @@ steps:
       projects: '$(normalize.projectsMultiline)'
       arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
       ${{ if ne(parameters.nugetConfigPath, '') }}:
+        feedsToUse: 'config'
         nugetConfigPath: ${{ parameters.nugetConfigPath }}
       ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
         vstsFeed: ${{ parameters.vstsFeed }}
