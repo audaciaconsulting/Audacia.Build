@@ -149,14 +149,14 @@ steps:
           vstsFeed: ${{ parameters.vstsFeed }}
 
     # 3. Build Projects
-    - task: MSBuild@1
-      name: MSBuild1
-      displayName: Build Projects
-      inputs:
-        solution: ${{ parameters.dotnetProjects }}
-        msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
-        platform: 'AnyCPU'
-        configuration: 'Release'
+    - ${{ each proj in parameters.dotnetProjects }}:
+      - task: VSBuild@1
+        displayName: Build Project
+        inputs:
+          solution: ${{ proj }}
+          msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
+          platform: 'AnyCPU'
+          configuration: 'Release'
 
   # 4. Ensure CycloneDX tool available.
   - task: PowerShell@2
