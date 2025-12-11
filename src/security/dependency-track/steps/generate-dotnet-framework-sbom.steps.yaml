@@ -70,20 +70,13 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
-        $raw = @(
-          ${{ each project in parameters.dotnetProjects }}:
-            '${{ project }}'
-          ${{ end }}
-        )
-        $lines = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-        if ($lines.Count -eq 0) { throw "No .csproj paths supplied (dotnetProjects parameter)." }
-
+        
         $root = $env:BUILD_SOURCESDIRECTORY
         if (-not $root) { $root = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
         $root = [IO.Path]::GetFullPath($root)
 
         $validated = New-Object System.Collections.Generic.List[string]
-        foreach ($p in $lines) {
+        foreach ($p in ${{ parameters.dotnetProjects }}) {
           $candidate = $p
           if (-not [IO.Path]::IsPathRooted($candidate)) { $candidate = Join-Path $root $candidate }
           if (-not (Test-Path -LiteralPath $candidate)) { throw "Path not found: $p (resolved '$candidate')" }
