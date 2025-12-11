@@ -131,6 +131,7 @@ steps:
           nugetConfigPath: ${{ parameters.nugetConfigPath }}
         ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
           vstsFeed: ${{ parameters.vstsFeed }}
+          
   - ${{ else }}:
     # 2. Nuget Restore
     - task: NuGetToolInstaller@1
@@ -140,7 +141,7 @@ steps:
       name: NuGetCommand1
       displayName: NuGet restore
       inputs:
-        solution: '$(normalize.projectsMultiline)'
+        solution: ${{ parameters.dotnetProjects }}
         selectOrConfig: config
         nugetConfigPath: .nuget/NuGet.Config
 
@@ -149,7 +150,7 @@ steps:
       name: VSBuild2
       displayName: Build Projects
       inputs:
-        solution: '$(normalize.projectsMultiline)'
+        solution: ${{ parameters.dotnetProjects }}
         msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
         platform: 'AnyCPU'
         configuration: 'Release'
