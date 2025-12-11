@@ -5,6 +5,7 @@ parameters:
   # Paths may be repo-relative (preferred) or absolute. Mixed separators are normalized.
   - name: dotnetProjects
     type: object
+    default: []
 
   # Azure Artifacts feed to use for restore when no custom NuGet config is provided.
   # Example formats: "Org/FeedName" or a GUID feed id. Ignored if nugetConfigPath is set.
@@ -104,7 +105,6 @@ steps:
     name: NuGetCommand1
     displayName: NuGet restore
     inputs:
-      solution: ${{ parameters.dotnetProjects }}
       ${{ if ne(parameters.nugetConfigPath, '') }}:
         selectOrConfig: config
         nugetConfigPath: .nuget/NuGet.Config
