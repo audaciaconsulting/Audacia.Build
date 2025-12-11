@@ -7,6 +7,11 @@ parameters:
     type: string
     default: ''
 
+  # TODO: Add documentation for this parameter
+  - name: isDotnetFramework
+    type: boolean
+    default: false
+
   # Azure Artifacts feed to use for restore when no custom NuGet config is provided.
   # Example formats: "Org/FeedName" or a GUID feed id. Ignored if nugetConfigPath is set.
   - name: vstsFeed
@@ -96,34 +101,58 @@ steps:
         $json = ($validated | ConvertTo-Json -Compress -AsArray)
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
-  # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore projects'
-    condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-    inputs:
-      command: restore
-      projects: '$(normalize.projectsMultiline)'
-      ${{ if ne(parameters.nugetConfigPath, '') }}:
-        feedsToUse: 'config'
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
-      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-        vstsFeed: ${{ parameters.vstsFeed }}
 
-  # 3. Optional guarded build (improves version resolution).
-  - task: DotNetCoreCLI@2
-    # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
-    displayName: 'Build projects (non-blocking / guarded)'
-    condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-    continueOnError: ${{ parameters.buildContinueOnError }}
-    inputs:
-      command: build
-      projects: '$(normalize.projectsMultiline)'
-      arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
-      ${{ if ne(parameters.nugetConfigPath, '') }}:
-        feedsToUse: 'config'
-        nugetConfigPath: ${{ parameters.nugetConfigPath }}
-      ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-        vstsFeed: ${{ parameters.vstsFeed }}
+  - ${{ if eq(parameters.isDotnetFramework, false) }}:
+    # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore projects'
+      condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+      inputs:
+        command: restore
+        projects: '$(normalize.projectsMultiline)'
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          feedsToUse: 'config'
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
+
+    # 3. Optional guarded build (improves version resolution).
+    - task: DotNetCoreCLI@2
+      # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
+      displayName: 'Build projects (non-blocking / guarded)'
+      condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+      continueOnError: ${{ parameters.buildContinueOnError }}
+      inputs:
+        command: build
+        projects: '$(normalize.projectsMultiline)'
+        arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          feedsToUse: 'config'
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
+  - ${{ else }}:
+    # 2. Nuget Restore
+    - task: NuGetToolInstaller@1
+      displayName: 'Use NuGet'
+
+    - task: NuGetCommand@2
+      name: NuGetCommand1
+      displayName: NuGet restore
+      inputs:
+        solution: '$(normalize.projectsMultiline)'
+        selectOrConfig: config
+        nugetConfigPath: .nuget/NuGet.Config
+
+    # 3. Build Projects
+    - task: VSBuild@1
+      name: VSBuild2
+      displayName: Build Projects
+      inputs:
+        solution: '$(normalize.projectsMultiline)'
+        msbuildArgs: /t:Rebuild  /p:Configuration=Release;OutDir=$(Build.ArtifactStagingDirectory)
+        platform: 'AnyCPU'
+        configuration: 'Release'
 
   # 4. Ensure CycloneDX tool available.
   - task: PowerShell@2
