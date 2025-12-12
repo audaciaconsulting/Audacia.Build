@@ -103,34 +103,34 @@ steps:
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
   - ${{ if eq(parameters.isDotnetFramework, false) }}:
-    # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
-    - task: DotNetCoreCLI@2
-      displayName: 'Restore projects'
-      condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-      inputs:
-        command: restore
-        projects: '$(normalize.projectsMultiline)'
-        ${{ if ne(parameters.nugetConfigPath, '') }}:
-          feedsToUse: 'config'
-          nugetConfigPath: ${{ parameters.nugetConfigPath }}
-        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-          vstsFeed: ${{ parameters.vstsFeed }}
+      # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
+      - task: DotNetCoreCLI@2
+        displayName: 'Restore projects'
+        condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+        inputs:
+          command: restore
+          projects: '$(normalize.projectsMultiline)'
+          ${{ if ne(parameters.nugetConfigPath, '') }}:
+            feedsToUse: 'config'
+            nugetConfigPath: ${{ parameters.nugetConfigPath }}
+          ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+            vstsFeed: ${{ parameters.vstsFeed }}
 
-    # 3. Optional guarded build (improves version resolution).
-    - task: DotNetCoreCLI@2
-      # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
-      displayName: 'Build projects (non-blocking / guarded)'
-      condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-      continueOnError: ${{ parameters.buildContinueOnError }}
-      inputs:
-        command: build
-        projects: '$(normalize.projectsMultiline)'
-        arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
-        ${{ if ne(parameters.nugetConfigPath, '') }}:
-          feedsToUse: 'config'
-          nugetConfigPath: ${{ parameters.nugetConfigPath }}
-        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-          vstsFeed: ${{ parameters.vstsFeed }}
+      # 3. Optional guarded build (improves version resolution).
+      - task: DotNetCoreCLI@2
+        # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
+        displayName: 'Build projects (non-blocking / guarded)'
+        condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+        continueOnError: ${{ parameters.buildContinueOnError }}
+        inputs:
+          command: build
+          projects: '$(normalize.projectsMultiline)'
+          arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
+          ${{ if ne(parameters.nugetConfigPath, '') }}:
+            feedsToUse: 'config'
+            nugetConfigPath: ${{ parameters.nugetConfigPath }}
+          ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+            vstsFeed: ${{ parameters.vstsFeed }}
 
     ${{ else }}:
       # 2. Nuget Restore
