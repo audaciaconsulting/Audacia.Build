@@ -103,66 +103,66 @@ steps:
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
   - ${{ if eq(parameters.isDotnetFramework, false) }}:
-      # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
-      - task: DotNetCoreCLI@2
-        displayName: 'Restore projects'
-        condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-        inputs:
-          command: restore
-          projects: '$(normalize.projectsMultiline)'
-          ${{ if ne(parameters.nugetConfigPath, '') }}:
-            feedsToUse: 'config'
-            nugetConfigPath: ${{ parameters.nugetConfigPath }}
-          ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-            vstsFeed: ${{ parameters.vstsFeed }}
+    # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore projects'
+      condition: and(succeeded(), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+      inputs:
+        command: restore
+        projects: '$(normalize.projectsMultiline)'
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          feedsToUse: 'config'
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
 
-      # 3. Optional guarded build (improves version resolution).
-      - task: DotNetCoreCLI@2
-        # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
-        displayName: 'Build projects (non-blocking / guarded)'
-        condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
-        continueOnError: ${{ parameters.buildContinueOnError }}
-        inputs:
-          command: build
-          projects: '$(normalize.projectsMultiline)'
-          arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
-          ${{ if ne(parameters.nugetConfigPath, '') }}:
-            feedsToUse: 'config'
-            nugetConfigPath: ${{ parameters.nugetConfigPath }}
-          ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-            vstsFeed: ${{ parameters.vstsFeed }}
+    # 3. Optional guarded build (improves version resolution).
+    - task: DotNetCoreCLI@2
+      # Guarded/non-blocking: continueOnError allows SBOM generation to proceed even if compilation fails.
+      displayName: 'Build projects (non-blocking / guarded)'
+      condition: and(succeeded(), eq('${{ parameters.buildBeforeSbom }}','true'), or(ne(variables['normalize.projectsJson'], ''), ne(variables['normalize.projectsMultiline'], '')))
+      continueOnError: ${{ parameters.buildContinueOnError }}
+      inputs:
+        command: build
+        projects: '$(normalize.projectsMultiline)'
+        arguments: '-c ${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          feedsToUse: 'config'
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
 
-    ${{ else }}:
-      # 2. Nuget Restore
-      - task: NuGetToolInstaller@1
-        displayName: 'Use NuGet'
+  - ${{ else }}:
+    # 2. Nuget Restore
+    - task: NuGetToolInstaller@1
+      displayName: 'Use NuGet'
 
-      - task: NuGetCommand@2
-        name: NuGetCommand1
-        displayName: NuGet restore
-        inputs:
-          ${{ if ne(parameters.nugetConfigPath, '') }}:
-            selectOrConfig: config
-            nugetConfigPath: .nuget/NuGet.Config
-          ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
-            vstsFeed: ${{ parameters.vstsFeed }}
+    - task: NuGetCommand@2
+      name: NuGetCommand1
+      displayName: NuGet restore
+      inputs:
+        ${{ if ne(parameters.nugetConfigPath, '') }}:
+          selectOrConfig: config
+          nugetConfigPath: .nuget/NuGet.Config
+        ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
+          vstsFeed: ${{ parameters.vstsFeed }}
 
-      # 3. Build Projects
-      - task: PowerShell@2
-        displayName: 'Build all projects'
-        inputs:
-          pwsh: true
-          targetType: inline
-          script: |
-            $ErrorActionPreference = 'Stop'
-            $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
+    # 3. Build Projects
+    - task: PowerShell@2
+      displayName: 'Build all projects'
+      inputs:
+        pwsh: true
+        targetType: inline
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
-            foreach ($proj in $projects) {
-              Write-Host "Building: $proj"
-              dotnet build $proj --configuration Release --output "$(Build.ArtifactStagingDirectory)"
+          foreach ($proj in $projects) {
+            Write-Host "Building: $proj"
+            dotnet build $proj --configuration Release --output "$(Build.ArtifactStagingDirectory)"
 
-              if ($LASTEXITCODE -ne 0) { throw "Build failed for: $proj" }
-            }
+            if ($LASTEXITCODE -ne 0) { throw "Build failed for: $proj" }
+          }
 
 
   # 4. Ensure CycloneDX tool available.
