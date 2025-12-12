@@ -102,7 +102,7 @@ steps:
         $json = ($validated | ConvertTo-Json -Compress -AsArray)
         Write-Host "##vso[task.setvariable variable=projectsJson;isOutput=true]$json"
 
-  - ${{ if eq(isDotnetFramework, false) }}:
+  - ${{ if eq(parameters.isDotnetFramework, false) }}:
     # 2. Restore (single task using DotNetCoreCLI for simplicity & feed wiring).
     - task: DotNetCoreCLI@2
       displayName: 'Restore projects'
