@@ -155,11 +155,25 @@ steps:
         targetType: inline
         script: |
           $ErrorActionPreference = 'Stop'
+          
+          # Locate MSBuild via vswhere
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at: $vswhere"
+          }
+            
+          $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+            
+          if (-not $msbuildPath -or -not (Test-Path $msbuildPath)) {
+            throw "MSBuild.exe not found. Ensure Visual Studio is installed on the agent."
+          }
+          
           $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
           foreach ($proj in $projects) {
             Write-Host "Building: $proj"
-            dotnet build $proj --configuration Release --output "$(Build.ArtifactStagingDirectory)"
+            
+            & $msbuildPath $proj /t:Rebuild /p:Configuration=Release "/p:OutDir=$(Build.ArtifactStagingDirectory)\" /p:Platform=AnyCPU
 
             if ($LASTEXITCODE -ne 0) { throw "Build failed for: $proj" }
           }
