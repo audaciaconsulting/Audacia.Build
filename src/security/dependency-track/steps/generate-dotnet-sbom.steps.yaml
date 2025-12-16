@@ -141,6 +141,7 @@ steps:
       name: NuGetCommand1
       displayName: NuGet restore
       inputs:
+        restoreSolution: '**/*.sln'
         ${{ if ne(parameters.nugetConfigPath, '') }}:
           selectOrConfig: config
           nugetConfigPath: .nuget/NuGet.Config
