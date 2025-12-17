@@ -144,7 +144,7 @@ steps:
         restoreSolution: '**/*.sln'
         ${{ if ne(parameters.nugetConfigPath, '') }}:
           selectOrConfig: config
-          nugetConfigPath: .nuget/NuGet.Config
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
         ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
           vstsFeed: ${{ parameters.vstsFeed }}
 
