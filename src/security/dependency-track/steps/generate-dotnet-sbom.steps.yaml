@@ -34,12 +34,8 @@ parameters:
     type: boolean
     default: false
 
+  # When true, builds the whole solution instead of individual projects.
   - name: buildWholeSolution
-    type: boolean
-    default: false
-
-  # Set true for legacy ASP.NET Web Application projects that require Microsoft.WebApplication.targets
-  - name: useVSToolsPath
     type: boolean
     default: false
 
@@ -159,6 +155,11 @@ steps:
 
     - ${{ if eq(parameters.buildWholeSolution, 'true') }}:
       # 3. Build Solution
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
+        displayName: 'Install Node.js 16'
+
       - task: MSBuild@1
         displayName: 'Build solution'
         inputs:
