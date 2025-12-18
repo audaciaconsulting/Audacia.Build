@@ -164,7 +164,9 @@ steps:
         inputs:
           solution: '**/*.sln'
           msbuildArchitecture: x64
-          msbuildArguments: '/t:Rebuild /p:Platform=AnyCPU /p:Configuration=${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
+          configuration: ${{ parameters.buildConfiguration }}
+          platform: 'Any CPU'
+          msbuildArguments: '/t:Rebuild ${{ parameters.buildAdditionalArgs }}'
 
     - ${{ else }}:
       # 3. Build Projects
@@ -179,16 +181,7 @@ steps:
             # Locate MSBuild via vswhere
             $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
             $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          
-            # Build VSToolsPath argument only when required (legacy web projects)
-            $vsToolsArg = ""
-            if ('${{ parameters.useVSToolsPath }}' -eq 'True') {
-              $vsInstallPath = & $vswhere -latest -property installationPath
-              $vsToolsPath = Join-Path $vsInstallPath "MSBuild\Microsoft\VisualStudio\v17.0"
-              $vsToolsArg = "/p:VSToolsPath=$vsToolsPath"
-              Write-Host "Using VSToolsPath: $vsToolsPath"
-            }
-          
+            
             $buildArgs = @(
               '/t:Rebuild',
               '/p:Configuration=${{ parameters.buildConfiguration }}',
@@ -198,23 +191,11 @@ steps:
             )
           
             Write-Host "Build args: $buildArgs"
-
-            if ($vsToolsArg) { $buildArgs += $vsToolsArg }
           
             $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
             foreach ($project in $projects) {
               Write-Host "Building: $project"
-          
-              if ($project -eq "D:\a\1\s\Aptus.Web\Aptus.Web.csproj") {
-                $targetDir = "D:\a\1\s\Aptus.Presentation"
-                Write-Host "##[section]Contents of $targetDir"
-                if (Test-Path $targetDir) {
-                  Get-ChildItem -Path $targetDir -Recurse -Force | ForEach-Object {
-                    Write-Host $_.FullName
-                  }
-                }
-              }
             
               & $msbuildPath $project $buildArgs
 
