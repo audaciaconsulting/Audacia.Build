@@ -155,6 +155,16 @@ steps:
 
     - ${{ if eq(parameters.buildWholeSolution, 'true') }}:
       # 3. Build Solution
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
+        displayName: 'Install Node.js 16'
+      - task: UseNode@1
+        displayName: Use Node.js 16
+        inputs:
+          versionSpec: '16.x'
+          checkLatest: false
+
       - task: MSBuild@1
         displayName: 'Build solution'
         inputs:
