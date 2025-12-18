@@ -197,7 +197,8 @@ steps:
               Write-Host "##[section]Contents of $targetDir"
               if (Test-Path $targetDir) {
                 Get-ChildItem -Path $targetDir -Recurse -Force | ForEach-Object {
-                Write-Host $_.FullName
+                  Write-Host $_.FullName
+                }
               }
             }
             
