@@ -164,8 +164,7 @@ steps:
         inputs:
           solution: '**/*.sln'
           msbuildArchitecture: x64
-          configuration: ${{ parameters.buildConfiguration }}
-          msbuildArguments: '/t:Rebuild /p:Platform=AnyCPU ${{ parameters.buildAdditionalArgs }}'
+          msbuildArguments: '/t:Rebuild /p:Platform=AnyCPU /p:Configuration=${{ parameters.buildConfiguration }} ${{ parameters.buildAdditionalArgs }}'
 
     - ${{ else }}:
       # 3. Build Projects
