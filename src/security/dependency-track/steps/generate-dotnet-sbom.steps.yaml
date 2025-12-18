@@ -162,7 +162,7 @@ steps:
       - task: MSBuild@1
         displayName: 'Build solution'
         inputs:
-          solution: ${{ parameters.solutionPath }}
+          solution: '**/*.sln'
           msbuildArchitecture: x64
           configuration: ${{ parameters.buildConfiguration }}
           msbuildArguments: '/t:Rebuild /p:Platform=AnyCPU ${{ parameters.buildAdditionalArgs }}'
