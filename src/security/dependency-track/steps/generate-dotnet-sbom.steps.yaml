@@ -180,9 +180,12 @@ steps:
               '/p:Configuration=${{ parameters.buildConfiguration }}',
               '/p:OutDir=$(Build.ArtifactStagingDirectory)\',
               '/p:Platform=AnyCPU'
+              ${{ parameters.buildAdditionalArgs }}
             )
+          
+          Write-Host "Build args: $buildArgs"
 
-            if ($vsToolsArg) { $buildArgs += $vsToolsArg }
+          if ($vsToolsArg) { $buildArgs += $vsToolsArg }
           
           $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
