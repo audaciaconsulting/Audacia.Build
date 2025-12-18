@@ -177,8 +177,8 @@ steps:
           
           $buildArgs = @(
               '/t:Rebuild',
-              '/p:Configuration=Release',
-              "/p:OutDir=$(Build.ArtifactStagingDirectory)\",
+              '/p:Configuration=${{ parameters.buildConfiguration }}',
+              '/p:OutDir=$(Build.ArtifactStagingDirectory)\',
               '/p:Platform=AnyCPU'
             )
 
