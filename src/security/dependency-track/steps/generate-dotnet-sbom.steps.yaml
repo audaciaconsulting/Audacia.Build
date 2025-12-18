@@ -160,8 +160,6 @@ steps:
         inputs:
           solution: '**/*.sln'
           msbuildArchitecture: x64
-          configuration: ${{ parameters.buildConfiguration }}
-          platform: 'Any CPU'
           msbuildArguments: '/t:Rebuild ${{ parameters.buildAdditionalArgs }}'
 
     - ${{ else }}:
