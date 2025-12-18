@@ -34,6 +34,10 @@ parameters:
     type: boolean
     default: false
 
+  - name: buildWholeSolution
+    type: boolean
+    default: false
+
   # Set true for legacy ASP.NET Web Application projects that require Microsoft.WebApplication.targets
   - name: useVSToolsPath
     type: boolean
@@ -153,29 +157,40 @@ steps:
         ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
           vstsFeed: ${{ parameters.vstsFeed }}
 
-    # 3. Build Projects
-    - task: PowerShell@2
-      displayName: 'Build all projects'
-      inputs:
-        pwsh: true
-        targetType: inline
-        script: |
-          $ErrorActionPreference = 'Stop'
+    - ${{ if eq(parameters.buildWholeSolution, 'true') }}:
+      # 3. Build Solution
+      - task: MSBuild@1
+        displayName: 'Build solution'
+        inputs:
+          solution: ${{ parameters.solutionPath }}
+          msbuildArchitecture: x64
+          configuration: ${{ parameters.buildConfiguration }}
+          msbuildArguments: '/t:Rebuild /p:Platform=AnyCPU ${{ parameters.buildAdditionalArgs }}'
+
+    - ${{ else }}:
+      # 3. Build Projects
+      - task: PowerShell@2
+        displayName: 'Build all projects'
+        inputs:
+          pwsh: true
+          targetType: inline
+          script: |
+            $ErrorActionPreference = 'Stop'
           
-          # Locate MSBuild via vswhere
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+            # Locate MSBuild via vswhere
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           
-          # Build VSToolsPath argument only when required (legacy web projects)
-          $vsToolsArg = ""
-          if ('${{ parameters.useVSToolsPath }}' -eq 'True') {
-            $vsInstallPath = & $vswhere -latest -property installationPath
-            $vsToolsPath = Join-Path $vsInstallPath "MSBuild\Microsoft\VisualStudio\v17.0"
-            $vsToolsArg = "/p:VSToolsPath=$vsToolsPath"
-            Write-Host "Using VSToolsPath: $vsToolsPath"
-          }
+            # Build VSToolsPath argument only when required (legacy web projects)
+            $vsToolsArg = ""
+            if ('${{ parameters.useVSToolsPath }}' -eq 'True') {
+              $vsInstallPath = & $vswhere -latest -property installationPath
+              $vsToolsPath = Join-Path $vsInstallPath "MSBuild\Microsoft\VisualStudio\v17.0"
+              $vsToolsArg = "/p:VSToolsPath=$vsToolsPath"
+              Write-Host "Using VSToolsPath: $vsToolsPath"
+            }
           
-          $buildArgs = @(
+            $buildArgs = @(
               '/t:Rebuild',
               '/p:Configuration=${{ parameters.buildConfiguration }}',
               '/p:OutDir=$(Build.ArtifactStagingDirectory)\',
@@ -183,29 +198,29 @@ steps:
               ${{ parameters.buildAdditionalArgs }}
             )
           
-          Write-Host "Build args: $buildArgs"
+            Write-Host "Build args: $buildArgs"
 
-          if ($vsToolsArg) { $buildArgs += $vsToolsArg }
+            if ($vsToolsArg) { $buildArgs += $vsToolsArg }
           
-          $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
+            $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
-          foreach ($project in $projects) {
-            Write-Host "Building: $project"
+            foreach ($project in $projects) {
+              Write-Host "Building: $project"
           
-            if ($project -eq "D:\a\1\s\Aptus.Web\Aptus.Web.csproj") {
-              $targetDir = "D:\a\1\s\Aptus.Presentation"
-              Write-Host "##[section]Contents of $targetDir"
-              if (Test-Path $targetDir) {
-                Get-ChildItem -Path $targetDir -Recurse -Force | ForEach-Object {
-                  Write-Host $_.FullName
+              if ($project -eq "D:\a\1\s\Aptus.Web\Aptus.Web.csproj") {
+                $targetDir = "D:\a\1\s\Aptus.Presentation"
+                Write-Host "##[section]Contents of $targetDir"
+                if (Test-Path $targetDir) {
+                  Get-ChildItem -Path $targetDir -Recurse -Force | ForEach-Object {
+                    Write-Host $_.FullName
+                  }
                 }
               }
-            }
             
-            & $msbuildPath $project $buildArgs
+              & $msbuildPath $project $buildArgs
 
-            if ($LASTEXITCODE -ne 0) { throw "Build failed for: $project" }
-          }
+              if ($LASTEXITCODE -ne 0) { throw "Build failed for: $project" }
+            }
 
 
   # 4. Ensure CycloneDX tool available.
