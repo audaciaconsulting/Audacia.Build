@@ -34,6 +34,12 @@ parameters:
     default: []
 
 steps:
+  - ${{ if ne(parameters.nodeVersion, '22.x') }}:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: ${{ parameters.nodeVersion }}
+      displayName: 'Install Node.js ${{ parameters.nodeVersion }}'
+
   - task: UseNode@1
     displayName: Use Node.js ${{ parameters.nodeVersion }}
     inputs:
