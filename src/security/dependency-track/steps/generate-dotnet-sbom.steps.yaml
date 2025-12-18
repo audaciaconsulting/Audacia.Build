@@ -191,6 +191,15 @@ steps:
 
           foreach ($project in $projects) {
             Write-Host "Building: $project"
+          
+            if ($project -eq "D:\a\1\s\Aptus.Web\Aptus.Web.csproj") {
+              $targetDir = "D:\a\1\s\Aptus.Presentation"
+              Write-Host "##[section]Contents of $targetDir"
+              if (Test-Path $targetDir) {
+                Get-ChildItem -Path $targetDir -Recurse -Force | ForEach-Object {
+                Write-Host $_.FullName
+              }
+            }
             
             & $msbuildPath $project $buildArgs
 
