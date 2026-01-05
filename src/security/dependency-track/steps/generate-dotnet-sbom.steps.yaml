@@ -34,6 +34,16 @@ parameters:
     type: boolean
     default: false
 
+  # Pass nuGetServiceConnections for nuget authentication
+  - name: nuGetServiceConnections
+    type: string
+    default: ''
+
+  # When true, builds the whole solution instead of individual projects.
+  - name: buildWholeSolution
+    type: boolean
+    default: false
+
   # Build settings used to help CycloneDX resolve evaluated metadata (e.g the Version).
   # The build is guarded so SBOM generation still runs even if the build fails.
 
@@ -65,6 +75,9 @@ parameters:
 steps:
   - task: NuGetAuthenticate@1
     displayName: 'Authenticate (Azure Artifacts)'
+    ${{ if ne(parameters.nuGetServiceConnections, '') }}:
+      inputs:
+        nuGetServiceConnections: ${{ parameters.nuGetServiceConnections }}
 
   # 1. Parse the multiline project list and validate.
   - task: PowerShell@2
@@ -141,34 +154,55 @@ steps:
       name: NuGetCommand1
       displayName: NuGet restore
       inputs:
+        restoreSolution: '**/*.sln'
         ${{ if ne(parameters.nugetConfigPath, '') }}:
           selectOrConfig: config
-          nugetConfigPath: .nuget/NuGet.Config
+          nugetConfigPath: ${{ parameters.nugetConfigPath }}
         ${{ if and(eq(parameters.nugetConfigPath, ''), ne(parameters.vstsFeed, '')) }}:
           vstsFeed: ${{ parameters.vstsFeed }}
 
-    # 3. Build Projects
-    - task: PowerShell@2
-      displayName: 'Build all projects'
-      inputs:
-        pwsh: true
-        targetType: inline
-        script: |
-          $ErrorActionPreference = 'Stop'
-          
-          # Locate MSBuild via vswhere
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          
-          $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
+    - ${{ if eq(parameters.buildWholeSolution, 'true') }}:
+      # 3. Build Solution
+      - task: MSBuild@1
+        displayName: 'Build solution'
+        inputs:
+          solution: '**/*.sln'
+          msbuildArchitecture: x64
+          msbuildArguments: '/t:Rebuild ${{ parameters.buildAdditionalArgs }}'
 
-          foreach ($project in $projects) {
-            Write-Host "Building: $project"
+    - ${{ else }}:
+      # 3. Build Projects
+      - task: PowerShell@2
+        displayName: 'Build projects'
+        inputs:
+          pwsh: true
+          targetType: inline
+          script: |
+            $ErrorActionPreference = 'Stop'
+          
+            # Locate MSBuild via vswhere
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            $msbuildPath = & $vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
             
-            & $msbuildPath $project /t:Rebuild /p:Configuration=Release "/p:OutDir=$(Build.ArtifactStagingDirectory)\" /p:Platform=AnyCPU
+            $buildArgs = @(
+              '/t:Rebuild',
+              '/p:Configuration=${{ parameters.buildConfiguration }}',
+              '/p:OutDir=$(Build.ArtifactStagingDirectory)\',
+              '/p:Platform=AnyCPU'
+              ${{ parameters.buildAdditionalArgs }}
+            )
+          
+            Write-Host "Build args: $buildArgs"
+          
+            $projects = '$(normalize.projectsJson)' | ConvertFrom-Json
 
-            if ($LASTEXITCODE -ne 0) { throw "Build failed for: $project" }
-          }
+            foreach ($project in $projects) {
+              Write-Host "Building: $project"
+            
+              & $msbuildPath $project $buildArgs
+
+              if ($LASTEXITCODE -ne 0) { throw "Build failed for: $project" }
+            }
 
 
   # 4. Ensure CycloneDX tool available.
