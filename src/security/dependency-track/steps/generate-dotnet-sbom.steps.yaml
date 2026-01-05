@@ -34,6 +34,11 @@ parameters:
     type: boolean
     default: false
 
+  # Pass nuGetServiceConnections for nuget authentication
+  - name: nuGetServiceConnections
+    type: string
+    default: ''
+
   # When true, builds the whole solution instead of individual projects.
   - name: buildWholeSolution
     type: boolean
@@ -70,6 +75,9 @@ parameters:
 steps:
   - task: NuGetAuthenticate@1
     displayName: 'Authenticate (Azure Artifacts)'
+    ${{ if ne(parameters.nuGetServiceConnections, '') }}:
+      inputs:
+        nuGetServiceConnections: ${{ parameters.nuGetServiceConnections }}
 
   # 1. Parse the multiline project list and validate.
   - task: PowerShell@2
