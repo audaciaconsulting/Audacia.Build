@@ -173,7 +173,7 @@ steps:
     - ${{ else }}:
       # 3. Build Projects
       - task: PowerShell@2
-        displayName: 'Build all projects'
+        displayName: 'Build passed projects'
         inputs:
           pwsh: true
           targetType: inline
