@@ -44,6 +44,11 @@ parameters:
     type: boolean
     default: false
 
+  # MSBuild architecture to use for builds.
+  - name: msBuildArchitecture
+    type: string
+    default: 'x64'
+
   # Build settings used to help CycloneDX resolve evaluated metadata (e.g the Version).
   # The build is guarded so SBOM generation still runs even if the build fails.
 
@@ -167,7 +172,7 @@ steps:
         displayName: 'Build solution'
         inputs:
           solution: '**/*.sln'
-          msbuildArchitecture: x64
+          msbuildArchitecture: msBuildArchitecture
           msbuildArguments: '/t:Rebuild ${{ parameters.buildAdditionalArgs }}'
 
     - ${{ else }}:
