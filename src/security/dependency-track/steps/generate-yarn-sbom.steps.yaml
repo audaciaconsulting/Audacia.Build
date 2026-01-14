@@ -52,7 +52,6 @@ steps:
         Write-Host "##vso[task.prependpath]$($nodeTooling.Bin)"
         $env:PATH = "$($nodeTooling.Bin);$env:PATH"
         
-        # Verify version to avoid the "Got 10.24.1" issue
         Write-Host "Active Node Version: $(node --version)"
 
   - task: PowerShell@2
@@ -102,7 +101,7 @@ steps:
             }
 
             # Generate SBOM
-            npx --yes @cyclonedx/cyclonedx-yarn@latest --output-file $outputFile --output-format JSON
+            npx --yes @cyclonedx/yarn-plugin-cyclonedx@latest --output-file $outputFile --output-format JSON
           }
           finally {
             Pop-Location
