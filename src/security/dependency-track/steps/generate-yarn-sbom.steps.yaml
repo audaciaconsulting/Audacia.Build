@@ -97,11 +97,19 @@ steps:
           try {
             # Fix engine mismatch and ensure dependencies for license texts
             if ("${{ parameters.includeLicenseTexts }}" -eq "True") {
+              # Use --ignore-engines to prevent the Node 10 vs 22 conflict you saw earlier
               yarn install --immutable --ignore-engines
             }
 
-            # Generate SBOM
-            npx --yes @cyclonedx/yarn-plugin-cyclonedx@latest --output-file $outputFile --output-format JSON
+            # Use @cyclonedx/bom which is the more stable standalone CLI for Yarn v1
+            # it supports the --yarn flag to specifically parse yarn.lock
+            npx --yes @cyclonedx/bom@latest --yarn --output-file $outputFile
+        
+            if (Test-Path $outputFile) {
+              Write-Host "Successfully generated: $outputFile"
+            } else {
+              throw "SBOM file was not created at $outputFile"
+            }
           }
           finally {
             Pop-Location
