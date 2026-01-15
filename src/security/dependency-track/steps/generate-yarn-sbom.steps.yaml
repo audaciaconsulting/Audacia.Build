@@ -87,7 +87,6 @@ steps:
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
-        yarn install --immutable --ignore-engines
         yarn plugin import https://github.com/CycloneDX/cyclonedx-node-yarn/releases/latest/download/yarn-plugin-cyclonedx.cjs
 
         foreach ($root in $projectRoots) {
@@ -98,6 +97,8 @@ steps:
           Write-Host "##[group]Yarn SBOM → $absPath"
           Push-Location $absPath
           try {
+            yarn install --immutable --ignore-engines
+        
             yarn cyclonedx --output-format JSON --output-file $outputFile
         
             if (Test-Path $outputFile) {
