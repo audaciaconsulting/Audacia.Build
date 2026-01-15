@@ -87,8 +87,8 @@ steps:
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
-        Write-Host "Set Yarn version to latest"
-        yarn set version latest
+        Write-Host "Set yarn version stable"
+        yarn set version stable
         yarn --version
 
         Write-Host "Import cyclonedx yarn plugin"
