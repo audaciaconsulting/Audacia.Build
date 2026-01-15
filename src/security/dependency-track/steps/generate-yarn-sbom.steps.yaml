@@ -102,6 +102,7 @@ steps:
           Write-Host "##[group]Yarn SBOM → $absPath"
           Push-Location $absPath
           try {
+            yarn cache clean
             yarn install
         
             yarn cyclonedx --output-format JSON --output-file $outputFile
