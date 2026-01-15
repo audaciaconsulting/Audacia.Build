@@ -103,8 +103,12 @@ steps:
           Push-Location $absPath
           try {
             yarn cache clean
+            # Run install to update the lockfile if it's out of sync.
             yarn install
+            # Run install again with --immutable to ensure a clean state from the lockfile.
+            yarn install --immutable
         
+            Write-Host "Generating SBOM for $root"
             yarn cyclonedx --output-format JSON --output-file $outputFile
         
             if (Test-Path $outputFile) {
