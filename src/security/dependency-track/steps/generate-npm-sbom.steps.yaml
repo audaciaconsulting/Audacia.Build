@@ -17,11 +17,6 @@ parameters:
     type: boolean
     default: true
 
-  # When true, appends --ignore-scripts to npm commands to prevent third-party code execution.
-  - name: ignoreScripts
-    type: boolean
-    default: true
-
   # Publish the SBOM output from this step. Set false when combining with .NET to publish once later.
   - name: publishArtifact
     type: boolean
@@ -245,9 +240,7 @@ steps:
             }
 
             if ($includeLicenseTexts) {
-              $npmInstallArgs = @('ci', '--no-audit', '--no-fund', '--no-progress', '--legacy-peer-deps')
-              if ($ignoreScripts) { $ciArgs += '--ignore-scripts' }
-              npm @npmInstallArgs
+              npm ci --ignore-scripts --no-audit --no-fund --no-progress --legacy-peer-deps
             }
 
             # Build args and attempt tolerant run
