@@ -87,6 +87,9 @@ steps:
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
+        yarn install --immutable --ignore-engines
+        yarn plugin import https://github.com/CycloneDX/cyclonedx-node-yarn/releases/latest/download/yarn-plugin-cyclonedx.cjs
+
         foreach ($root in $projectRoots) {
           $absPath = if ([System.IO.Path]::IsPathRooted($root)) { $root } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $root }
           $folderName = Split-Path $absPath -Leaf
@@ -95,15 +98,7 @@ steps:
           Write-Host "##[group]Yarn SBOM → $absPath"
           Push-Location $absPath
           try {
-            # Fix engine mismatch and ensure dependencies for license texts
-            if ("${{ parameters.includeLicenseTexts }}" -eq "True") {
-              # Use --ignore-engines to prevent the Node 10 vs 22 conflict you saw earlier
-              yarn install --immutable --ignore-engines
-            }
-
-            # Use @cyclonedx/bom which is the more stable standalone CLI for Yarn v1
-            # it supports the --yarn flag to specifically parse yarn.lock
-            npx --yes @cyclonedx/bom@latest --yarn --output-file $outputFile
+            yarn cyclonedx --output-format JSON --output-file $outputFile
         
             if (Test-Path $outputFile) {
               Write-Host "Successfully generated: $outputFile"
