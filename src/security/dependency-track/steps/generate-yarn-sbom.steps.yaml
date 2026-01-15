@@ -104,12 +104,6 @@ steps:
           try {
             yarn cache clean
         
-            if (Test-Path -Path "yarn.lock") {
-              Write-Host "Removing existing lockfile to ensure a clean state."
-              Remove-Item -Path "yarn.lock" -Force
-            }
-        
-            # Run install to update the lockfile if it's out of sync.
             yarn install
         
             Write-Host "Generating SBOM for $root"
