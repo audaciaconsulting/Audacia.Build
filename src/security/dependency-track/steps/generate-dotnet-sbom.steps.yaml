@@ -265,11 +265,11 @@ steps:
         foreach ($proj in $projects) {
           $base = [IO.Path]::GetFileNameWithoutExtension($proj)
           $outFile = "$base-sbom.json"
-          $version = Get-ProjectVersionOrNull $proj
+          
           Write-Host ("Generating SBOM for: {0}" -f $proj)
-          if ($version) { Write-Host "Version inferred: $version" }
+          
           $args = @($proj,'-o',$outputRoot,'-F','Json','-fn',$outFile)
-          if ($version) { $args += @('--set-version',$version) }
+          
           dotnet CycloneDX @args
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "CycloneDX failed (exit $LASTEXITCODE)"
