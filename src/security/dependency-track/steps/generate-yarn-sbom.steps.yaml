@@ -1,0 +1,129 @@
+# Template: generate Yarn SBOMs using cyclonedx-yarn
+
+parameters:
+  # One or more directories that contain a package.json and yarn.lock.
+  - name: yarnRoots
+    type: string
+    default: ''
+
+  - name: nodeVersion
+    type: string
+    default: '22.x'
+
+  # When true, runs yarn install to gather license texts.
+  - name: includeLicenseTexts
+    type: boolean
+    default: true
+
+  - name: publishArtifact
+    type: boolean
+    default: false
+
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+steps:
+  - task: UseNode@1
+    displayName: Use Node.js ${{ parameters.nodeVersion }}
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+      checkLatest: false
+
+  - task: PowerShell@2
+    displayName: "Setup Node.js & Yarn tooling"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        function Get-NodeToolPaths {
+          param([string]$majorVersion)
+          $toolsRoot = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
+          $matchedVersion = Get-ChildItem $toolsRoot -Directory -Name | Where-Object { $_ -like "$majorVersion.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+          if (-not $matchedVersion) { throw "No Node $majorVersion.* found" }
+          $binDirectory = Join-Path (Join-Path $toolsRoot $matchedVersion) 'x64'
+          [pscustomobject]@{ Bin=$binDirectory }
+        }
+
+        $majorVersion = [regex]::Match('${{ parameters.nodeVersion }}', '^\d+').Value
+        $nodeTooling = Get-NodeToolPaths -majorVersion $majorVersion
+
+        Write-Host "##vso[task.prependpath]$($nodeTooling.Bin)"
+        $env:PATH = "$($nodeTooling.Bin);$env:PATH"
+        
+        Write-Host "Active Node Version: $(node --version)"
+
+  - task: PowerShell@2
+    name: resolveYarnRoots
+    displayName: "Validate Yarn project roots"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $rootsMultiline = @'
+        ${{ parameters.yarnRoots }}
+        '@
+        $inputRoots = $rootsMultiline -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        
+        $validated = New-Object System.Collections.Generic.List[string]
+        foreach ($root in $inputRoots) {
+          $path = if ([System.IO.Path]::IsPathRooted($root)) { $root } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $root }
+          if (Test-Path (Join-Path $path 'package.json')) { $validated.Add($root) }
+        }
+        
+        $json = ($validated.ToArray() | ConvertTo-Json -Compress)
+        Write-Host "##vso[task.setvariable variable=yarnRootsJson;isOutput=true]$json"
+
+  - task: PowerShell@2
+    displayName: "Generate Yarn SBOMs (CycloneDX, JSON)"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/yarn" -Force | Out-Null
+
+        $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
+        $projectRoots = $rootsJson | ConvertFrom-Json
+
+        Write-Host "Set yarn version stable"
+        yarn set version stable
+        yarn --version
+
+        Write-Host "Import cyclonedx yarn plugin"
+        yarn plugin import https://github.com/CycloneDX/cyclonedx-node-yarn/releases/latest/download/yarn-plugin-cyclonedx.cjs
+
+        foreach ($root in $projectRoots) {
+          $absPath = if ([System.IO.Path]::IsPathRooted($root)) { $root } else { Join-Path $env:SYSTEM_DEFAULTWORKINGDIRECTORY $root }
+          $folderName = Split-Path $absPath -Leaf
+          $outputFile = Join-Path "$(Agent.TempDirectory)/sbom/yarn" "$folderName-sbom.json"
+
+          Write-Host "##[group]Yarn SBOM → $absPath"
+          Push-Location $absPath
+          try {
+            yarn cache clean
+        
+            yarn install
+        
+            Write-Host "Generating SBOM for $root"
+            yarn cyclonedx --output-format JSON --output-file $outputFile
+        
+            if (Test-Path $outputFile) {
+              Write-Host "Successfully generated: $outputFile"
+            } else {
+              throw "SBOM file was not created at $outputFile"
+            }
+          }
+          finally {
+            Pop-Location
+            Write-Host "##[endgroup]"
+          }
+        }
+
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: "Publish SBOM"
+        inputs:
+          targetPath: "$(Agent.TempDirectory)/sbom/yarn"
+          artifact: ${{ parameters.artifactName }}
