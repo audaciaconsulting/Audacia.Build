@@ -253,9 +253,9 @@ steps:
           if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
           try {
             [xml]$xml = Get-Content -Raw -LiteralPath $path
-            $val = $xml.SelectSingleNode('/Project/PropertyGroup/PackageVersion')
+            $val = $xml.SelectSingleNode("//*[local-name()='PropertyGroup']/*[local-name()='PackageVersion']")
             if ($val -and $val.InnerText.Trim()) { return $val.InnerText.Trim() }
-            $val = $xml.SelectSingleNode('/Project/PropertyGroup/Version')
+            $val = $xml.SelectSingleNode("//*[local-name()='PropertyGroup']/*[local-name()='Version']")
             if ($val -and $val.InnerText.Trim()) { return $val.InnerText.Trim() }
           } catch {
             Write-Warning "Failed to infer version from '$path'. Error: $($_.Exception.Message)"
