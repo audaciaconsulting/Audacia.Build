@@ -21,6 +21,8 @@ parameters:
     type: number
     default: 300
 
+  # WARNING: false speeds up pipelines but verification may be stale/missing until processing completes.
+  # Use false only when you accept delayed project visibility/validation in Dependency-Track.
   # When true, wait for each BOM token to finish processing; when false, upload only.
   - name: waitForProcessing
     type: boolean
@@ -319,7 +321,7 @@ steps:
               if ("${{ parameters.waitForProcessing }}" -eq "True") {
                 [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
               } else {
-                Write-Host "Skipping BOM processing wait (upload only)."
+                Write-Warning "Skipping BOM processing wait; project verification may be stale until processing completes."
               }
 
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
@@ -374,6 +376,7 @@ steps:
 
   - task: PowerShell@2
     displayName: "Verify Dependency-Track project state (post-upload)"
+    condition: and(succeeded(), eq('${{ parameters.waitForProcessing }}','true'))
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
