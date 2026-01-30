@@ -21,6 +21,11 @@ parameters:
     type: number
     default: 300
 
+  # When true, wait for each BOM token to finish processing; when false, upload only.
+  - name: waitForProcessing
+    type: boolean
+    default: true
+
   # The parent project to associate with uploads. Sets parentName/parentVersion when provided.
   - name: parentProjectName
     type: string
@@ -311,7 +316,11 @@ steps:
               $uploadResponse = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
               $tokenNote = "token: $($uploadResponse.token)"
               Write-Host "Uploaded OK: $($bomFile.FullName) ($tokenNote)"
-              [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+              if ("${{ parameters.waitForProcessing }}" -eq "True") {
+                [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+              } else {
+                Write-Host "Skipping BOM processing wait (upload only)."
+              }
 
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
