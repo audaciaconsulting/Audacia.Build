@@ -1,4 +1,4 @@
-# Template: download → build tags → preflight discovery/validation → upload with token wait → summary → verify
+﻿# Template: download → build tags → preflight discovery/validation → upload with token wait → summary → verify
 
 parameters:
   # The name of the artifact produced by earlier steps. Must match the publish task's artifact name.
@@ -20,6 +20,13 @@ parameters:
   - name: bomProcessingTimeoutSec
     type: number
     default: 300
+
+  # WARNING: false speeds up pipelines but verification may be stale/missing until processing completes.
+  # Use false only when you accept delayed project visibility/validation in Dependency-Track.
+  # When true, wait for each BOM token to finish processing; when false, upload only.
+  - name: waitForProcessing
+    type: boolean
+    default: true
 
   # The parent project to associate with uploads. Sets parentName/parentVersion when provided.
   - name: parentProjectName
@@ -232,6 +239,11 @@ steps:
           $deadline = (Get-Date).AddSeconds($timeoutSec)
           while ((Get-Date) -lt $deadline) {
             try {
+              Write-Host "RequestId: $requestId"
+              Write-Host ("BOM file: {0} ({1:N0} bytes)" -f $bomFile.FullName, $bomFile.Length)
+              Write-Host ("API base: {0}" -f $apiBaseUrl)
+              if ($parentProjectNameParam) { Write-Host ("Parent: {0} / {1}" -f $parentProjectNameParam, $parentProjectVersionParam) }
+              if ($env:PROJECT_TAGS_CSV) { Write-Host ("Project tags: {0}" -f $env:PROJECT_TAGS_CSV) }
               $response = $httpClient.GetAsync("$apiBaseUrl/v1/bom/token/$token").GetAwaiter().GetResult()
               $responseText  = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
               if ($response.IsSuccessStatusCode) {
@@ -256,7 +268,14 @@ steps:
           foreach ($uploadItem in $uploadMatrix) {
             $bomFile = Get-Item -LiteralPath $uploadItem.FilePath
             Write-Host "##[group]Uploading SBOM -> $($uploadItem.ProjectName) @ $($uploadItem.ProjectVersion)"
+            $requestId = [guid]::NewGuid().ToString()
+            $response = $null
             try {
+              Write-Host "RequestId: $requestId"
+              Write-Host ("BOM file: {0} ({1:N0} bytes)" -f $bomFile.FullName, $bomFile.Length)
+              Write-Host ("API base: {0}" -f $apiBaseUrl)
+              if ($parentProjectNameParam) { Write-Host ("Parent: {0} / {1}" -f $parentProjectNameParam, $parentProjectVersionParam) }
+              if ($env:PROJECT_TAGS_CSV) { Write-Host ("Project tags: {0}" -f $env:PROJECT_TAGS_CSV) }
               $multipartForm = [System.Net.Http.MultipartFormDataContent]::new()
               $multipartForm.Add([System.Net.Http.StringContent]::new('true'), 'autoCreate')
               $multipartForm.Add([System.Net.Http.StringContent]::new('true'), 'isLatest')
@@ -289,17 +308,33 @@ steps:
 
               if (-not $response.IsSuccessStatusCode) {
                 $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                Write-Host "##vso[task.logissue type=error]Dependency-Track upload failed (HTTP $($response.StatusCode))."
+                if ($responseBody) { Write-Host "##vso[task.logissue type=error]Response body: $responseBody" }
+                $respHeaders = ($response.Headers | Out-String).Trim()
+                if ($respHeaders) { Write-Host "Response headers:`n$respHeaders" }
                 throw "HTTP $($response.StatusCode) - $responseBody"
               }
 
               $uploadResponse = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
               $tokenNote = "token: $($uploadResponse.token)"
               Write-Host "Uploaded OK: $($bomFile.FullName) ($tokenNote)"
-              [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+              if ("${{ parameters.waitForProcessing }}" -eq "True") {
+                [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+              } else {
+                Write-Warning "Skipping BOM processing wait; project verification may be stale until processing completes."
+              }
 
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
               Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
+              Write-Host ("Exception type: {0}" -f $_.Exception.GetType().FullName)
+              if ($response) {
+                Write-Host ("Last response status: {0}" -f $response.StatusCode)
+                try {
+                  $lastBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                  if ($lastBody) { Write-Host "Last response body: $lastBody" }
+                } catch {}
+              }
               throw
             } finally {
               Write-Host "##[endgroup]"
@@ -341,6 +376,7 @@ steps:
 
   - task: PowerShell@2
     displayName: "Verify Dependency-Track project state (post-upload)"
+    condition: and(succeeded(), eq('${{ parameters.waitForProcessing }}','true'))
     env:
       DT_API_URL: $(DT_API_URL)
       DT_API_KEY: $(DT_API_KEY)
