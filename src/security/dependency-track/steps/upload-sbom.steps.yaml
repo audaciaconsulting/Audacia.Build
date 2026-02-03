@@ -1,4 +1,4 @@
-﻿# Template: download â†’ build tags â†’ preflight discovery/validation â†’ upload with token wait â†’ summary â†’ verify
+﻿# Template: download → build tags → preflight discovery/validation → upload with token wait → summary → verify
 
 parameters:
   # The name of the artifact produced by earlier steps. Must match the publish task's artifact name.
@@ -169,7 +169,7 @@ steps:
               $projectVersion = $sbomVersion
             } else {
               $projectVersion = ''
-              Write-Warning "No version parameter supplied and SBOM has no metadata.component.version â†’ using an empty string for: $projectName"
+              Write-Warning "No version parameter supplied and SBOM has no metadata.component.version → using an empty string for: $projectName"
             }
           }
 
@@ -183,7 +183,7 @@ steps:
         if ($uploadMatrix.Count -eq 0) { throw "No valid SBOMs after preflight validation; cannot build upload matrix." }
         $uploadMatrixPath = Join-Path $env:AGENT_TEMPDIRECTORY 'dt-upload-matrix.json'
         ($uploadMatrix | ConvertTo-Json -Depth 4 -Compress) | Set-Content -LiteralPath $uploadMatrixPath -Encoding UTF8
-        Write-Host "##[section]Preflight summary â†’ valid=$($uploadMatrix.Count), invalid=$invalidCount"
+        Write-Host "##[section]Preflight summary → valid=$($uploadMatrix.Count), invalid=$invalidCount"
         Write-Host "Matrix path: $uploadMatrixPath"
         Write-Host "##vso[task.setvariable variable=UploadMatrixPath;isOutput=true]$uploadMatrixPath"
 
@@ -217,7 +217,7 @@ steps:
         $parentProjectNameParam    = '${{ parameters.parentProjectName }}'
         $parentProjectVersionParam = '${{ parameters.parentProjectVersion }}'
         if ($parentProjectNameParam) {
-          Write-Host "Parent project specified â†’ Name='$parentProjectNameParam' Version='$parentProjectVersionParam'"
+          Write-Host "Parent project specified → Name='$parentProjectNameParam' Version='$parentProjectVersionParam'"
         } else {
           Write-Host "No parent project specified; uploads will not set parentName/parentVersion."
         }
@@ -326,7 +326,7 @@ steps:
 
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
-              Write-Error "âŒ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
+              Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
               Write-Host ("Exception type: {0}" -f $_.Exception.GetType().FullName)
               if ($response) {
                 Write-Host ("Last response status: {0}" -f $response.StatusCode)
@@ -344,7 +344,7 @@ steps:
           $uploadedRowsJson = ($uploadedRows | ConvertTo-Json -Compress); if (-not $uploadedRowsJson) { $uploadedRowsJson = '[]' }
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploadedRowsJson"
           Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploadedRowsJson -Encoding UTF8
-          Write-Host "##[section]âœ… All uploads completed successfully"
+          Write-Host "##[section]✅ All uploads completed successfully"
         } catch {
           $uploadedRowsJson = ($uploadedRows | ConvertTo-Json -Compress); if (-not $uploadedRowsJson) { $uploadedRowsJson = '[]' }
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploadedRowsJson"
