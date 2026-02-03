@@ -1,4 +1,4 @@
-# Dependency-Track Pipeline Templates
+﻿# Dependency-Track Pipeline Templates
 
 These Azure Pipelines templates automate SBOM generation, upload to OWASP Dependency-Track, and optional deactivation of non-latest project versions.
 
@@ -23,7 +23,7 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 > This approach ensures:
 > - A single, consolidated SBOM artifact for multi-ecosystem projects
 > - No duplicate or conflicting artifact names
-> - Consistent behavior between modular (staged) and end-to-end pipeline designs
+> - Consistent behaviour between modular (staged) and end-to-end pipeline designs
 
 ## Prerequisites
 
@@ -37,14 +37,15 @@ If using Azure DevOps, you can store the key as a secret in a variable group or 
 
 These are defined as pipeline variables within each YAML file or via the “Variables” tab in Azure DevOps.
 
-| Variable               | Purpose                                                               | Example                              |
-| ---------------------- | --------------------------------------------------------------------- | ------------------------------------ |
-| `envName`              | Which environment this SBOM represents                                | `dev`, `qa`, `uat`, `prod`           |
-| `version`              | Project version value used on upload e.g. `$(Build.SourceBranchName)` | `main`                               |
-| `additionalTags`       | Optional extra tags recorded on the Dependency-Track project          | `owner:team-x,service:abc`           |
-| `deactivateOld`        | Whether to mark all older versions inactive after upload              | `true`                               |
-| `parentProjectName`    | Optional parent “container” in Dependency-Track                       | `OrganisationName - ApplicationName` |
-| `parentProjectVersion` | Version of the parent (may be left empty)                             | `2025.10` or empty                   |
+| Variable               | Purpose                                                                                 | Example                              |
+| ---------------------- |-----------------------------------------------------------------------------------------| ------------------------------------ |
+| `envName`              | Which environment this SBOM represents                                                  | `dev`, `qa`, `uat`, `prod`           |
+| `version`              | Project version value used on upload e.g. `$(Build.SourceBranchName)`                   | `main`                               |
+| `additionalTags`       | Optional extra tags recorded on the Dependency-Track project                            | `owner:team-x,service:abc`           |
+| `deactivateOld`        | Whether to mark all older versions inactive after upload                                | `true`                               |
+| `parentProjectName`    | Optional parent “container” in Dependency-Track                                         | `OrganisationName - ApplicationName` |
+| `parentProjectVersion` | Version of the parent (may be left empty)                                               | `2025.10` or empty                   |
+| `waitForProcessing`    | Whether to wait for BOM processing in Dependency-Track before finishing the upload step | `true`                               |
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
 
@@ -136,13 +137,14 @@ to maintain accurate evidence and reproducibility.
 
 ## Troubleshooting
 
-| Symptom                                  | Likely cause                                             | Fix                                                                                       |
-| ---------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `401 Unauthorized` on upload             | API key invalid or expired                                | Regenerate in Dependency-Track and update the variable group                              |
-| SBOM not linked to parent                | Name or version mismatch                                  | Ensure exact parent match exists in Dependency-Track                                      |
-| “No SBOM files to upload”                | Wrong paths or missing lockfiles                          | Check `.csproj` and SPA root paths; ensure `package-lock.json` exists                     |
-| Deactivate skipped                       | SBOM artifact missing                                     | Keep `tryDownloadArtifact: true`                                                          |
-| `ELSPROBLEMS` warning during npm SBOM    | Dependency tree inconsistencies detected by `npm ls`       | SBOMs still upload successfully; align dependency versions to remove warnings             |
+| Symptom                                | Likely cause                                                      | Fix                                                                           |
+|----------------------------------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| `401 Unauthorized` on upload           | API key invalid or expired                                        | Regenerate in Dependency-Track and update the variable group                  |
+| SBOM not linked to parent              | Name or version mismatch                                          | Ensure exact parent match exists in Dependency-Track                          |
+| “No SBOM files to upload”              | Wrong paths or missing lockfiles                                  | Check `.csproj` and SPA root paths; ensure `package-lock.json` exists         |
+| Deactivate skipped                     | SBOM artifact missing                                             | Keep `tryDownloadArtifact: true`                                              |
+| `ELSPROBLEMS` warning during npm SBOM  | Dependency tree inconsistencies detected by `npm ls`              | SBOMs still upload successfully; align dependency versions to remove warnings |
+| Upload stage runs too long / times out | Dependency-Track is still processing BOMs when the pipeline waits | Set `waitForProcessing: false` to skip waiting for processing                 |
 
 ## Verification Checklist
 
