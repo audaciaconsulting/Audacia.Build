@@ -37,7 +37,7 @@ steps:
         foreach ($package in $packagesToSign) {
             Write-Host "Signing package $package"
             $path = $package.FullName
-            sign code trusted-signing "$path" `
+            sign code artifact-signing "$path" `
               --azure-credential-type azure-cli `
               --trusted-signing-endpoint "${{ parameters.trustedSigningEndpoint }}" `
               --trusted-signing-account "${{ parameters.trustedSigningAccount }}" `
