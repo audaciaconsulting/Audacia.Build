@@ -39,9 +39,9 @@ steps:
             $path = $package.FullName
             sign code artifact-signing "$path" `
               --azure-credential-type azure-cli `
-              --trusted-signing-endpoint "${{ parameters.trustedSigningEndpoint }}" `
-              --trusted-signing-account "${{ parameters.trustedSigningAccount }}" `
-              --trusted-signing-certificate-profile "${{ parameters.trustedSigningCertificateProfile }}"
+              --artifact-signing-endpoint "${{ parameters.trustedSigningEndpoint }}" `
+              --artifact-signing-account "${{ parameters.trustedSigningAccount }}" `
+              --artifact-signing-certificate-profile "${{ parameters.trustedSigningCertificateProfile }}"
         }
         # All packages will be signed with the same certificate, so only need to extract once
         Write-Host "Extracting package signing certificate"
