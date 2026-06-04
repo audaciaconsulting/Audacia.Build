@@ -80,13 +80,14 @@ jobs:
         inputs:
           secureFile: audacia.snk
 
-      - task: MSBuild@1
+      - task: DotNetCoreCLI@2
         displayName: .NET Build
         inputs:
-          solution: ${{parameters.projects}}
-          msbuildArchitecture: x64
-          configuration: ${{parameters.configuration}}
-          msbuildArguments: /p:AssemblyOriginatorKeyFile=$(StrongNameCertificate.secureFilePath)
+          command: build
+          projects: ${{parameters.projects}}
+          arguments: >
+            --configuration ${{parameters.configuration}}
+            /p:AssemblyOriginatorKeyFile=$(StrongNameCertificate.secureFilePath)
 
       - task: DotNetCoreCLI@2
         displayName: .NET Test
