@@ -67,7 +67,8 @@ parameters:
     type: string
     default: ''
 
-  # When enabled, the script tries PackageVersion, then Version from the .csproj.
+  # When enabled, the script tries PackageVersion, then Version from the nearest Directory.Build.props,
+  # then PackageVersion and Version from the .csproj.
   - name: inferVersionFromProject
     type: boolean
     default: true
@@ -249,7 +250,8 @@ steps:
         $outputRoot = "$(Agent.TempDirectory)/sbom/dotnet"
         New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
-        function Get-ProjectVersionOrNull([string]$path) {
+        function Get-VersionFromMsBuildFileOrNull([string]$path) {
+          if (-not (Test-Path -LiteralPath $path)) { return $null }
           if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
           try {
             [xml]$xml = Get-Content -Raw -LiteralPath $path
@@ -258,6 +260,39 @@ steps:
             $val = $xml.SelectSingleNode('/Project/PropertyGroup/Version')
             if ($val -and $val.InnerText.Trim()) { return $val.InnerText.Trim() }
           } catch {}
+          return $null
+        }
+
+        function Get-NearestDirectoryBuildPropsOrNull([string]$projectPath) {
+          try {
+            $directory = Get-Item -LiteralPath (Split-Path -Parent $projectPath)
+            while ($directory) {
+              $propsPath = Join-Path $directory.FullName 'Directory.Build.props'
+              if (Test-Path -LiteralPath $propsPath) { return $propsPath }
+              $directory = $directory.Parent
+            }
+          } catch {}
+          return $null
+        }
+
+        function Get-ProjectVersionOrNull([string]$path) {
+          if ('${{ parameters.inferVersionFromProject }}' -ne 'True') { return $null }
+
+          $propsPath = Get-NearestDirectoryBuildPropsOrNull $path
+          if ($propsPath) {
+            $propsVersion = Get-VersionFromMsBuildFileOrNull $propsPath
+            if ($propsVersion) {
+              Write-Host "Version inferred from Directory.Build.props: $propsPath"
+              return $propsVersion
+            }
+          }
+
+          $projectVersion = Get-VersionFromMsBuildFileOrNull $path
+          if ($projectVersion) {
+            Write-Host "Version inferred from project file: $path"
+            return $projectVersion
+          }
+
           return $null
         }
 
