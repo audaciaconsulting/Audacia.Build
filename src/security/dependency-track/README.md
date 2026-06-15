@@ -40,7 +40,7 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 | Variable               | Purpose                                                                                 | Example                              |
 | ---------------------- |-----------------------------------------------------------------------------------------| ------------------------------------ |
 | `envName`              | Which environment this SBOM represents                                                  | `dev`, `qa`, `uat`, `prod`           |
-| `version`              | Project version value used on upload e.g. `$(Build.SourceBranchName)`                   | `main`                               |
+| `version`              | Optional project version value used on upload. If set, this takes precedence over inferred SBOM versions. | `main`                               |
 | `additionalTags`       | Optional extra tags recorded on the Dependency-Track project                            | `owner:team-x,service:abc`           |
 | `deactivateOld`        | Whether to mark all older versions inactive after upload                                | `true`                               |
 | `parentProjectName`    | Optional parent “container” in Dependency-Track                                         | `OrganisationName - ApplicationName` |
@@ -48,6 +48,18 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 | `waitForProcessing`    | Whether to wait for BOM processing in Dependency-Track before finishing the upload step | `true`                               |
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
+
+## Project Versioning
+
+Dependency-Track uses the version supplied during the upload step. If the upload template's `version` parameter is set, that manually defined value takes precedence over any version in the generated SBOM.
+
+If `version` is left empty, the upload step uses `metadata.component.version` from the SBOM when available. For .NET SBOM generation, when `inferVersionFromProject` is enabled, the effective precedence is:
+
+1. The manually supplied upload `version` parameter.
+2. `PackageVersion`, then `Version`, in the nearest `Directory.Build.props` found by walking up from the `.csproj` directory.
+3. `PackageVersion`, then `Version`, in the `.csproj`.
+
+If no version is found, the project version is uploaded as an empty string.
 
 ## Specifying Projects for SBOM Generation
 
