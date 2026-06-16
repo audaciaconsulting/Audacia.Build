@@ -290,9 +290,9 @@ steps:
 
         function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion) {
           $lookup = Get-ProjectByNameVersionWithRetry -projectName $projectName -projectVersion $projectVersion
-          Write-Host "Lookup status for $projectName @ $projectVersion: $($lookup.StatusCode)"
+          Write-Host ("Lookup status for {0} @ {1}: {2}" -f $projectName, $projectVersion, $lookup.StatusCode)
           if ($lookup.Body) {
-            Write-Host "Lookup response: $($lookup.Body)"
+            Write-Host ("Lookup response: {0}" -f $lookup.Body)
           }
 
           $project = $lookup.Project
@@ -302,14 +302,14 @@ steps:
 
           $patchRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$apiBaseUrl/v1/project/$($project.uuid)")
           $patchBody = @{ active = $true; isLatest = $true } | ConvertTo-Json -Depth 4
-          Write-Host "Patch request body for $projectName @ $projectVersion: $patchBody"
+          Write-Host ("Patch request body for {0} @ {1}: {2}" -f $projectName, $projectVersion, $patchBody)
           $patchRequest.Content = [System.Net.Http.StringContent]::new($patchBody, [Text.Encoding]::UTF8, 'application/json')
 
           $patchResponse = $httpClient.SendAsync($patchRequest).GetAwaiter().GetResult()
           $patchResponseText = $patchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          Write-Host "Patch status for $projectName @ $projectVersion: $([int]$patchResponse.StatusCode)"
+          Write-Host ("Patch status for {0} @ {1}: {2}" -f $projectName, $projectVersion, ([int]$patchResponse.StatusCode))
           if ($patchResponseText) {
-            Write-Host "Patch response: $patchResponseText"
+            Write-Host ("Patch response: {0}" -f $patchResponseText)
           }
 
           if (-not $patchResponse.IsSuccessStatusCode) {
@@ -484,5 +484,6 @@ steps:
         "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f "-------","-------","------","--------","----" | Write-Host
         foreach ($row in $verificationRows) { "{0,-50} {1,-16} {2,-7} {3,-9} {4}" -f $row.Project, $row.Version, $row.Exists, $row.IsLatest, ($row.Note -replace '\r?\n',' ') | Write-Host }
         Write-Host "##[endgroup]"
+
 
 
