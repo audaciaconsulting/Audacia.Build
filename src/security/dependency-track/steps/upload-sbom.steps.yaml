@@ -262,20 +262,26 @@ steps:
           Write-Warning "BOM token $token did not reach DONE within timeout."
           return $false
         }
-        function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion) {
+        function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion, [int]$lookupTimeoutSec = 120) {
           $encName = [uri]::EscapeDataString($projectName)
           $encVersion = [uri]::EscapeDataString($projectVersion)
           $project = $null
-          $deadline = (Get-Date).AddSeconds(30)
+          $deadline = (Get-Date).AddSeconds($lookupTimeoutSec)
           $lookupStatusCode = $null
           $lookupResponseText = $null
+          $lookupError = $null
 
           do {
-            $lookupResponse = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
-            $lookupStatusCode = [int]$lookupResponse.StatusCode
-            $lookupResponseText = $lookupResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-            if ($lookupResponse.IsSuccessStatusCode -and -not [string]::IsNullOrWhiteSpace($lookupResponseText)) {
-              $project = $lookupResponseText | ConvertFrom-Json
+            try {
+              $lookupResponse = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
+              $lookupStatusCode = [int]$lookupResponse.StatusCode
+              $lookupResponseText = $lookupResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+              if ($lookupResponse.IsSuccessStatusCode -and -not [string]::IsNullOrWhiteSpace($lookupResponseText)) {
+                $project = $lookupResponseText | ConvertFrom-Json
+              }
+            } catch {
+              $lookupError = $_.Exception.Message
+              Write-Warning "Lookup attempt failed for $projectName @ $projectVersion: $lookupError"
             }
 
             if ($project -and $project.uuid) { break }
@@ -283,7 +289,11 @@ steps:
           } while ((Get-Date) -lt $deadline)
 
           if (-not $project -or -not $project.uuid) {
-            throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion (lookup HTTP $lookupStatusCode, body: $lookupResponseText)"
+            $lookupContext = "lookup HTTP $lookupStatusCode, body: $lookupResponseText"
+            if ($lookupError) {
+              $lookupContext = "$lookupContext, last error: $lookupError"
+            }
+            throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion ($lookupContext)"
           }
 
           $patchRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$apiBaseUrl/v1/project/$($project.uuid)")
@@ -356,8 +366,12 @@ steps:
               $tokenNote = "token: $($uploadResponse.token)"
               Write-Host "Uploaded OK: $($bomFile.FullName) ($tokenNote)"
               if ("${{ parameters.waitForProcessing }}" -eq "True") {
-                [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
-                Set-UploadedProjectAsCurrent -projectName $uploadItem.ProjectName -projectVersion $uploadItem.ProjectVersion
+                $processingCompleted = Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }}
+                if ($processingCompleted) {
+                  Set-UploadedProjectAsCurrent -projectName $uploadItem.ProjectName -projectVersion $uploadItem.ProjectVersion -lookupTimeoutSec ${{ parameters.bomProcessingTimeoutSec }}
+                } else {
+                  Write-Warning "Skipping latest/active promotion because BOM processing did not complete within the timeout."
+                }
               } else {
                 Write-Warning "Skipping BOM processing wait and latest/active promotion; project verification may be stale until processing completes."
               }
