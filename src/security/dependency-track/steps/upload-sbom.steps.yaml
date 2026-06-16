@@ -292,6 +292,9 @@ steps:
 
           $patchResponse = $httpClient.SendAsync($patchRequest).GetAwaiter().GetResult()
           $patchResponseText = $patchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if ([int]$patchResponse.StatusCode -eq 304) {
+            return
+          }
           if (-not $patchResponse.IsSuccessStatusCode) {
             throw "Failed to set uploaded project as current for $projectName @ $projectVersion (HTTP $($patchResponse.StatusCode)): $patchResponseText"
           }
