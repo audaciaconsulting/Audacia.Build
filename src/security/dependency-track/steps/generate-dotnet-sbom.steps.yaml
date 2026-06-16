@@ -265,10 +265,18 @@ steps:
 
         function Get-NearestDirectoryBuildPropsOrNull([string]$projectPath) {
           try {
+            $searchRootPath = $null
+            if ($env:BUILD_SOURCESDIRECTORY -and (Test-Path -LiteralPath $env:BUILD_SOURCESDIRECTORY)) {
+              $searchRootPath = (Get-Item -LiteralPath $env:BUILD_SOURCESDIRECTORY).FullName.TrimEnd('\\','/')
+            } elseif ($env:SYSTEM_DEFAULTWORKINGDIRECTORY -and (Test-Path -LiteralPath $env:SYSTEM_DEFAULTWORKINGDIRECTORY)) {
+              $searchRootPath = (Get-Item -LiteralPath $env:SYSTEM_DEFAULTWORKINGDIRECTORY).FullName.TrimEnd('\\','/')
+            }
+
             $directory = Get-Item -LiteralPath (Split-Path -Parent $projectPath)
             while ($directory) {
               $propsPath = Join-Path $directory.FullName 'Directory.Build.props'
               if (Test-Path -LiteralPath $propsPath) { return $propsPath }
+              if ($searchRootPath -and ($directory.FullName.TrimEnd('\\','/') -ieq $searchRootPath)) { break }
               $directory = $directory.Parent
             }
           } catch {}

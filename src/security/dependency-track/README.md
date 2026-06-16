@@ -56,7 +56,7 @@ Dependency-Track uses the version supplied during the upload step. If the upload
 If `version` is left empty, the upload step uses `metadata.component.version` from the SBOM when available. For .NET SBOM generation, when `inferVersionFromProject` is enabled, the effective precedence is:
 
 1. The manually supplied upload `version` parameter.
-2. `PackageVersion`, then `Version`, in the nearest `Directory.Build.props` found by walking up from the `.csproj` directory.
+2. `PackageVersion`, then `Version`, in the nearest `Directory.Build.props` found by walking up from the `.csproj` directory within the repository working directory.
 3. `PackageVersion`, then `Version`, in the `.csproj`.
 
 If no version is found, the project version is uploaded as an empty string.
