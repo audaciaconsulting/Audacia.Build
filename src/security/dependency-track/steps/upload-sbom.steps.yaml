@@ -262,6 +262,31 @@ steps:
           Write-Warning "BOM token $token did not reach DONE within timeout."
           return $false
         }
+        function Get-ProjectByNameVersion([string]$projectName, [string]$projectVersion) {
+          $encName = [uri]::EscapeDataString($projectName)
+          $encVersion = [uri]::EscapeDataString($projectVersion)
+          $response = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
+          $responseText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if ($response.IsSuccessStatusCode) { return $responseText | ConvertFrom-Json }
+          return $null
+        }
+
+        function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion) {
+          $project = Get-ProjectByNameVersion -projectName $projectName -projectVersion $projectVersion
+          if (-not $project -or -not $project.uuid) {
+            throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion"
+          }
+
+          $patchRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$apiBaseUrl/v1/project/$($project.uuid)")
+          $patchBody = @{ active = $true; isLatest = $true } | ConvertTo-Json -Depth 4
+          $patchRequest.Content = [System.Net.Http.StringContent]::new($patchBody, [Text.Encoding]::UTF8, 'application/json')
+
+          $patchResponse = $httpClient.SendAsync($patchRequest).GetAwaiter().GetResult()
+          $patchResponseText = $patchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          if (-not $patchResponse.IsSuccessStatusCode) {
+            throw "Failed to set uploaded project as current (HTTP $($patchResponse.StatusCode)): $patchResponseText"
+          }
+        }
 
         $uploadedRows = New-Object System.Collections.Generic.List[object]
         try {
@@ -324,6 +349,7 @@ steps:
                 Write-Warning "Skipping BOM processing wait; project verification may be stale until processing completes."
               }
 
+              Set-UploadedProjectAsCurrent -projectName $uploadItem.ProjectName -projectVersion $uploadItem.ProjectVersion
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
               Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
