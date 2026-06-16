@@ -267,9 +267,12 @@ steps:
           $encVersion = [uri]::EscapeDataString($projectVersion)
           $project = $null
           $deadline = (Get-Date).AddSeconds(30)
+          $lookupStatusCode = $null
+          $lookupResponseText = $null
 
           do {
             $lookupResponse = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
+            $lookupStatusCode = [int]$lookupResponse.StatusCode
             $lookupResponseText = $lookupResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             if ($lookupResponse.IsSuccessStatusCode -and -not [string]::IsNullOrWhiteSpace($lookupResponseText)) {
               $project = $lookupResponseText | ConvertFrom-Json
@@ -280,7 +283,7 @@ steps:
           } while ((Get-Date) -lt $deadline)
 
           if (-not $project -or -not $project.uuid) {
-            throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion"
+            throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion (lookup HTTP $lookupStatusCode, body: $lookupResponseText)"
           }
 
           $patchRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$apiBaseUrl/v1/project/$($project.uuid)")
@@ -290,7 +293,7 @@ steps:
           $patchResponse = $httpClient.SendAsync($patchRequest).GetAwaiter().GetResult()
           $patchResponseText = $patchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
           if (-not $patchResponse.IsSuccessStatusCode) {
-            throw "Failed to set uploaded project as current (HTTP $($patchResponse.StatusCode)): $patchResponseText"
+            throw "Failed to set uploaded project as current for $projectName @ $projectVersion (HTTP $($patchResponse.StatusCode)): $patchResponseText"
           }
         }
 
@@ -381,6 +384,8 @@ steps:
           $uploadedRowsJson = ($uploadedRows | ConvertTo-Json -Compress); if (-not $uploadedRowsJson) { $uploadedRowsJson = '[]' }
           Write-Host "##vso[task.setvariable variable=uploadedRowsJson;isOutput=true]$uploadedRowsJson"
           Set-Content -LiteralPath (Join-Path $env:AGENT_TEMPDIRECTORY 'dt-uploaded-rows.json') -Value $uploadedRowsJson -Encoding UTF8
+          Write-Error ("Upload stage failed: {0}" -f $_.Exception.Message)
+          Write-Host ("Exception type: {0}" -f $_.Exception.GetType().FullName)
           if ("${{ parameters.failOnUploadError }}" -eq "True") { exit 1 } else { exit 0 }
         }
 
