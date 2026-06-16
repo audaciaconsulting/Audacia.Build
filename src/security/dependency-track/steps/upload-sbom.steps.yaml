@@ -281,7 +281,7 @@ steps:
               }
             } catch {
               $lookupError = $_.Exception.Message
-              Write-Warning "Lookup attempt failed for $projectName @ $projectVersion: $lookupError"
+              Write-Warning "Lookup attempt failed for $projectName @ ${projectVersion}: $lookupError"
             }
 
             if ($project -and $project.uuid) { break }
