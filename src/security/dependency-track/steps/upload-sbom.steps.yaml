@@ -357,11 +357,11 @@ steps:
               Write-Host "Uploaded OK: $($bomFile.FullName) ($tokenNote)"
               if ("${{ parameters.waitForProcessing }}" -eq "True") {
                 [void](Wait-BomProcessed -token $uploadResponse.token -timeoutSec ${{ parameters.bomProcessingTimeoutSec }})
+                Set-UploadedProjectAsCurrent -projectName $uploadItem.ProjectName -projectVersion $uploadItem.ProjectVersion
               } else {
-                Write-Warning "Skipping BOM processing wait; project verification may be stale until processing completes."
+                Write-Warning "Skipping BOM processing wait and latest/active promotion; project verification may be stale until processing completes."
               }
 
-              Set-UploadedProjectAsCurrent -projectName $uploadItem.ProjectName -projectVersion $uploadItem.ProjectVersion
               $uploadedRows.Add([pscustomobject]@{ Project=$uploadItem.ProjectName; Version=$uploadItem.ProjectVersion })
             } catch {
               Write-Error "❌ Upload failed for $($bomFile.FullName): $($_.Exception.Message)"
