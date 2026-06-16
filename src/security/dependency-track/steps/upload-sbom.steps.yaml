@@ -262,56 +262,33 @@ steps:
           Write-Warning "BOM token $token did not reach DONE within timeout."
           return $false
         }
-        function Get-ProjectByNameVersion([string]$projectName, [string]$projectVersion) {
+        function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion) {
           $encName = [uri]::EscapeDataString($projectName)
           $encVersion = [uri]::EscapeDataString($projectVersion)
-          $response = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
-          $responseText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          return [pscustomobject]@{
-            StatusCode = [int]$response.StatusCode
-            IsSuccess  = $response.IsSuccessStatusCode
-            Body       = $responseText
-            Project    = $(if ($response.IsSuccessStatusCode -and -not [string]::IsNullOrWhiteSpace($responseText)) { $responseText | ConvertFrom-Json } else { $null })
-          }
-        }
+          $project = $null
+          $deadline = (Get-Date).AddSeconds(30)
 
-        function Get-ProjectByNameVersionWithRetry([string]$projectName, [string]$projectVersion, [int]$timeoutSec = 30) {
-          $deadline = (Get-Date).AddSeconds($timeoutSec)
           do {
-            $lookup = Get-ProjectByNameVersion -projectName $projectName -projectVersion $projectVersion
-            if ($lookup.Project -and $lookup.Project.uuid) {
-              return $lookup
+            $lookupResponse = $httpClient.GetAsync("$apiBaseUrl/v1/project/lookup?name=$encName&version=$encVersion").GetAwaiter().GetResult()
+            $lookupResponseText = $lookupResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if ($lookupResponse.IsSuccessStatusCode -and -not [string]::IsNullOrWhiteSpace($lookupResponseText)) {
+              $project = $lookupResponseText | ConvertFrom-Json
             }
+
+            if ($project -and $project.uuid) { break }
             Start-Sleep -Seconds 2
           } while ((Get-Date) -lt $deadline)
 
-          return $lookup
-        }
-
-        function Set-UploadedProjectAsCurrent([string]$projectName, [string]$projectVersion) {
-          $lookup = Get-ProjectByNameVersionWithRetry -projectName $projectName -projectVersion $projectVersion
-          Write-Host ("Lookup status for {0} @ {1}: {2}" -f $projectName, $projectVersion, $lookup.StatusCode)
-          if ($lookup.Body) {
-            Write-Host ("Lookup response: {0}" -f $lookup.Body)
-          }
-
-          $project = $lookup.Project
           if (-not $project -or -not $project.uuid) {
             throw "Uploaded project not found after BOM processing: $projectName @ $projectVersion"
           }
 
           $patchRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$apiBaseUrl/v1/project/$($project.uuid)")
           $patchBody = @{ active = $true; isLatest = $true } | ConvertTo-Json -Depth 4
-          Write-Host ("Patch request body for {0} @ {1}: {2}" -f $projectName, $projectVersion, $patchBody)
           $patchRequest.Content = [System.Net.Http.StringContent]::new($patchBody, [Text.Encoding]::UTF8, 'application/json')
 
           $patchResponse = $httpClient.SendAsync($patchRequest).GetAwaiter().GetResult()
           $patchResponseText = $patchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          Write-Host ("Patch status for {0} @ {1}: {2}" -f $projectName, $projectVersion, ([int]$patchResponse.StatusCode))
-          if ($patchResponseText) {
-            Write-Host ("Patch response: {0}" -f $patchResponseText)
-          }
-
           if (-not $patchResponse.IsSuccessStatusCode) {
             throw "Failed to set uploaded project as current (HTTP $($patchResponse.StatusCode)): $patchResponseText"
           }
