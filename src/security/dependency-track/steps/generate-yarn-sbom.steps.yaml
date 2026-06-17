@@ -10,6 +10,10 @@ parameters:
     type: string
     default: '22.x'
 
+  - name: yarnVersion
+    type: string
+    default: '3.8.7'
+
   # When true, runs yarn install to gather license texts.
   - name: includeLicenseTexts
     type: boolean
@@ -88,9 +92,9 @@ steps:
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
-        Write-Host "Enable Corepack Yarn"
+        Write-Host "Enable Corepack Yarn ${{ parameters.yarnVersion }}"
         corepack enable
-        corepack prepare yarn@stable --activate
+        corepack prepare yarn@${{ parameters.yarnVersion }} --activate
         yarn --version
 
         Write-Host "Import cyclonedx yarn plugin"
