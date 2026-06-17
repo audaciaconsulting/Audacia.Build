@@ -40,7 +40,7 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 | Variable               | Purpose                                                                                 | Example                              |
 | ---------------------- |-----------------------------------------------------------------------------------------| ------------------------------------ |
 | `envName`              | Which environment this SBOM represents                                                  | `dev`, `qa`, `uat`, `prod`           |
-| `version`              | Project version value used on upload e.g. `$(Build.SourceBranchName)`                   | `main`                               |
+| `version`              | Optional project version value used on upload. If set, this takes precedence over inferred SBOM versions. | `main`                               |
 | `additionalTags`       | Optional extra tags recorded on the Dependency-Track project                            | `owner:team-x,service:abc`           |
 | `deactivateOld`        | Whether to mark all older versions inactive after upload                                | `true`                               |
 | `parentProjectName`    | Optional parent “container” in Dependency-Track                                         | `OrganisationName - ApplicationName` |
@@ -48,6 +48,18 @@ These are defined as pipeline variables within each YAML file or via the “Vari
 | `waitForProcessing`    | Whether to wait for BOM processing in Dependency-Track before finishing the upload step | `true`                               |
 
 > ⚠️ Parent projects must match on both name and version exactly (case-sensitive) in Dependency-Track for the link to be established. If the version is left empty or no exact match exists, uploads still succeed but no parent link is created.
+
+## Project Versioning
+
+Dependency-Track uses the version supplied during the upload step. If the upload template's `version` parameter is set, that manually defined value takes precedence over any version in the generated SBOM.
+
+If `version` is left empty, the upload step uses `metadata.component.version` from the SBOM when available. For .NET SBOM generation, when `inferVersionFromProject` is enabled, the effective precedence is:
+
+1. The manually supplied upload `version` parameter.
+2. `PackageVersion`, then `Version`, in the nearest `Directory.Build.props` found by walking up from the `.csproj` directory within the repository working directory.
+3. `PackageVersion`, then `Version`, in the `.csproj`.
+
+If no version is found, the project version is uploaded as an empty string.
 
 ## Specifying Projects for SBOM Generation
 
@@ -116,10 +128,14 @@ If no exact match is found, the child projects still upload successfully but rem
 
 Use the convention `"<Client> - <System>"` for all parent project names to keep the portfolio consistent.
 
+## Latest and Active Version Handling
+
+When `waitForProcessing` is `true`, the upload step waits for Dependency-Track to finish processing each BOM and then promotes the uploaded `projectName + projectVersion` so it is marked as both latest and active.
+
 ## Deactivate Non-Latest Versions
 
-After a successful upload, older versions of each project (where `isLatest=false`) are set to inactive.
-This keeps the UI focused on the active release while preserving historical versions for audit.
+After the uploaded version has been promoted, older versions of each project (where `isLatest=false`) are set to inactive.
+This keeps the UI focused on the current release while preserving historical versions for audit.
 
 ## npm Dependency Tree Warnings
 
@@ -145,6 +161,7 @@ to maintain accurate evidence and reproducibility.
 | Deactivate skipped                     | SBOM artifact missing                                             | Keep `tryDownloadArtifact: true`                                              |
 | `ELSPROBLEMS` warning during npm SBOM  | Dependency tree inconsistencies detected by `npm ls`              | SBOMs still upload successfully; align dependency versions to remove warnings |
 | Upload stage runs too long / times out | Dependency-Track is still processing BOMs when the pipeline waits | Set `waitForProcessing: false` to skip waiting for processing                 |
+| Uploaded version is not latest or active | Dependency-Track did not finish processing in time, or the uploaded project could not be promoted | Keep `waitForProcessing: true` and review the upload step logs for the project lookup or patch failure |
 
 ## Verification Checklist
 
@@ -155,3 +172,4 @@ to maintain accurate evidence and reproducibility.
 - [ ] Parent project created in Dependency-Track
 - [ ] Parent project variables set (`"<Organisation> - <System>"`)
 - [ ] Pipeline variables defined: `envName`, `version`, `deactivateOld`, `additionalTags` (optional)
+
