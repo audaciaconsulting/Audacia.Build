@@ -12,7 +12,7 @@ parameters:
 
   - name: yarnVersion
     type: string
-    default: '3.8.7'
+    default: '4.17.0'
 
   # When true, runs yarn install to gather license texts.
   - name: includeLicenseTexts
@@ -110,7 +110,7 @@ steps:
           try {
             yarn cache clean
         
-            yarn install --immutable
+            yarn install --no-immutable
         
             Write-Host "Generating SBOM for $root"
             yarn cyclonedx --output-format JSON --output-file $outputFile
