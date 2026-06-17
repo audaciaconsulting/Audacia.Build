@@ -82,13 +82,15 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/yarn" -Force | Out-Null
 
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
-        Write-Host "Set yarn version stable"
-        yarn set version stable
+        Write-Host "Enable Corepack Yarn"
+        corepack enable
+        corepack prepare yarn@stable --activate
         yarn --version
 
         Write-Host "Import cyclonedx yarn plugin"
@@ -104,7 +106,7 @@ steps:
           try {
             yarn cache clean
         
-            yarn install
+            yarn install --immutable
         
             Write-Host "Generating SBOM for $root"
             yarn cyclonedx --output-format JSON --output-file $outputFile
