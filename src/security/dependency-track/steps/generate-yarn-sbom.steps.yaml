@@ -10,6 +10,10 @@ parameters:
     type: string
     default: '22.x'
 
+  - name: yarnVersion
+    type: string
+    default: '4.17.0'
+
   # When true, runs yarn install to gather license texts.
   - name: includeLicenseTexts
     type: boolean
@@ -82,13 +86,15 @@ steps:
       targetType: inline
       script: |
         $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
         New-Item -ItemType Directory -Path "$(Agent.TempDirectory)/sbom/yarn" -Force | Out-Null
 
         $rootsJson = '$(resolveYarnRoots.yarnRootsJson)'
         $projectRoots = $rootsJson | ConvertFrom-Json
 
-        Write-Host "Set yarn version stable"
-        yarn set version stable
+        Write-Host "Enable Corepack Yarn ${{ parameters.yarnVersion }}"
+        corepack enable
+        corepack prepare yarn@${{ parameters.yarnVersion }} --activate
         yarn --version
 
         Write-Host "Import cyclonedx yarn plugin"
@@ -104,7 +110,7 @@ steps:
           try {
             yarn cache clean
         
-            yarn install
+            yarn install --no-immutable
         
             Write-Host "Generating SBOM for $root"
             yarn cyclonedx --output-format JSON --output-file $outputFile
