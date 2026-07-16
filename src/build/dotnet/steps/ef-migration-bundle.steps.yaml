@@ -13,6 +13,16 @@ parameters:
       - 'linux'
   - name: artifactName
     default: 'EFMigrationBundle'
+  - name: feedsToUse                   # OPTIONAL: Should vstsFeed be used or nugetConfigPath
+    default: 'vstsFeed'
+    values:
+      - 'vstsFeed'
+      - 'nugetConfigPath'
+  - name: vstsFeed                     # OPTIONAL: VSTS feed to be used
+    default: 'Audacia.Public/AudaciaPublic'
+  - name: nugetConfigPath              # OPTIONAL: Path to the NuGet.Config file
+    default: '$(Build.SourcesDirectory)/src/apis/nuget.config'
+
 
 steps:
   - task: DotNetCoreCLI@2
@@ -20,7 +30,14 @@ steps:
     inputs:
       command: restore
       projects: ${{ coalesce(parameters.startupProject, parameters.efProject) }}
-      vstsFeed: 'Audacia.Public/AudaciaPublic'
+      ${{ if eq(parameters.feedsToUse, 'vstsFeed') }}:
+        feedsToUse: select
+        vstsFeed: ${{parameters.vstsFeed}}
+      ${{ if eq(parameters.feedsToUse, 'nugetConfigPath') }}:
+        feedsToUse: config
+        nugetConfigPath: ${{parameters.nugetConfigPath}}
+
+
 
   - task: PowerShell@2
     displayName: Build EF Core Migration Bundle
