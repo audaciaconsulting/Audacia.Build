@@ -1,16 +1,18 @@
 # Task to publish a path as an artifact
 parameters:
   - name: path
-    default: ''
+    default: ""
   - name: artifactName
-    default: '$(Build.DefinitionName)'
+    default: "$(Build.DefinitionName)"
   - name: displayName
-    default: 'Artifact Publish'
+    default: "Artifact Publish"
+  - name: alwaysPublish
+    default: false
 
 steps:
   - task: PublishBuildArtifacts@1
     displayName: ${{parameters.displayName}}
     inputs:
-      PathtoPublish: '$(build.ArtifactStagingDirectory)/${{parameters.path}}'
+      PathtoPublish: "$(build.ArtifactStagingDirectory)/${{parameters.path}}"
       ArtifactName: ${{parameters.artifactName}}
-    condition: and(succeeded(), not(eq(variables['Build.Reason'], 'PullRequest')))
+    condition: and(succeeded(), or(not(eq(variables['Build.Reason'], 'PullRequest')), eq('${{parameters.alwaysPublish}}', true)))

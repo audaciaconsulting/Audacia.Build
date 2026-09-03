@@ -19,6 +19,8 @@ parameters:
     default: 'Audacia.Public/AudaciaPublic'
   - name: nugetConfigPath              # OPTIONAL: Path to the NuGet.Config file
     default: '$(Build.SourcesDirectory)/src/apis/nuget.config'
+  - name: alwaysPublish                # OPTIONAL: Publish the artifact even when the build was triggered by a pull request
+    default: false
 
 steps:
   - task: DotNetCoreCLI@2
@@ -76,3 +78,4 @@ steps:
     parameters:
       path: ''
       artifactName: ${{parameters.artifactName}}
+      alwaysPublish: ${{parameters.alwaysPublish}}
