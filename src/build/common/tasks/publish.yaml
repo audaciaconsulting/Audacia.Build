@@ -7,6 +7,7 @@ parameters:
   - name: displayName
     default: 'Artifact Publish'
   - name: alwaysPublish             # OPTIONAL: Publish the artifact even when the build was triggered by a pull request
+    type: boolean
     default: false
 
 steps:
