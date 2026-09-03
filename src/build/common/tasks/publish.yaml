@@ -6,6 +6,9 @@ parameters:
     default: '$(Build.DefinitionName)'
   - name: displayName
     default: 'Artifact Publish'
+  - name: alwaysPublish             # OPTIONAL: Publish the artifact even when the build was triggered by a pull request
+    type: boolean
+    default: false
 
 steps:
   - task: PublishBuildArtifacts@1
@@ -13,4 +16,4 @@ steps:
     inputs:
       PathtoPublish: '$(build.ArtifactStagingDirectory)/${{parameters.path}}'
       ArtifactName: ${{parameters.artifactName}}
-    condition: and(succeeded(), not(eq(variables['Build.Reason'], 'PullRequest')))
+    condition: and(succeeded(), or(not(eq(variables['Build.Reason'], 'PullRequest')), ${{ parameters.alwaysPublish }}))
