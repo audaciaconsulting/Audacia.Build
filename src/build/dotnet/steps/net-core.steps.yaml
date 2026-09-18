@@ -66,9 +66,14 @@ steps:
     inputs:
       command: test
       projects: ${{parameters.tests}}
-      arguments: >
-        --collect "Code coverage"
       configuration: 'Release'
+      ${{ if eq(parameters.runCodeAnalysis, false) }}:
+        arguments: >
+          --collect "Code coverage"
+          -p:RunAnalyzersDuringBuild=false
+      ${{ else }}:
+        arguments: >
+          --collect "Code coverage"
 
   - task: DotNetCoreCLI@2
     displayName: '.NET Publish'
