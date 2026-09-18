@@ -15,7 +15,7 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 | End-to-End       | You want a single job that runs the whole flow in one go. Great for small repos or a quick start. |
 
 > **Implementation note:**
-> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml` and `generate-npm-sbom.steps.yaml`), the `publishArtifact` variable controls whether each generator publishes its output as a pipeline artifact.
+> When using the SBOM generator templates (`generate-dotnet-sbom.steps.yaml`, `generate-npm-sbom.steps.yaml` and `generate-pnpm-sbom.steps.yaml`), the `publishArtifact` variable controls whether each generator publishes its output as a pipeline artifact.
 >
 > - **If you are running only one generator** (for example, just the .NET or npm template), set `publishArtifact: true` to publish its SBOMs directly.
 > - **If you are running multiple generators** (for example, both .NET and npm), set `publishArtifact: false` on each generator and add a single `PublishPipelineArtifact@1` step afterwards. This publishes a single combined artifact (e.g. `sbom-files`) containing all SBOM outputs.
@@ -24,6 +24,53 @@ Each upload creates or updates a project and version in Dependency-Track, which 
 > - A single, consolidated SBOM artifact for multi-ecosystem projects
 > - No duplicate or conflicting artifact names
 > - Consistent behaviour between modular (staged) and end-to-end pipeline designs
+
+## Including the pnpm template
+
+Reference `Audacia.Build` as a repository resource, then include the template as steps:
+
+```yaml
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      endpoint: audacia-github-connection
+      name: audaciaconsulting/Audacia.Build
+
+pool:
+  vmImage: "windows-latest"
+
+steps:
+  - template: /src/security/dependency-track/steps/generate-pnpm-sbom.steps.yaml@templates
+    parameters:
+      pnpmRoots: $(System.DefaultWorkingDirectory)/src/client
+      # Optional: restrict to specific workspace packages, one pnpm --filter selector per line.
+      packageFilters: |
+        eportfolio
+        admin
+      publishArtifact: true
+```
+
+Set `publishArtifact: false` and publish once yourself if you are also running the .NET or npm generator — see the implementation note above.
+
+### pnpm template parameters
+
+| Parameter | Default | Purpose |
+| --------- | ------- | ------- |
+| `pnpmRoots` | `''` | Directories containing a `pnpm-lock.yaml`, one per line. **Empty means skip** — no steps run and the job stays green. |
+| `packageFilters` | `''` | One pnpm `--filter` selector per line, applied within every root. Empty selects every workspace package. A selector matching nothing in any root fails the step. |
+| `pnpmVersion` | `'11'` | pnpm version installed. `pnpm sbom` requires >= 11. |
+| `nodeVersion` | `'22.x'` | Node version spec passed to `UseNode`. |
+| `sbomSpecVersion` | `'1.6'` | CycloneDX spec version. **Do not raise without checking the target Dependency-Track accepts it** — see the note below. |
+| `sbomType` | `'application'` | Component type recorded for the root package (`application` or `library`). |
+| `lockfileOnly` | `false` | Skip the install and read only the lockfile. See the warning below before enabling. |
+| `includeDevDependencies` | `true` | `false` maps to `--prod` (production and optional dependencies only). |
+| `excludePeers` | `false` | Exclude peer dependencies and their exclusive subtrees. |
+| `npmrcPaths` | `[]` | `.npmrc` paths to authenticate for private feeds. |
+| `publishArtifact` | `false` | Publish this step's SBOM output as a pipeline artifact. |
+| `artifactName` | `'sbom-files'` | Artifact name when publishing. |
+
+> The `sbomSpecVersion` default is `1.6` rather than pnpm's own default of `1.7` because Dependency-Track v4.14.3 rejects 1.7 with `HTTP 400 - Unrecognized specVersion 1.7`.
 
 ## Prerequisites
 
@@ -79,8 +126,20 @@ Examples might include:
 - `$(System.DefaultWorkingDirectory)/playwright`
 - `$(System.DefaultWorkingDirectory)/performance`
 
+When specifying a pnpm project, the template expects **the directory** that contains the `pnpm-lock.yaml`.
+Pass one directory per line via `pnpmRoots`. Examples might include:
+
+- `$(System.DefaultWorkingDirectory)/src/client`
+- `$(System.DefaultWorkingDirectory)/tests/playwright`
+
+Both pnpm topologies are supported, determined by whether a `pnpm-workspace.yaml` sits alongside the lockfile:
+
+- **Workspace** — one SBOM per workspace package. The workspace root itself is excluded, as it is a private aggregator rather than a deployable component. Use `packageFilters` (one pnpm `--filter` selector per line) to restrict which packages are included; omit it for all of them.
+- **Single package** — one SBOM for the package itself.
+
 Optional `.npmrc` paths can also be provided for authentication against private feeds.  
 Each `.npmrc` will be authenticated separately using `npmAuthenticate@0` before SBOM generation.
+This applies to both the npm and pnpm templates, as pnpm also reads `.npmrc`.
 
 The templates will:
 
@@ -88,8 +147,14 @@ The templates will:
 - Generate npm SBOMs via `@cyclonedx/cyclonedx-npm` for each listed SPA root folder (where `package.json` lives).
   If `package-lock.json` isn’t present, the step will create one and run a minimal install for resolution.
   When license text inclusion is enabled, `npm ci` is used for full dependency restoration.
+- Generate pnpm SBOMs via pnpm's own `pnpm sbom` command for each package in each listed pnpm root.
+  A `pnpm install --frozen-lockfile` runs first so the SBOM reflects the installed tree.
 
-> The template automatically installs the necessary tools (`CycloneDX` and `@cyclonedx/cyclonedx-npm`) if not already available.
+> The template automatically installs the necessary tools (`CycloneDX`, `@cyclonedx/cyclonedx-npm` and `pnpm`) if not already available.
+>
+> ⚠️ **The pnpm template requires pnpm 11 or later**, as `pnpm sbom` was added in pnpm v11.0.0. The `pnpmVersion` parameter controls the version installed and defaults to `11`.
+>
+> ⚠️ Do not enable the pnpm template's `lockfileOnly` parameter without re-validating the output. Reading the lockfile alone rather than the installed tree was measured against a real workspace to drop 463 of 1441 components (and add 102 others) **while still exiting successfully** — an incomplete SBOM that reports no error and shows no failure in the pipeline log.
 
 ## Naming Note
 

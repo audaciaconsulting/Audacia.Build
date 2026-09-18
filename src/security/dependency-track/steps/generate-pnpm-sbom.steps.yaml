@@ -1,0 +1,503 @@
+# Template: generate pnpm SBOMs using `pnpm sbom` (pnpm >= 11)
+#
+# Reads pnpm-lock.yaml directly via pnpm's own SBOM command rather than approximating the
+# dependency tree through npm. CycloneDX list pnpm in their Tool Center as the pnpm SBOM
+# tool (https://pnpm.io/cli/sbom); CycloneDX/cyclonedx-node-pnpm is archived with no
+# releases.
+#
+# Sibling of generate-npm-sbom.steps.yaml: same parameter names where the concept matches,
+# same nested output layout under $(Agent.TempDirectory)/sbom, same logging conventions, so
+# upload-sbom.steps.yaml and deactivate-nonlatest.steps.yaml need no changes.
+#
+# Handles both pnpm topologies:
+#   - workspace       (pnpm-workspace.yaml present) - one SBOM per workspace package,
+#                     excluding the workspace root itself
+#   - single-package  (no pnpm-workspace.yaml)      - one SBOM for the package
+#
+# Unlike the .NET and npm templates, which throw when given no projects, this one SKIPS
+# when pnpmRoots is empty - nothing is installed and no steps run. An invalid *supplied*
+# path is still a hard error: that is a misconfiguration, not an absent project.
+#
+# Deliberately does NOT default to the `--lockfile-only` fast path. Measured against a real
+# workspace (1441 components), --lockfile-only produced 1080 - dropping 463 components and
+# adding 102 others, so the two graphs differ in both directions rather than one being a
+# subset. Exit code is 0 either way, so the loss is silent. Packages linked with
+# workspace:* and everything reachable only through them are among the casualties.
+# lockfileOnly remains a parameter for a future consumer whose workspace has no internal
+# links, but switching it on needs re-validating, not just flipping a flag.
+
+parameters:
+  # One or more directories that each contain a pnpm-lock.yaml. Accepts a multiline string.
+  # Paths may be repo-relative (preferred) or absolute. Empty = skip (see header).
+  - name: pnpmRoots
+    type: string
+    default: ''
+
+  # One pnpm --filter selector per line (package names or paths). Applied within EVERY
+  # supplied root; a selector matching nothing in any root is an error. Empty = every
+  # workspace package (workspace roots) or the package itself (single-package roots).
+  - name: packageFilters
+    type: string
+    default: ''
+
+  # pnpm major/exact version to install. `pnpm sbom` requires >= 11.
+  - name: pnpmVersion
+    type: string
+    default: '11'
+
+  # Node.js version spec understood by UseNode (e.g. "22.x").
+  - name: nodeVersion
+    type: string
+    default: '22.x'
+
+  # CycloneDX spec version (1.5/1.6/1.7). Empty = pnpm's own default, currently 1.7.
+  - name: sbomSpecVersion
+    type: string
+    default: '1.6' # This org's Dependency-Track (v4.14.3) rejects 1.7 outright with HTTP 400
+      # "Unrecognized specVersion 1.7" - confirmed against a live upload. Don't change this
+      # default without confirming the target DT instance accepts whatever version you pick.
+
+  # Component type recorded for the root package. pnpm's own default is 'library'.
+  - name: sbomType
+    type: string
+    default: 'application'
+    values:
+      - 'application'
+      - 'library'
+
+  # See the header before turning this on. Skips the install and reads only the lockfile,
+  # at the cost of silently incomplete SBOMs for workspaces with internal links.
+  - name: lockfileOnly
+    type: boolean
+    default: false
+
+  # false maps to --prod (production + optional dependencies only).
+  - name: includeDevDependencies
+    type: boolean
+    default: true
+
+  # Excludes peer dependencies and their exclusive transitive subtrees.
+  - name: excludePeers
+    type: boolean
+    default: false
+
+  # Optional: zero or more .npmrc paths as an array. Each is authenticated separately.
+  # pnpm reads .npmrc, so the npm template's mechanism applies.
+  - name: npmrcPaths
+    type: object
+    default: []
+
+  # Publish the SBOM output from this step. Set false when combining with the .NET/npm/yarn
+  # templates so the whole sbom folder is published once, later.
+  - name: publishArtifact
+    type: boolean
+    default: false
+
+  # Logical name for the pipeline artifact when publishing is enabled.
+  - name: artifactName
+    type: string
+    default: 'sbom-files'
+
+steps:
+  # 1. Detect pnpm roots using filesystem checks only, before any toolchain is installed,
+  #    so a repo with no pnpm skips everything below rather than paying for Node and pnpm
+  #    first. Every subsequent step is conditioned on detectPnpm.hasPnpm.
+  - task: PowerShell@2
+    name: detectPnpm
+    displayName: "Detect pnpm roots"
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+
+        $rootsLiteral = @'
+        ${{ parameters.pnpmRoots }}
+        '@
+
+        $inputRoots = @()
+        if (-not [string]::IsNullOrWhiteSpace($rootsLiteral)) {
+          $inputRoots = $rootsLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
+
+        if ($inputRoots.Count -eq 0) {
+          Write-Host "No pnpmRoots supplied - skipping pnpm SBOM generation."
+          Write-Host "##vso[task.setvariable variable=hasPnpm;isOutput=true]false"
+          return
+        }
+
+        $sourcesRoot = $env:BUILD_SOURCESDIRECTORY
+        if ([string]::IsNullOrWhiteSpace($sourcesRoot)) { $sourcesRoot = $env:SYSTEM_DEFAULTWORKINGDIRECTORY }
+        $sourcesRootFull = [IO.Path]::GetFullPath($sourcesRoot)
+
+        $resolvedRoots = New-Object System.Collections.Generic.List[object]
+        $seenRoots = New-Object System.Collections.Generic.HashSet[string]
+
+        foreach ($entry in $inputRoots) {
+          $normalised = $entry.Trim().Trim('"').Trim()
+          $normalised = $normalised -replace '\$\((?i:Build\.SourcesDirectory|System\.DefaultWorkingDirectory)\)', $sourcesRootFull
+
+          $candidate = if ([IO.Path]::IsPathRooted($normalised)) { $normalised } else { Join-Path $sourcesRootFull $normalised }
+          $candidate = [IO.Path]::GetFullPath($candidate)
+
+          if (-not (Test-Path -LiteralPath $candidate)) {
+            throw "pnpmRoots entry does not exist: '$entry' (resolved '$candidate')."
+          }
+
+          $lockfilePath = Join-Path $candidate 'pnpm-lock.yaml'
+          if (-not (Test-Path -LiteralPath $lockfilePath)) {
+            throw "No pnpm-lock.yaml in pnpmRoots entry: '$entry' (resolved '$candidate'). Supply the directory that contains pnpm-lock.yaml."
+          }
+
+          if (-not $seenRoots.Add($candidate)) { continue }
+
+          $isWorkspace = Test-Path -LiteralPath (Join-Path $candidate 'pnpm-workspace.yaml')
+          $resolvedRoots.Add([pscustomobject]@{ path = $candidate; isWorkspace = [bool]$isWorkspace })
+        }
+
+        Write-Host "##[group]Detected pnpm roots"
+        $resolvedRoots | ForEach-Object {
+          $topology = if ($_.isWorkspace) { 'workspace' } else { 'single-package' }
+          Write-Host (" - {0} [{1}]" -f $_.path, $topology)
+        }
+        Write-Host "##[endgroup]"
+
+        $rootsJson = ($resolvedRoots.ToArray() | ConvertTo-Json -Compress -Depth 5 -AsArray)
+        Write-Host "##vso[task.setvariable variable=hasPnpm;isOutput=true]true"
+        Write-Host "##vso[task.setvariable variable=rootsJson;isOutput=true]$rootsJson"
+
+  - task: UseNode@1
+    displayName: Use Node.js ${{ parameters.nodeVersion }}
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+      checkLatest: false
+
+  - ${{ if eq(length(parameters.npmrcPaths), 0) }}:
+      - script: echo "No npmrcPaths provided - skipping npm authentication."
+        displayName: "Skip npm authentication"
+        condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+
+  - ${{ each npmrcPath in parameters.npmrcPaths }}:
+      - task: npmAuthenticate@0
+        displayName: "Authenticate npm via .npmrc -> ${{ npmrcPath }}"
+        condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+        inputs:
+          workingFile: ${{ npmrcPath }}
+
+  - task: PowerShell@2
+    displayName: "Resolve Node.js tool path"
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        # UseNode@1's own PATH setup is not reliable enough on these hosted agents: a stale
+        # system Node (observed as old as ~10.x, which cannot parse the ES-module syntax in
+        # pnpm's bundled CLI) can still shadow it, so `pnpm`/`npm` resolve to the wrong node.
+        # Resolve the tool-cache Node explicitly instead and prepend it ourselves - the same
+        # workaround generate-npm-sbom.steps.yaml already relies on for this exact class of
+        # agent.
+        $ErrorActionPreference = 'Stop'
+
+        $toolsRoot = Join-Path $env:AGENT_TOOLSDIRECTORY 'node'
+        if (-not (Test-Path $toolsRoot)) { throw "Node tools directory not found: $toolsRoot" }
+
+        $requestedSpec = '${{ parameters.nodeVersion }}'
+        $majorVersion = [regex]::Match($requestedSpec, '^\d+').Value
+        if (-not $majorVersion) { throw "Could not derive Node major version from spec: '$requestedSpec'." }
+
+        $matchedVersion = Get-ChildItem $toolsRoot -Directory -Name | Where-Object { $_ -like "$majorVersion.*" } | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+        if (-not $matchedVersion) { throw "No Node $majorVersion.* found under $toolsRoot" }
+
+        $nodeBin = Join-Path (Join-Path $toolsRoot $matchedVersion) 'x64'
+        $nodeExe = Join-Path $nodeBin 'node.exe'
+        $npmCmd = Join-Path $nodeBin 'npm.cmd'
+        if (-not (Test-Path $nodeExe)) { throw "node.exe not found at $nodeExe" }
+        if (-not (Test-Path $npmCmd)) { throw "npm.cmd not found at $npmCmd" }
+
+        Write-Host "##[group]Node tooling (resolved)"
+        & $nodeExe --version
+        & $npmCmd --version
+        Write-Host "Resolved bin: $nodeBin"
+        Write-Host "##[endgroup]"
+
+        Write-Host "##vso[task.prependpath]$nodeBin"
+        Write-Host "##vso[task.setvariable variable=PnpmNodeBin]$nodeBin"
+
+  # Installed globally via npm rather than activated via corepack (as the yarn template
+  # does), because consuming repos do not reliably set the `packageManager` field in
+  # package.json - corepack would have nothing to activate from. pnpmVersion pins it.
+  - script: npm install -g pnpm@${{ parameters.pnpmVersion }}
+    displayName: "Install pnpm ${{ parameters.pnpmVersion }}"
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+
+  - task: PowerShell@2
+    displayName: "Verify pnpm version supports 'pnpm sbom' (>= 11)"
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:PnpmNodeBin) { $env:PATH = "$env:PnpmNodeBin;$env:PATH" }
+
+        $rawVersion = (pnpm --version).Trim()
+        $major = [int]($rawVersion -split '\.')[0]
+        Write-Host "Resolved pnpm version: $rawVersion"
+
+        if ($major -lt 11) {
+          throw "pnpm $rawVersion is on PATH, but 'pnpm sbom' requires pnpm >= 11.0.0. Check the pnpmVersion parameter ('${{ parameters.pnpmVersion }}')."
+        }
+
+  # 2. Resolve the packages to generate for. `pnpm list --recursive --depth -1 --json`
+  #    returns {name, version, path} per member and works in both topologies, so there is
+  #    one resolution path. The only topology-specific behaviour is excluding the workspace
+  #    root: in a single-package root the sole entry IS the root and must be kept.
+  - task: PowerShell@2
+    name: resolvePnpmPackages
+    displayName: "Resolve pnpm packages"
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:PnpmNodeBin) { $env:PATH = "$env:PnpmNodeBin;$env:PATH" }
+
+        $roots = @('$(detectPnpm.rootsJson)' | ConvertFrom-Json)
+        if (-not $roots -or $roots.Count -eq 0) { throw "No pnpm roots available from the detect step." }
+
+        $filtersLiteral = @'
+        ${{ parameters.packageFilters }}
+        '@
+
+        $requestedFilters = @()
+        if (-not [string]::IsNullOrWhiteSpace($filtersLiteral)) {
+          $requestedFilters = $filtersLiteral -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
+
+        $resolved = New-Object System.Collections.Generic.List[object]
+        $seenPaths = New-Object System.Collections.Generic.HashSet[string]
+
+        # `pnpm list --filter <selector>` prints NOTHING and exits 0 when a selector matches
+        # no package. Piping that empty string through ConvertFrom-Json yields $null, and
+        # @($null) has Count 1 - an entry with no name and no path - so guard here rather
+        # than relying on a count.
+        function Get-PnpmMembers([string]$listOutput) {
+          if ([string]::IsNullOrWhiteSpace($listOutput)) { return @() }
+          $parsed = $null
+          try { $parsed = $listOutput | ConvertFrom-Json } catch { return @() }
+          if ($null -eq $parsed) { return @() }
+          return @($parsed | Where-Object { $_ -and -not [string]::IsNullOrWhiteSpace($_.path) })
+        }
+
+        # Workspace roots are private aggregators, not deployable components, so the root is
+        # excluded even when a broad selector matches it. Single-package roots must keep it -
+        # there, the sole entry IS the root.
+        #
+        # The first Where-Object is not redundant: a function returning @() yields $null on
+        # assignment, and piping $null sends ONE null element down the pipeline, so an
+        # unguarded GetFullPath($_.path) throws "The path is empty" on an empty result set.
+        function Remove-WorkspaceRoot($members, $root) {
+          $list = @($members | Where-Object { $_ -and -not [string]::IsNullOrWhiteSpace($_.path) })
+          if ($list.Count -eq 0) { return @() }
+          if (-not $root.isWorkspace) { return $list }
+          return @($list | Where-Object { [IO.Path]::GetFullPath($_.path) -ne $root.path })
+        }
+
+        # Track matches per selector across ALL roots, so a selector that matches in one root
+        # but not another is not a failure. Counted after root exclusion, so a selector that
+        # only ever matches a workspace root still reports as unmatched.
+        $filterMatchCounts = @{}
+        foreach ($filterExpr in $requestedFilters) { $filterMatchCounts[$filterExpr] = 0 }
+
+        foreach ($root in $roots) {
+          Write-Host "##[group]Resolving packages in $($root.path)"
+          Push-Location $root.path
+          try {
+            $matched = @()
+
+            if ($requestedFilters.Count -eq 0) {
+              $listed = pnpm list --recursive --depth -1 --json 2>&1 | Out-String
+              if ($LASTEXITCODE -ne 0) { throw "pnpm list failed in '$($root.path)': $listed" }
+              $matched = Remove-WorkspaceRoot (Get-PnpmMembers $listed) $root
+
+              # No selectors were supplied, so this root contributing nothing means the root
+              # itself is unusable - an empty workspace, or a lockfile with no package.
+              if ($matched.Count -eq 0) {
+                throw "pnpm reported no packages in root '$($root.path)'."
+              }
+            } else {
+              foreach ($filterExpr in $requestedFilters) {
+                Write-Host "Resolving filter: $filterExpr"
+                $parsed = @()
+                try {
+                  $listedForFilter = pnpm list --filter $filterExpr --depth -1 --json 2>&1 | Out-String
+                  if ($LASTEXITCODE -eq 0) { $parsed = Get-PnpmMembers $listedForFilter }
+                } catch {
+                  $parsed = @()
+                }
+                $parsed = Remove-WorkspaceRoot $parsed $root
+
+                if ($parsed.Count -eq 0) {
+                  # Not an error here: another root may match. Verified after all roots.
+                  Write-Host "  no match in this root"
+                } else {
+                  $filterMatchCounts[$filterExpr] += $parsed.Count
+                  $matched += $parsed
+                }
+              }
+            }
+
+            foreach ($pkg in $matched) {
+              $absolutePath = [IO.Path]::GetFullPath($pkg.path)
+              if (-not $seenPaths.Add($absolutePath)) { continue }
+
+              # Folder naming matches generate-npm-sbom.steps.yaml: '<grandparent>.<parent>'.
+              # upload-sbom falls back to the leaf of the BOM's parent directory when a BOM has
+              # no metadata.component.name, which is why each BOM gets its own subdirectory.
+              $parentPath = Split-Path $absolutePath -Parent
+              $grandparentName = Split-Path $parentPath -Leaf
+              $immediateParentName = Split-Path $absolutePath -Leaf
+
+              if ([string]::IsNullOrWhiteSpace($grandparentName)) {
+                $folderName = if ([string]::IsNullOrWhiteSpace($immediateParentName)) { 'package' } else { $immediateParentName }
+              } else {
+                $folderName = "$grandparentName.$immediateParentName"
+              }
+              $safeFolderName = ($folderName -replace '[<>:"/\\|?*]', '-').Trim().TrimEnd('.', ' ')
+
+              $resolved.Add([pscustomobject]@{
+                name   = $pkg.name
+                path   = $absolutePath
+                folder = $safeFolderName
+                root   = $root.path
+              })
+            }
+          } finally {
+            Pop-Location | Out-Null
+            Write-Host "##[endgroup]"
+          }
+        }
+
+        $unmatchedFilters = @($filterMatchCounts.Keys | Where-Object { $filterMatchCounts[$_] -eq 0 })
+        if ($unmatchedFilters.Count -gt 0) {
+          throw "packageFilters matched no packages in any supplied root: $($unmatchedFilters -join ', ')"
+        }
+
+        if ($resolved.Count -eq 0) { throw "No pnpm packages resolved across the supplied roots." }
+
+        Write-Host "##[group]Resolved pnpm packages"
+        $resolved | ForEach-Object { Write-Host " - $($_.name) -> $($_.path) [$($_.folder)]" }
+        Write-Host "##[endgroup]"
+
+        $packagesJson = ($resolved.ToArray() | ConvertTo-Json -Compress -Depth 5 -AsArray)
+        Write-Host "##vso[task.setvariable variable=packagesJson;isOutput=true]$packagesJson"
+
+  # 3. Install so `pnpm sbom` reads the real store rather than lockfile data alone. See the
+  #    header for the measured cost of skipping this.
+  - ${{ if not(parameters.lockfileOnly) }}:
+      - task: PowerShell@2
+        displayName: "pnpm install --frozen-lockfile"
+        condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+        inputs:
+          pwsh: true
+          targetType: inline
+          script: |
+            $ErrorActionPreference = 'Stop'
+            if ($env:PnpmNodeBin) { $env:PATH = "$env:PnpmNodeBin;$env:PATH" }
+
+            $roots = @('$(detectPnpm.rootsJson)' | ConvertFrom-Json)
+
+            foreach ($root in $roots) {
+              Write-Host "##[group]pnpm install -> $($root.path)"
+              Push-Location $root.path
+              try {
+                & pnpm install --frozen-lockfile --ignore-scripts
+                if ($LASTEXITCODE -ne 0) { throw "pnpm install failed in '$($root.path)' (exit $LASTEXITCODE)." }
+              } finally {
+                Pop-Location | Out-Null
+                Write-Host "##[endgroup]"
+              }
+            }
+
+  # 4. Generate one CycloneDX BOM per resolved package.
+  - task: PowerShell@2
+    displayName: "Generate pnpm SBOMs (CycloneDX, JSON)"
+    condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+    inputs:
+      pwsh: true
+      targetType: inline
+      script: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:PnpmNodeBin) { $env:PATH = "$env:PnpmNodeBin;$env:PATH" }
+
+        $outputRoot = "$(Agent.TempDirectory)/sbom/pnpm"
+        New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+
+        $packages = @('$(resolvePnpmPackages.packagesJson)' | ConvertFrom-Json)
+        if (-not $packages -or $packages.Count -eq 0) {
+          throw "No resolved pnpm packages available. This step requires at least one package from the previous step."
+        }
+
+        $successCount = 0
+        $failureCount = 0
+
+        foreach ($package in $packages) {
+          $packageOutputDir = Join-Path $outputRoot $package.folder
+          New-Item -ItemType Directory -Path $packageOutputDir -Force | Out-Null
+          $outputFile = Join-Path $packageOutputDir "$($package.folder)-sbom.json"
+
+          $sbomArgs = @(
+            'sbom'
+            '--filter', $package.name
+            '--sbom-format', 'cyclonedx'
+            '--sbom-type', '${{ parameters.sbomType }}'
+            '--out', $outputFile
+          )
+
+          $specVersion = '${{ parameters.sbomSpecVersion }}'
+          if (-not [string]::IsNullOrWhiteSpace($specVersion)) {
+            $sbomArgs += @('--sbom-spec-version', $specVersion)
+          }
+          if ('${{ parameters.lockfileOnly }}' -eq 'True') { $sbomArgs += '--lockfile-only' }
+          if ('${{ parameters.includeDevDependencies }}' -eq 'False') { $sbomArgs += '--prod' }
+          if ('${{ parameters.excludePeers }}' -eq 'True') { $sbomArgs += '--exclude-peers' }
+
+          Write-Host "##[group]pnpm SBOM -> $($package.name) ($($package.path))"
+          Push-Location $package.root
+          try {
+            Write-Host "pnpm $($sbomArgs -join ' ')"
+            # Invoked unpiped so $LASTEXITCODE reflects pnpm and not a downstream cmdlet.
+            & pnpm @sbomArgs
+            if ($LASTEXITCODE -ne 0) { throw "pnpm sbom exited with code $LASTEXITCODE" }
+            if (-not (Test-Path -LiteralPath $outputFile)) { throw "Expected SBOM was not written to $outputFile" }
+            $successCount++
+          } catch {
+            $failureCount++
+            Write-Host "##vso[task.logissue type=error]pnpm sbom failed for $($package.name): $($_.Exception.Message)"
+          } finally {
+            Pop-Location | Out-Null
+            Write-Host "Output: $outputFile"
+            Write-Host "##[endgroup]"
+          }
+        }
+
+        Write-Host "##[section]pnpm SBOM summary -> ok=$successCount, failed=$failureCount"
+
+        if ($failureCount -gt 0) {
+          Write-Host "##vso[task.logissue type=warning]Some pnpm SBOMs failed"
+          exit 1
+        }
+
+  # 5. Optional artifact publish. Targets the shared sbom root so .NET/npm/yarn/pnpm outputs
+  #    land in a single artifact for upload-sbom.steps.yaml.
+  - ${{ if eq(parameters.publishArtifact, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: "Publish SBOM artifact"
+        condition: and(succeeded(), eq(variables['detectPnpm.hasPnpm'], 'true'))
+        inputs:
+          targetPath: "$(Agent.TempDirectory)/sbom"
+          publishLocation: pipeline
+          artifact: ${{ parameters.artifactName }}
