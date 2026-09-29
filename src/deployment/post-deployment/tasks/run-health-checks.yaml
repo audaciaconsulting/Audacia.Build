@@ -80,6 +80,7 @@ steps:
           catch
           {
             Write-Warning "Response is not JSON: $Response"
+            return
           }
 
           $entries = $responseDetails.entries
