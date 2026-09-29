@@ -68,6 +68,52 @@ steps:
                 }
             }
         }
+
+        function Write-HealthCheckErrorDetails {
+          param(
+            [string]$Response
+          )
+          try
+          {
+            $responseDetails = $Response | ConvertFrom-Json
+          }
+          catch
+          {
+            Write-Warning "Response is not JSON: $Response"
+          }
+
+          $entries = $responseDetails.entries
+          if ($null -eq $entries)
+          {
+            Write-Warning "No 'entries' in response: $Response"
+            return
+          }
+
+          $checks = if ($entries -is [array])
+          {
+            $entries | ForEach-Object
+            {
+              [pscustomobject]@{ Name = $_.name; Value = $_.value }
+            }
+          }
+          else
+          {
+            $entries.psobject.Properties
+          }
+
+          foreach ($check in $checks)
+          {
+            $msg = "$($check.Name) - $($check.Value)"
+            if ($check.Value.status -eq 'Healthy')
+            {
+              Write-Host $msg
+            }
+            else
+            {
+              Write-Warning $msg
+            }
+          }
+        }
         
         foreach ($url in $urls) {
           Write-Host "Running health checks on URL: $url"
@@ -87,21 +133,7 @@ steps:
             # Failed health checks also result in a 503, along with standard service unavailable errors.
             if ($responseStatus -eq 503 -and $_.ErrorDetails -ne $null)
             {
-              $responseDetails = $_.ErrorDetails | ConvertFrom-Json
-              foreach ($entry in $responseDetails.entries.psobject.Properties)
-              {
-                  Write-Host ''
-                  $name = $entry.Name
-                  $value = $entry.Value
-                  if ($value.status -eq "Healthy")
-                  {
-                      Write-Host "$name - $value"
-                  }
-                  else
-                  {
-                      Write-Warning "$name - $value"
-                  }
-              }
+              Write-HealthCheckErrorDetails -Response $_.ErrorDetails
             }
             Exit 1
           }        
