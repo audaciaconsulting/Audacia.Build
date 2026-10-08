@@ -22,6 +22,9 @@ parameters:
   - name: alwaysPublish                # OPTIONAL: Publish the artifact even when the build was triggered by a pull request
     type: boolean
     default: false
+  - name: runCodeAnalysis              # OPTIONAL: Should Roslyn code analysis run as part of the build
+    type: boolean
+    default: true
 
 steps:
   - task: DotNetCoreCLI@2
@@ -47,9 +50,15 @@ steps:
       command: build
       projects: ${{parameters.projects}}
       publishWebProjects: false
-      arguments: >
-        --configuration ${{parameters.configuration}}
-        --no-restore
+      ${{ if eq(parameters.runCodeAnalysis, false) }}:
+        arguments: >
+          --configuration ${{parameters.configuration}}
+          --no-restore
+          -p:RunAnalyzersDuringBuild=false
+      ${{ else }}:
+        arguments: >
+          --configuration ${{parameters.configuration}}
+          --no-restore
 
   - task: DotNetCoreCLI@2
     displayName: .NET Test
@@ -57,9 +66,14 @@ steps:
     inputs:
       command: test
       projects: ${{parameters.tests}}
-      arguments: >
-        --collect "Code coverage"
       configuration: 'Release'
+      ${{ if eq(parameters.runCodeAnalysis, false) }}:
+        arguments: >
+          --collect "Code coverage"
+          -p:RunAnalyzersDuringBuild=false
+      ${{ else }}:
+        arguments: >
+          --collect "Code coverage"
 
   - task: DotNetCoreCLI@2
     displayName: '.NET Publish'
