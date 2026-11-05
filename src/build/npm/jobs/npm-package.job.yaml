@@ -6,8 +6,6 @@ parameters:
     default: ''
   - name: runTests
     default: true
-  - name: skipDependencyChecks
-    default: false
 
 jobs:
   - job: Job_Build
@@ -24,12 +22,6 @@ jobs:
           command: custom
           workingDir: '$(Build.SourcesDirectory)/${{parameters.path}}'
           customCommand: 'ci --prefer-offline --no-audit'
-
-      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
-        - template: /src/security/dependency-check/steps/npm-dependency-check.steps.yaml
-          parameters:
-            path: ${{parameters.path}}
-            continueIfVulnerabilities: true
 
       - task: UpdateVersions@1
         name: UpdateVersions

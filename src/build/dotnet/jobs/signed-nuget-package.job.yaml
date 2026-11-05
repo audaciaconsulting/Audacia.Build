@@ -8,8 +8,6 @@ parameters:
     default: 'release'
   - name: testPath
     default: '**/*Tests/*.csproj'
-  - name: skipDependencyChecks
-    default: true
   - name: workingDirectory # The working directory containing relevant csproj and nuspec files; if not set then $(Build.SourcesDirectory) is used.
     default: ''
   - name: packageSource # Where the package is published; should be one of 'public', 'internalPrivate' or 'internalPublic'
@@ -49,11 +47,6 @@ jobs:
         - task: UseDotNet@2
           inputs:
             version: '${{ parameters.dotNetVersion }}'
-      
-      - ${{ if eq(parameters.skipDependencyChecks, false) }}:
-        - template: /src/security/dependency-check/steps/nuget-dependency-check.steps.yaml
-          parameters:
-            continueIfVulnerabilities: true
 
       - ${{ if eq(parameters.applyVersioning, true) }}:
         - task: UpdateVersions@1
