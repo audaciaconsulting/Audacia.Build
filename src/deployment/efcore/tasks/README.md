@@ -27,6 +27,12 @@ Runs the EF Core migrations bundle.
       connectionString: $(ConnectionStrings.DatabaseContext)
 ```
 
+Note that this task must be run on a windows machine, which can be specified at the job, stage, or pipeline level:
+```yaml
+pool:
+  vmImage: windows-latest
+```
+
 ### migrate-idempotent-script.yaml
 
 Runs the EF Core migrations script for the provided DbContext on the provided SQL Server.
